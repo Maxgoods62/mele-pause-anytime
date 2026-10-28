@@ -1,7 +1,8 @@
 # Built inside a checkout of ME3Tweaks/LExASIs (see ../build.sh), which provides asi_target, Common and LESDK.
 
-# Dear ImGui (MIT, see ../THIRD_PARTY.md), fetched at a pinned commit by build.sh, the same checkout as mele-bridge's. A
-# library of our own (mele-bridge's MeleImGui sits in the same tree): built with its defaults, not the ASI targets' /W4 /WX.
+# Dear ImGui (MIT, see ../THIRD_PARTY.md), fetched at a pinned commit by build.sh into the third_party folder next to this
+# repo's LExASIs checkout. A library of our own, built with its defaults, not the ASI targets' /W4 /WX; its name differs
+# from mele-bridge's MeleImGui, so both can still share one tree.
 set (MELE_THIRD_PARTY "${CMAKE_SOURCE_DIR}/../third_party" CACHE PATH "Where build.sh put imgui")
 add_library (MelePauseImGui STATIC
   "${MELE_THIRD_PARTY}/imgui/imgui.cpp"

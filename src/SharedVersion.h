@@ -9,6 +9,6 @@
 #define ASI_NAME_NO_SPACE_A "MelePause"
 #define ASI_NAME_NO_SPACE_W L"MelePause"
 
-#define ASI_VERSION 5
-#define VERSION_STRING_A "5"
-#define VERSION_STRING_W L"5"
+#define ASI_VERSION 6
+#define VERSION_STRING_A "6"
+#define VERSION_STRING_W L"6"
