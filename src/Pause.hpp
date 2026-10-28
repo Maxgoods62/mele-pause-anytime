@@ -15,8 +15,8 @@ namespace MelePause
     /// The SDK's globals, and GEngine: its first LocalPlayer is how a key finds the player's controller.
     void InitializeGlobals(::LESDK::Initializer& Init);
 
-    /// ProcessEvent: Esc and a gamepad's Start in Console.InputKey, the banner after BioHUD.PostRender, and the skips Esc
-    /// is bound to while our key is down.
+    /// ProcessEvent: Esc and a gamepad's Start in Console.InputKey, what the pause screen shows after BioHUD.PostRender, and
+    /// the skips Esc is bound to while our key is down.
     void InstallHooks(::LESDK::Initializer& Init);
 
     /// The thread that runs BioHUD.PostRender and Console.InputKey (0 until one ran): Bink.cpp's logs say whether a Bink call
@@ -35,6 +35,30 @@ namespace MelePause
     /// A longer gap also starts a new run of HUD frames (Pause.cpp lifts a movie pause once the HUD draws again).
     inline constexpr ULONGLONG HudSilentMs = 250;
 
+    // ! Overlay.cpp
+    // ========================================
+
+    namespace Overlay
+    {
+        /// Hooks the swap chain's Present, Present1 and ResizeBuffers: the pause screen is drawn into the back buffer. Without
+        /// them (logged) Pause.cpp draws its Canvas banner.
+        void Install(::LESDK::Initializer& Init);
+
+        /// Game thread, each frame and at once when photo mode starts: the world pause screen shows (the HUD drawing), with
+        /// photo mode's key where it opens; or it goes at once, with no fade (photo mode, the console).
+        void Publish(bool worldPause, bool offerPhoto, bool hideNow);
+
+        /// The keys named are a gamepad's (Start, Y) or the keyboard's (Esc, F7): whichever pressed one of ours last. Any thread.
+        void UsePadPrompts(bool pad);
+
+        /// A movie's thread, after a BinkWait that kept the movie paused: a paused movie presents nothing, so the pause
+        /// screen is presented from here over its last frame (60 a second at most). Only on the thread that presents.
+        void MovieIdle();
+
+        /// The pause screen started on the game's swap chain and hasn't failed: Pause.cpp's Canvas banner stays off.
+        bool Drawing();
+    }
+
     // ! Bink.cpp
     // ========================================
 
@@ -46,6 +70,9 @@ namespace MelePause
 
         /// Movies opened (or first seen) since Install and not closed yet.
         int OpenMovies();
+
+        /// Of those, the ones opened from a file: the only ones the movie pause takes (loading screens play from memory).
+        int FileMovies();
 
         /// Bumped at each BinkOpen: Pause.cpp logs once per movie whether the game thread still runs input and the HUD.
         unsigned MovieSerial();
@@ -69,6 +96,9 @@ namespace MelePause
         /// GetTickCount64 at the latest BinkWait that saw down a press of Esc the movie's thread acted on (0 if none). Kept
         /// fresh while that press is down, 2 s at most: Pause.cpp drops the skips Esc is bound to until a moment after.
         ULONGLONG EscSeenDown();
+
+        /// The same for the space bar, which the movie's thread reads too but only to resume our movie pause.
+        ULONGLONG SpaceSeenDown();
 
         /// Game thread (SkipMovie, the HUD drawing again, a fault): every movie we paused resumes at its next call.
         void RequestResume(char const* why);

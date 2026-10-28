@@ -63,6 +63,10 @@ namespace MelePause
         /// A movie pause is lifted once the HUD has drawn this long without a gap: no fullscreen movie covers the screen.
         constexpr ULONGLONG HudBackMs = 1000;
 
+        /// Frames the pause screen stays hidden after photo mode ends: the render thread presents a frame or two behind this
+        /// one, and photo mode's last frames must not show it.
+        constexpr unsigned PhotoHideGrace = 3;
+
         char const* ModeName(unsigned char mode)
         {
             static char const* const Names[] = { "Default", "Vehicle", "PowerWheel", "WeaponWheel", "Command", "Conversation",
@@ -109,9 +113,14 @@ namespace MelePause
             /// Photo mode's keys: a gamepad's Y, and F7.
             KeyState Y;
             KeyState F7;
+            /// Resume only: the space bar, and a gamepad's A.
+            KeyState Space;
+            KeyState A;
 
             /// Turned off for the session by an access violation while drawing, or a missing Canvas function.
             bool BannerOff = false;
+            /// Frames the pause screen stays hidden after photo mode (PhotoHideGrace).
+            unsigned PhotoHideFrames = 0;
             /// Access violations in the per-frame checks: each drops our pause state, and the third turns them off for the
             /// session (Esc still checks the state), rather than fault and log at frame rate.
             unsigned FrameFaults = 0;
@@ -1103,7 +1112,7 @@ namespace MelePause
                        Bink::OwnsKeys() ? "the movie's" : "vanilla", GetCurrentThreadId());
         }
 
-        enum class Key { Esc, Start, Y, F7 };
+        enum class Key { Esc, Start, Y, F7, Space, A };
 
         char const* KeyName(Key key)
         {
@@ -1112,6 +1121,8 @@ namespace MelePause
             case Key::Esc: return "Esc";
             case Key::Start: return "Start";
             case Key::Y: return "Y";
+            case Key::Space: return "Space";
+            case Key::A: return "A";
             default: return "F7";
             }
         }
@@ -1260,6 +1271,8 @@ namespace MelePause
             return true;
         }
 
+        void PublishOverlay(ABioPlayerController* pc);
+
         /// A fresh press of Y or F7, outside the open console: in our photo mode it leaves it, under our pause of a
         /// conversation or a cutscene it enters it. Anywhere else, and during a fullscreen movie, the key is the game's.
         char const* PressPhoto(UConsole* console, UFunction* function, Key key)
@@ -1277,9 +1290,17 @@ namespace MelePause
             }
             else if (G.WorldPaused && pc != nullptr && pc == G.Controller && (mode == ModeConversation || mode == ModeCinematic))
             {
+                // The pause screen goes before photo mode shows anything: its first screenshot must not catch it.
+                G.PhotoHideFrames = PhotoHideGrace;
+                Overlay::Publish(false, false, true);
                 action = EnterPhoto(pc, mode, key == Key::Y);
-                // What Enter got to before it stopped.
-                if (action == nullptr) DropPhoto("refused", false);
+                // What Enter got to before it stopped. The pause screen comes back this frame, not three frames later.
+                if (action == nullptr)
+                {
+                    DropPhoto("refused", false);
+                    G.PhotoHideFrames = 0;
+                    PublishOverlay(pc);
+                }
             }
             LEASI_INFO("{} pressed: mode {} ({}), world paused by us {}, {}: {} (function {}, thread {})", KeyName(key), mode, ModeName(mode), G.WorldPaused,
                        PathOf(pc), action != nullptr ? action : "vanilla", PathOf(function), GetCurrentThreadId());
@@ -1310,6 +1331,68 @@ namespace MelePause
             return true;
         }
 
+        /// Space and A only resume: our world pause (not in photo mode, where Space takes the picture), or our movie pause. A
+        /// press we acted on takes its repeats and its release too, and so does a key the movie's thread resumed on (Space,
+        /// read there like Esc). During a movie the engine's movie input takes the press: its first repeat or its release
+        /// resumes then, as Start's does. Anywhere else the key is the game's (Space skips a movie or a cutscene the game
+        /// lets skip). Returns true when the event is ours.
+        bool TakeResumeKey(UConsole* console, UFunction* function, UConsole_execInputKey_Parms* p, KeyState& k, Key key, ULONGLONG now)
+        {
+            auto const pressed = p->Event == IE_Pressed;
+            auto const released = p->Event == IE_Released;
+            if (pressed)
+            {
+                k.Held = false;
+                k.ReleasedAt = 0;
+            }
+            else if (k.Held)
+            {
+                if (released)
+                {
+                    k.Held = false;
+                    k.ReleasedAt = now;
+                }
+                p->ReturnValue = 1;
+                return true;
+            }
+            if (ConsoleOpen(function)) return false;
+
+            char const* action = nullptr;
+            auto const movieSpace = key == Key::Space ? Bink::SpaceSeenDown() : 0;
+            if (Bink::PauseWanted() && Bink::OwnsKeys())
+            {
+                auto const space = key == Key::Space;
+                Bink::RequestResume(pressed ? (space ? "Space pressed" : "A pressed")
+                                            : (space ? "Space during a fullscreen movie, its press unseen here" : "A during a fullscreen movie, its press unseen here"));
+                action = "resumed the movie";
+            }
+            else if (movieSpace != 0 && (movieSpace >= now || now - movieSpace < ReleaseGraceMs))
+                action = "taken: the movie's thread resumed the movie on it";
+            else if (pressed && G.WorldPaused && !Photo.On)
+            {
+                auto const pc = LocalController(console);
+                Validate(pc, KeyName(key));
+                if (G.WorldPaused)
+                {
+                    ResumeWorld(KeyName(key));
+                    action = "resumed the world";
+                }
+            }
+            if (action == nullptr) return false;
+            LEASI_INFO("{} {}: {} (function {}, thread {})", KeyName(key), pressed ? "pressed" : released ? "released" : "repeated", action, PathOf(function),
+                       GetCurrentThreadId());
+            LEASI_FLUSH();
+            if (!released)
+            {
+                k.Held = true;
+                k.PressedAt = now;
+            }
+            else
+                k.ReleasedAt = now;
+            p->ReturnValue = 1;
+            return true;
+        }
+
         /// Returns true when the key is ours: the caller skips the original, which tells the viewport the key was handled.
         bool TakeKey(UConsole* console, UFunction* function, UConsole_execInputKey_Parms* p)
         {
@@ -1317,12 +1400,19 @@ namespace MelePause
             static SFXName const Start{ L"XboxTypeS_Start", 0 };
             static SFXName const PadY{ L"XboxTypeS_Y", 0 };
             static SFXName const F7{ L"F7", 0 };
+            static SFXName const SpaceBar{ L"SpaceBar", 0 };
+            static SFXName const PadA{ L"XboxTypeS_A", 0 };
             GameThreadId.store(GetCurrentThreadId(), std::memory_order_relaxed);
             NoteInputDuringMovie(console, p);
+            // Any event of those keys, not only presses: during a movie the engine's movie input takes Start's press.
+            if (p->Key == Escape || p->Key == F7 || p->Key == SpaceBar) Overlay::UsePadPrompts(false);
+            else if (p->Key == Start || p->Key == PadY || p->Key == PadA) Overlay::UsePadPrompts(true);
             if (p->Key == Escape) return TakeEsc(console, function, p, GetTickCount64());
             if (p->Key == Start) return TakeStart(console, function, p, GetTickCount64());
             if (p->Key == PadY) return TakePhotoKey(console, function, p, G.Y, Key::Y, GetTickCount64());
             if (p->Key == F7) return TakePhotoKey(console, function, p, G.F7, Key::F7, GetTickCount64());
+            if (p->Key == SpaceBar) return TakeResumeKey(console, function, p, G.Space, Key::Space, GetTickCount64());
+            if (p->Key == PadA) return TakeResumeKey(console, function, p, G.A, Key::A, GetTickCount64());
             return false;
         }
 
@@ -1340,8 +1430,12 @@ namespace MelePause
         {
             auto const movieEsc = Bink::EscSeenDown();
             if (movieEsc != 0 && (movieEsc >= now || now - movieEsc < ReleaseGraceMs)) return "Esc";
+            auto const movieSpace = Bink::SpaceSeenDown();
+            if (movieSpace != 0 && (movieSpace >= now || now - movieSpace < ReleaseGraceMs)) return "Space";
             if (Guarding(G.Esc, now)) return "Esc";
             if (Guarding(G.Start, now)) return "Start";
+            if (Guarding(G.Space, now)) return "Space";
+            if (Guarding(G.A, now)) return "A";
             return nullptr;
         }
 
@@ -1465,6 +1559,34 @@ namespace MelePause
         // ! Per frame
         // ========================================
 
+        /// The console is open (its Typing or Open state), read each frame: it closes on keys that aren't ours to watch.
+        bool ConsoleIsOpen()
+        {
+            static SFXName const Typing{ L"Typing", 0 };
+            static SFXName const Open{ L"Open", 0 };
+            auto const engine = GEngine != nullptr ? *GEngine : nullptr;
+            if (engine == nullptr || engine->GamePlayers.Count() == 0) return false;
+            auto const player = engine->GamePlayers.GetData()[0];
+            auto const client = player != nullptr ? player->ViewportClient : nullptr;
+            auto const console = client != nullptr ? client->ViewportConsole : nullptr;
+            auto const frame = console != nullptr ? console->StateFrame : nullptr;
+            auto const state = frame != nullptr ? frame->StateNode : nullptr;
+            return state != nullptr && (state->Name == Typing || state->Name == Open);
+        }
+
+        /// What Overlay.cpp shows of our world pause, after each frame's checks: nothing while photo mode runs and for a few
+        /// frames after it, nor while the console is open (both at once, no fade); photo mode's key only where it opens and
+        /// answers (its input and GUI tick hooks are in).
+        void PublishOverlay(ABioPlayerController* pc)
+        {
+            if (Photo.On) G.PhotoHideFrames = PhotoHideGrace;
+            else if (G.PhotoHideFrames > 0) G.PhotoHideFrames--;
+            auto const hidden = G.WorldPaused && (Photo.On || G.PhotoHideFrames > 0 || ConsoleIsOpen());
+            auto const mode = ModeOf(pc);
+            auto const photo = InputHooked && GuiTickHooked && pc != nullptr && pc == G.Controller && (mode == ModeConversation || mode == ModeCinematic);
+            Overlay::Publish(G.WorldPaused && !hidden, G.WorldPaused && !hidden && photo, hidden);
+        }
+
         /// The checks of each frame. The banner is drawn apart, under its own guard: a fault while drawing must not stop them.
         void AfterPostRender(ABioHUD* hud)
         {
@@ -1495,6 +1617,7 @@ namespace MelePause
 
             Validate(pc, "frame");
             PhotoFrame();
+            PublishOverlay(pc);
         }
 
         // ! Guarded entry points
@@ -1533,6 +1656,11 @@ namespace MelePause
         }
 
         constexpr unsigned MaxFrameFaults = 3;
+
+        void PublishBareEntry(void*)
+        {
+            Overlay::Publish(G.WorldPaused && !Photo.On && Alive(G.World, G.WorldIndex) && G.World->Pauser != nullptr, false, Photo.On);
+        }
 
         /// After an access violation in the per-frame checks: our state may be what faulted, so it ends here, photo mode
         /// first, and a world we paused is resumed (under its own guard) rather than left paused with nothing of ours to
@@ -1645,7 +1773,11 @@ namespace MelePause
                                 MaxFrameFaults, G.FrameFaults == MaxFrameFaults ? ", per-frame checks off for the session" : "");
                     DropState();
                 }
-                if (G.WorldPaused && !Photo.On && !G.BannerOff && !Guarded(DrawBannerEntry, Context))
+                // With the checks off for the session, our state isn't kept up: the pause screen shows a pause Esc made only
+                // while that world still exists and is paused, without photo mode's key.
+                if (G.FrameFaults >= MaxFrameFaults && !Guarded(PublishBareEntry, nullptr)) Overlay::Publish(false, false, false);
+                // The Canvas banner: only where the pause screen can't draw (its hooks or its start failed).
+                if (!Overlay::Drawing() && G.WorldPaused && !Photo.On && !G.BannerOff && !Guarded(DrawBannerEntry, Context))
                 {
                     LEASI_ERROR("access violation while drawing the banner: banner off");
                     G.BannerOff = true;

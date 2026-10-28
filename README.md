@@ -2,27 +2,31 @@
 
 `MelePause.asi`, our own ASI for Mass Effect 1 Legendary Edition: Esc, or a gamepad's Start, pauses a conversation, an
 in-engine cutscene or a Bink movie, and pressing it again resumes it. Under that pause of a conversation or a cutscene, a
-gamepad's Y or F7 opens the game's photo mode on the paused shot (v4). Everywhere else these keys do what they always did.
-It stands alone: it needs neither
-MeleBridge nor anything else of this repo, and runs side by side with MeleBridge (both hook `ProcessEvent` through the ASI
-loader's shared hook manager).
+gamepad's Y or F7 opens the game's photo mode on the paused shot (v4). While paused, the picture is blurred and darkened
+under a pause screen (v5). Everywhere else these keys do what they always did. It stands alone: it needs neither
+MeleBridge nor anything else of this repo, and runs side by side with MeleBridge (both hook `ProcessEvent` and the swap
+chain's `Present` through the ASI loader's shared hook manager).
 
 ## What Esc and Start do
 
 | Where | Vanilla Esc / Start | With MelePause (Esc or Start) |
 |---|---|---|
-| Conversation (game mode 5) | nothing | Pauses everything: picture, voice-over, music, lips. Esc or Start again resumes at the same word, in sync. A "PAUSE" banner shows at the top, with "Start: resume     Y: photo mode" when Start paused it or the game uses the gamepad, else "Esc: resume     F7: photo mode". Esc and Start tested. |
+| Conversation (game mode 5) | nothing | Pauses everything: picture, voice-over, music, lips. Esc or Start again resumes at the same word, in sync, and so do Space and A (v5). The [pause screen](#pause-screen-v5) comes up. Esc and Start tested. |
 | In-engine cutscene (mode 6, `GameMode_Cinematic`) | Esc: `SkipCinematic`, which only plays an error sound (`bEnableCinematicSkip` is off); Start: nothing | Same pause as a conversation. Esc and Start tested. |
-| Fullscreen Bink movie the engine doesn't skip on Esc: opened from a file, while the HUD draws nothing (the galaxy map's travel movie) | the travel movie: nothing, it plays to its end (Esc and Start tested) | Pauses the movie (picture and sound). The key again resumes it. No banner. Esc (v2) and Start (v3) tested; Start reacts on its first repeat or its release, not its press (see [How it works](#how-it-works)). |
+| Fullscreen Bink movie the engine doesn't skip on Esc: opened from a file, while the HUD draws nothing (the galaxy map's travel movie) | the travel movie: nothing, it plays to its end (Esc and Start tested) | Pauses the movie (picture and sound). The key again resumes it, and so do Space and A (v5). The pause screen comes up, without photo mode's key (v5). Esc (v2) and Start (v3) tested; Start reacts on its first repeat or its release, not its press (see [How it works](#how-it-works)). |
 | Fullscreen Bink movie the engine skips on Esc (a skippable one, in UE3's code) | skipped | still skipped: the engine's movie input acts on the press before us |
 | Loading-screen movie (played from memory) | nothing | unchanged |
 | Anywhere else (gameplay, menus, GUI, galaxy map, console open) | pause menu, close, ... | unchanged (tested in gameplay and the pause menu) |
 
 - **Keys:** Esc on the keyboard, and Start on a gamepad: the game's `XboxTypeS_Start`, which an Xbox pad sends and a
-  PlayStation pad too through Steam Input or DS4Windows (Options, and the touchpad click by default). Space still skips a
-  conversation line and a movie, paused or not (skipping a paused movie resumes it first), except while a press of Esc or
-  Start we took is held down and a quarter second after its release: the skips Esc is bound to are held back then,
-  whichever key sent them.
+  PlayStation pad too through Steam Input or DS4Windows (Options, and the touchpad click by default).
+- **Resume only (v5):** Space, and a gamepad's A (`XboxTypeS_A`; Cross on a PlayStation pad through Steam Input), resume
+  our pause of a conversation, a cutscene or a movie; they never pause. Not in photo mode (Space takes the picture there),
+  nor in the open console. During a movie Space is read by the movie's thread like Esc (on its press), and A through the
+  game on its first repeat or its release, like Start.
+- **Skips:** Space still skips a conversation line, a cutscene and a movie when nothing of ours is paused. While a press of
+  Esc, Start, Space or A we took is held down, and a quarter second after its release, the skips Esc and Space are bound
+  to are held back, whichever key sent them: the press that resumes never skips too.
 - **Not handled:** Loading-screen movies. Esc while the console is open (it closes the console, as in vanilla). During a
   movie: Esc while another program's window is in the foreground, and a key in the first quarter second of the movie (the
   HUD's silence isn't long enough yet).
@@ -38,8 +42,8 @@ loader's shared hook manager).
 
 | Key, under our pause of a conversation or a cutscene | What it does |
 |---|---|
-| Y (gamepad) or F7 | Opens the game's photo mode on the shot that was on screen, at its field of view. The wheel, the subtitle and the banner go away; photo mode's own controls work (sticks, LT/RT, X or Space for a screenshot, B or Left Shift for its options; with mouse and keyboard, hold the right button to look and move). The world stays paused under it. |
-| Y, F7, Esc or Start, in that photo mode | Leaves it: the paused shot, the wheel, the subtitle and the banner come back, still paused. Esc or Start again resumes. |
+| Y (gamepad) or F7 | Opens the game's photo mode on the shot that was on screen, at its field of view. The wheel, the subtitle and the pause screen go away; photo mode's own controls work (sticks, LT/RT, X or Space for a screenshot, B or Left Shift for its options; with mouse and keyboard, hold the right button to look and move). The world stays paused under it. |
+| Y, F7, Esc or Start, in that photo mode | Leaves it: the paused shot, the wheel, the subtitle and the pause screen come back, still paused. Esc or Start again resumes. |
 
 - **Why not vanilla:** the game opens photo mode only from the pause menu, which it refuses in a conversation or a
   cutscene. Its real entry (`MassEffectGuiManager.ShowPhotoMode`) has no gate; called alone it breaks: photo mode's priority
@@ -47,6 +51,38 @@ loader's shared hook manager).
   conversation's clock keeps running.
 - **Elsewhere:** Y and F7 stay vanilla (gameplay, menus, an unpaused conversation, a movie). Vanilla photo mode from the
   pause menu is untouched.
+
+## Pause screen (v5)
+
+| What | How it looks |
+|---|---|
+| The picture | Blurred (a dual filter blur, about 24 pixels of radius at 1080p and the same share of the screen at any resolution), half as bright, a little desaturated, darker in the corners. It fades in over 0.2 s and out over 0.15 s. The wheel and the subtitle are blurred with it. |
+| The centre | "PAUSE" set wide in Exo 2 Light, in a thin frame with bracketed corners. |
+| The bottom left | Each key over its label: "Resume" (A, or Space; Start and Esc resume too), and "Photo mode" (Y, or F7) where photo mode opens (our pause of a conversation or a cutscene, its hooks in). Gamepad icons (a green A, a yellow Y, in rings) or keycaps (a wide space bar named in the game's language, F7), for whichever device pressed one of those keys last. |
+| The language | The text language the game's launcher passes (`-OVERRIDELANGUAGE=`): English, French, German, Italian, Spanish, Polish or Russian; English without it and for Japanese (Exo 2 has no kana). |
+
+- **Where it draws:** into the game's back buffer, from a hooked `IDXGISwapChain::Present` (`Overlay.cpp`), on the render
+  thread: the blur passes first (`Blur.cpp`, every piece of D3D11 state they change set back), then the text and icons with
+  Dear ImGui. Nothing there touches a game object: the game thread publishes what to show each frame after
+  `BioHUD.PostRender`. Sizes follow the back buffer's height (laid out for 1080 lines), so any resolution or aspect works.
+- **Over a paused movie:** a paused Bink movie presents nothing (its thread only polls `BinkWait`), so the screen would
+  never fade in. While a movie from a file is open and the HUD is silent, each frame is copied before anything is drawn
+  on it; while our movie pause holds and the game has presented nothing for 0.1 s, the movie's `BinkWait` hook puts that
+  frame back and presents it, 60 times a second at most, with the pause screen over it. Only on the thread that presents
+  the game's frames (the movie's thread, in LE1). A window resized while the movie is paused keeps its frame until the
+  movie resumes.
+- **When:** under our world pause while the HUD draws (a flag left over a load or a fault shows nothing), and under our movie
+  pause while it doesn't. Gone at once, with no fade, when photo mode starts (before it shows anything, so its screenshots
+  never hold it) and while the console is open; back three frames after photo mode ends.
+- **Nothing to install:** Exo 2 (SIL OFL 1.1) is compiled into `MelePause.asi`, Latin and Cyrillic only (about 68 KB a
+  weight). The shaders compile at the game's first frame with Windows' own `d3dcompiler_47.dll`, from System32 only: Dear
+  ImGui's import of it is delay-loaded and bound to that copy first, so one placed next to the game is never used, and a
+  Windows without it gets the banner.
+- **Fallbacks:** if the swap chain can't be hooked, the overlay can't start, it faults, or it gets no view on the back
+  buffer 10 frames in a row, the v4 banner is drawn instead (the HUD's Canvas, `EngineFonts.MediumFont`). A back buffer
+  format the blur doesn't handle gets a plain darkening. Nothing of the back buffer is held between pauses.
+- **Other overlays:** the Steam overlay, ReShade or MeleBridge's editor may draw before or after it: whichever hook runs
+  later draws on top.
 
 ## Build and install
 
@@ -76,16 +112,17 @@ loader's shared hook manager).
 
 | Hook | What it does |
 |---|---|
-| `ProcessEvent`: `Console.InputKey` (`Pause.cpp`) | Every key that gets past the engine reaches it, also while the world is paused. On an Esc or Start press it reads the local player's controller (GEngine's first `LocalPlayer`), its `GameModeManager.CurrentMode` and `WorldInfo.Pauser`, then pauses or resumes the world, or lets the key through. A press it acted on is consumed (`ReturnValue` TRUE, the original not called), and so are that key's repeats and its release. While a fullscreen movie plays (or our movie pause is on), every Esc event is consumed without acting, except in the open console: the movie's thread toggles the movie pause. Start's press never comes then: the first repeat or release of a Start press it didn't see toggles the movie pause (`Bink::Toggle`), and the rest of that press is consumed. A Start press it saw and left to the game stays the game's to its release, also if a movie starts under it. |
-| `ProcessEvent`: `SkipMovie`, `SkipCinematic`, `GuiKey` on an `SFXGameMode` | Dropped while our Esc or Start is down (from the press we took to its release, 2 s at most, plus 250 ms after the release), whether `Console.InputKey` or the movie's thread took it. `GuiKey` only for the Escape and Start events the always-on Escape and Start binds send to Scaleform. A second line of defence in case the consumed key still reaches PlayerInput's mode bindings. |
-| `ProcessEvent`: after `BioHUD.PostRender` | Notes the time (the movie's thread tells a fullscreen movie by the HUD's silence), checks the world pause every frame, lifts a movie pause once the HUD has drawn for a second, and draws the banner with the HUD's Canvas (`Canvas.TextSize` and `Canvas.DrawText`, GEngine's `MediumFont`). |
+| `ProcessEvent`: `Console.InputKey` (`Pause.cpp`) | Every key that gets past the engine reaches it, also while the world is paused. On an Esc or Start press it reads the local player's controller (GEngine's first `LocalPlayer`), its `GameModeManager.CurrentMode` and `WorldInfo.Pauser`, then pauses or resumes the world, or lets the key through. A press it acted on is consumed (`ReturnValue` TRUE, the original not called), and so are that key's repeats and its release. While a fullscreen movie plays (or our movie pause is on), every Esc event is consumed without acting, except in the open console: the movie's thread toggles the movie pause. Start's press never comes then: the first repeat or release of a Start press it didn't see toggles the movie pause (`Bink::Toggle`), and the rest of that press is consumed. A Start press it saw and left to the game stays the game's to its release, also if a movie starts under it. A press of Space or A resumes our world pause (not in photo mode); during our movie pause, any event of either resumes the movie; what it acted on is consumed to the release, as is a Space the movie's thread resumed on. |
+| `ProcessEvent`: `SkipMovie`, `SkipCinematic`, `GuiKey` on an `SFXGameMode` | Dropped while our Esc, Start, Space or A is down (from the press we took to its release, 2 s at most, plus 250 ms after the release), whether `Console.InputKey` or the movie's thread took it. `GuiKey` only for the Escape and Start events the always-on Escape and Start binds send to Scaleform. A second line of defence in case the consumed key still reaches PlayerInput's mode bindings. |
+| `ProcessEvent`: after `BioHUD.PostRender` | Notes the time (the movie's thread tells a fullscreen movie by the HUD's silence), checks the world pause every frame, lifts a movie pause once the HUD has drawn for a second, and publishes what the pause screen shows. Only when the pause screen can't draw: the v4 banner, with the HUD's Canvas (`Canvas.TextSize` and `Canvas.DrawText`, GEngine's `MediumFont`). |
+| `dxgi`: `IDXGISwapChain::Present`, `IDXGISwapChain1::Present1`, `IDXGISwapChain::ResizeBuffers` (`Overlay.cpp`) | Draws the pause screen into the back buffer before the frame is shown (once per frame, whichever of the two presents it); releases its views of the back buffer before a resize. The methods' addresses come from a throwaway device and swap chain made at start. |
 | `ProcessEvent`: every call on the game thread | Notes the time, for the movie reports only: does the game thread run under a fullscreen movie? |
 | `ProcessEvent`: `Console.InputKey`, `XboxTypeS_Y` and `F7` | Under our world pause of a conversation or a cutscene, a press enters photo mode (below); in our photo mode, a press of Y, F7, Esc or Start leaves it. A press it acted on is consumed with its repeats and release. Anywhere else the key goes to the game. |
 | `ProcessEvent`: after `PlayerController.PlayerTick` on our controller | While our photo mode is on: `SFXPlayerCamera.UpdateCamera`, so the camera follows the controller that `PlayerPhotoMode.PlayerMove` just moved. The engine doesn't update the camera under the world pause. |
 | `ProcessEvent`: `ShowMenuGui` on `SFXGameModePhoto` | Dropped while our photo mode is on: photo mode's own Esc and Start binds would hide it and open the pause menu over the conversation. |
 | Native: `BioPlayerInput::InputKey` (RVA 0xc6de70), `UPlayerInput::InputAxis` (RVA 0x68bc40), `UBioSFManager::Tick` (RVA 0x193bc0) | While our photo mode is on, a call on our controller's `PlayerInput` or our GUI manager runs with `WorldInfo.Pauser` cleared and put back after: the engine drops input and stops the GUI under the world pause. Hooked only when the function's first bytes match this build. |
 | Native: `UBioSFManager::PlayGuiSound` (RVA 0x191ee0), `UAudioDevice::CreateComponent` (RVA 0x2ff470) | While our photo mode is on, the sound our GUI manager's `PlayGuiSound` makes is marked `bNonRealtime`: under the world pause the audio device starts only those. Hooked only when the function's first bytes match this build. |
-| `bink2w64_original.dll`: `BinkOpen`, `BinkOpenWithOptions`, `BinkClose`, `BinkWait`, `BinkDoFrame`, `BinkDoFrameAsync` (`Bink.cpp`) | Tracks the open movies (from a file or from memory) and logs who plays them. `BinkWait` also reads Esc, toggles the movie pause on its press and applies a pause. `BinkDoFrame` and `BinkDoFrameAsync` count calls and apply a resume, never a pause. |
+| `bink2w64_original.dll`: `BinkOpen`, `BinkOpenWithOptions`, `BinkClose`, `BinkWait`, `BinkDoFrame`, `BinkDoFrameAsync` (`Bink.cpp`) | Tracks the open movies (from a file or from memory) and logs who plays them. `BinkWait` also reads Esc, toggles the movie pause on its press and applies a pause; reads Space, which only resumes; and, while the movie stays paused, presents the pause screen (below). `BinkDoFrame` and `BinkDoFrameAsync` count calls and apply a resume, never a pause. |
 
 - **World pause:** Esc calls the controller's `Pause` exec (what the `pause` command runs), then checks that
   `WorldInfo.Pauser` is set. Esc again calls it once more: `ServerPause` toggles it off. The WorldInfo paused is kept with
@@ -166,9 +203,10 @@ loader's shared hook manager).
   nor a cutscene changes them, and their defaults hold such pairs (Enter and Alt+Enter). Each frame and
   each key also check it: if the world pause ends without us, the world goes, or the mode leaves Photo, our photo session
   ends.
-- **Crash guards:** the key handling, the per-frame checks and the banner each run under an access-violation guard. A fault
-  passes the key to the game; in the per-frame checks it resumes and drops our pause (three of them turn the checks off for
-  the session); while drawing it turns the banner off. Each is logged. A missing Bink module or export only turns the movie
+- **Crash guards:** the key handling, the per-frame checks, the pause screen and the banner each run under an
+  access-violation guard. A fault passes the key to the game; in the per-frame checks it resumes and drops our pause (three
+  of them turn the checks off for the session, and the pause screen with them); in the pause screen it turns it off for the
+  session (the banner then); while drawing the banner it turns the banner off. Each is logged. A missing Bink module or export only turns the movie
   pause off.
 
 ## Limits and unknowns
@@ -217,8 +255,10 @@ loader's shared hook manager).
   no Bink call" in the log), and the movie stays paused until it calls Bink again (the resume is applied then) or closes.
 - **A game thread silent under the pause** (a load, a wait for the movie) no longer ends it, as v1's 3 s rule did: Esc
   resumes it from the movie's thread. The reports say how long the game thread has been silent.
-- **The banner** uses `EngineFonts.MediumFont`, scaled; there is none during a movie pause (the HUD doesn't draw over a
-  fullscreen movie).
+- **The banner** (the pause screen's fallback) uses `EngineFonts.MediumFont`, scaled; there is none during a movie pause
+  (the HUD doesn't draw over a fullscreen movie).
+- **The pause screen over a paused movie** relies on the game presenting frames while the movie is paused: `BinkWait`
+  keeps coming then (above), from the render thread. Not yet seen in game.
 
 - **Photo mode, verified live before the build (v4 spikes, 2026-10-28, a conversation on the Normandy):** the entry steps
   above put photo mode current with the exact shot (position, angle, field of view), the sticks move and turn the
@@ -236,8 +276,9 @@ loader's shared hook manager).
 
 Install with `./build.sh --install` (game closed), then:
 
-1. **Conversation:** during a spoken line, Esc. Picture, voice, music and lips stop, "PAUSE" shows at the top. Wait a few
-   seconds, Esc: the line resumes at the same word, in sync.
+1. **Conversation:** during a spoken line, Esc. Picture, voice, music and lips stop; the picture blurs and darkens, "PAUSE"
+   in its frame at the centre, "Esc Resume" and "F7 Photo mode" at the bottom left, in the game's language. Wait a few
+   seconds, Esc: the line resumes at the same word, in sync, the picture sharp again.
 2. **In-engine cutscene** (e.g. the Noveria undocking scene): same, Esc, wait, Esc.
 3. **Galaxy map travel movie** (FTL or relay): half a second into it, Esc. Expected: the movie stops (picture and sound);
    wait a few seconds, Esc: it resumes and plays to its end. Then hold a pause for 15 s or more: it must hold (the
@@ -245,14 +286,14 @@ Install with `./build.sh --install` (game closed), then:
    does it skip it? If Esc does nothing, the log says why: no "is a fullscreen movie" line for it and its close line's
    "never a fullscreen movie (...)", or an "Esc pressed, read on thread ...: not taken, ..." line.
 4. **Gameplay:** Esc still opens the pause menu, and closes it. Same with Start.
-5. **Start (v3), with a pad:** steps 1 to 3 with Start instead of Esc. The banner says "Start: resume     Y: photo mode". During the travel
+5. **Start (v3), with a pad:** steps 1 to 3 with Start instead of Esc. The pause screen shows Start's and Y's icons. During the travel
    movie: a tap pauses it on the release, a held press about 0.2 s in; Start again resumes. Then Esc pauses and Start
    resumes, and the other way round. With a PlayStation pad through Steam Input: Options does the same.
-6. **Photo mode (v4):** in a conversation, Start, then Y. Expected: the same shot, no wheel, no subtitle, no banner, photo
+6. **Photo mode (v4):** in a conversation, Start, then Y. Expected: the same shot, sharp, no wheel, no subtitle, no pause screen, photo
    mode's controls at the bottom, with the pad's buttons. Move with both sticks, LT/RT; B hides and shows the options, their tabs
    switch (with the buttons the panel shows), X takes a screenshot (a click, and a new file in `Documents\BioWare\Mass Effect Legendary
-   Edition\ScreenShots`). Y: back to the paused shot with
-   the wheel, the subtitle and the banner. Y again, then Start: back too. Start: the conversation resumes at the same
+   Edition\ScreenShots`: no pause screen in it). Y: back to the paused shot with
+   the wheel, the subtitle and the pause screen. Y again, then Start: back too. Start: the conversation resumes at the same
    word, and picking a reply with the stick works (a southpaw profile too). Then the same in an in-engine cutscene, and with
    Esc and F7 on the keyboard (hold the right mouse button to look). Y in gameplay, or in an unpaused conversation: vanilla.
 7. **Read `Binaries\Win64\Logs\MelePause.log`:** the "Bink: ... hooked" line at start (movie pause "on (Esc read in
@@ -264,7 +305,10 @@ Install with `./build.sh --install` (game closed), then:
    photo mode", "photo mode exit: ignore counters ...", "photo mode left (Y) after ... s: mode 5 (Conversation), camera mode
    ...", with the number of static binds set back, of camera steps, and what got past the pause: "N key and M axis
    event(s), G GUI tick(s) (0 changed the Pauser: put back), S GUI sound(s)" (M in the thousands after moving a stick or the mouse, G
-   about one per frame, S at least one per screenshot). "photo mode on" says "pad prompts" after Y, "keyboard prompts" after F7. At start: "input hooked:
+   about one per frame, S at least one per screenshot). "photo mode on" says "pad prompts" after Y, "keyboard prompts" after F7. For the
+   pause screen: "overlay: swap chain hooks Present true ..." at start, "overlay ready: back buffer ..., text in <language>, Exo 2
+   embedded, blur ready" at the first frame, then "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts" and
+   "overlay hidden" per pause ("at once" for photo mode). At start: "input hooked:
    ...", "GUI tick hooked: ..." and "GUI sounds hooked: ..." (else a "not found at RVA" warning). For the movie: its open line ("from a
    file"), "is a fullscreen movie" with the HUD's silence, "Console.InputKey runs while movie #N is open" (the game mode
    during it), one "Esc pressed, read on thread ..." line per press (movie pause or resume asked), the PAUSED/RESUMED
@@ -276,5 +320,6 @@ Install with `./build.sh --install` (game closed), then:
 
 ## License
 
-GPL-3.0 ([`LICENSE`](../../LICENSE)). Third-party code and what it is used for: [`THIRD_PARTY.md`](THIRD_PARTY.md). If
-`MelePause.asi` is ever shared, ship the GPL-3.0 text with it.
+GPL-3.0 ([`LICENSE`](../../LICENSE)). Third-party code and fonts, and what they are used for: [`THIRD_PARTY.md`](THIRD_PARTY.md).
+If `MelePause.asi` is ever shared, ship the GPL-3.0 text with it, spdlog's and Dear ImGui's MIT notices, and Exo 2's
+[`OFL.txt`](src/fonts/OFL.txt).

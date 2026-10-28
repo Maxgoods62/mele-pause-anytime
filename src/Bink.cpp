@@ -116,6 +116,8 @@ namespace MelePause::Bink
         std::mutex Lock;
         std::vector<Movie> Movies;
         std::atomic<int> OpenCount{ 0 };
+        /// Of those, opened from a file: the only ones the movie pause takes.
+        std::atomic<int> FileCount{ 0 };
         std::atomic<unsigned> Serial{ 0 };
         std::atomic<bool> Wanted{ false };
         /// BinkPause, BinkWait's hook and BinkClose's are there.
@@ -136,6 +138,9 @@ namespace MelePause::Bink
         EscPoll Poller;
         /// The latest poll that saw a taken press down: Pause.cpp's skip guard reads it on the game thread.
         std::atomic<ULONGLONG> EscDownTick{ 0 };
+        /// The space bar, polled the same way: it only resumes.
+        EscPoll SpacePoller;
+        std::atomic<ULONGLONG> SpaceDownTick{ 0 };
 
         /// BinkOpen may open through BinkOpenWithOptions: only the outer call tracks the movie.
         thread_local int OpenDepth = 0;
@@ -249,6 +254,7 @@ namespace MelePause::Bink
         void Recount()
         {
             OpenCount.store(static_cast<int>(Movies.size()), std::memory_order_relaxed);
+            FileCount.store(static_cast<int>(std::count_if(Movies.begin(), Movies.end(), [](Movie const& m) { return m.FromFile; })), std::memory_order_relaxed);
             Wanted.store(std::any_of(Movies.begin(), Movies.end(), [](Movie const& m) { return m.Want; }), std::memory_order_release);
         }
 
@@ -345,6 +351,7 @@ namespace MelePause::Bink
             }
             auto& m = Track(bink, text, flags);
             m.FromFile = (flags & BINKFROMMEMORY) == 0;
+            Recount();
             LEASI_INFO("movie #{}: {} '{}' flags 0x{:08X} -> {} ({}x{}, {} frames{}), from {}, thread {}", m.Serial, how, m.Name, flags, bink, h.Width,
                        h.Height, h.Frames, header ? "" : ", header unreadable", m.FromFile ? "a file" : "memory", ThreadText(m.OpenThread));
             LEASI_FLUSH();
@@ -426,13 +433,32 @@ namespace MelePause::Bink
             return true;
         }
 
+        /// Under Lock. One key as the BinkWait polls see it: true for a press to act on (the up->down edge, not after a gap in
+        /// the polls unless our movie pause is on, not within the debounce). Keeps <paramref name="downTick"/> fresh while a
+        /// press acted on (Taken) is down.
+        bool PollEdge(EscPoll& k, bool down, ULONGLONG now, bool wanted, std::atomic<ULONGLONG>& downTick)
+        {
+            // After a gap in the polls, a key already down is no press: no poll saw it go down. Not while our movie pause is on:
+            // a paused player may call BinkWait seldom, and a press it saw late can only resume (at worst a resume not asked).
+            auto const edge = down && !k.Down && k.PolledAt != 0 && (wanted || Since(now, k.PolledAt) < WaitStaleMs);
+            k.Down = down;
+            k.PolledAt = now;
+            if (!down) k.Taken = false;
+            else if (k.Taken && Since(now, k.PressedAt) < EscHeldMaxMs) downTick.store(now, std::memory_order_relaxed);
+            if (!edge || (k.PressedAt != 0 && Since(now, k.PressedAt) < DebounceMs)) return false;
+            k.PressedAt = now;
+            return true;
+        }
+
         /// Before each BinkWait, on the thread that plays the movie: reads Esc, and its press (the up->down edge; repeats
         /// don't make one) toggles the movie pause: pauses the fullscreen movie, or resumes what we paused. A pause asked here
-        /// is applied right after, in this same BinkWait when this is the movie. Reads only atomics of the game's.
+        /// is applied right after, in this same BinkWait when this is the movie. The space bar's press only resumes. Reads only
+        /// atomics of the game's.
         void Poll(HBINK bink)
         {
             if (bink == nullptr || !CanPause.load(std::memory_order_acquire)) return;
             auto const down = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+            auto const space = (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0;
             auto const thread = GetCurrentThreadId();
             std::scoped_lock lock{ Lock };
             auto const now = GetTickCount64();
@@ -453,17 +479,22 @@ namespace MelePause::Bink
                 }
             }
 
-            // After a gap in the polls, a key already down is no press: no poll saw it go down. Not while our movie pause is on:
-            // a paused player may call BinkWait seldom, and a press it saw late can only resume (at worst a resume not asked).
             DropStale(now);
             auto const wanted = Wanted.load(std::memory_order_relaxed);
-            auto const edge = down && !Poller.Down && Poller.PolledAt != 0 && (wanted || Since(now, Poller.PolledAt) < WaitStaleMs);
-            Poller.Down = down;
-            Poller.PolledAt = now;
-            if (!down) Poller.Taken = false;
-            else if (Poller.Taken && Since(now, Poller.PressedAt) < EscHeldMaxMs) EscDownTick.store(now, std::memory_order_relaxed);
-            if (!edge || (Poller.PressedAt != 0 && Since(now, Poller.PressedAt) < DebounceMs)) return;
-            Poller.PressedAt = now;
+            // Space with no movie pause of ours is the game's: it skips a movie the game lets skip.
+            if (PollEdge(SpacePoller, space, now, wanted, SpaceDownTick) && wanted && OurForeground())
+            {
+                auto const movies = ListMovies(now, hud);
+                ResumeLocked(now);
+                SpacePoller.Taken = true;
+                SpaceDownTick.store(now, std::memory_order_relaxed);
+                LEASI_INFO("Space pressed, read on thread {}: movie resume asked, applied at each paused movie's next call; {}; open: {}", ThreadText(thread),
+                           HudText(now, hud), movies);
+                LEASI_FLUSH();
+                Overlay::UsePadPrompts(false);
+                return;
+            }
+            if (!PollEdge(Poller, down, now, wanted, EscDownTick)) return;
 
             if (!OurForeground())
             {
@@ -477,15 +508,17 @@ namespace MelePause::Bink
             }
             Poller.Taken = true;
             EscDownTick.store(now, std::memory_order_relaxed);
+            // Console.InputKey never sees this press: the pause screen names the keyboard's key from here.
+            Overlay::UsePadPrompts(false);
         }
 
         /// Before each BinkWait, BinkDoFrame and BinkDoFrameAsync, on the thread that plays the movie: applies what Esc asked,
         /// a pause in BinkWait only, a resume in any of them. BinkPause is called outside the lock: the game thread may be
         /// waiting for it (OwnsKeys, Toggle, RequestResume). The tick is read under the lock: RequestedAt may have been set by the
-        /// game thread while this one waited for it.
-        void Apply(HBINK bink, Call call)
+        /// game thread while this one waited for it. Returns whether the movie is paused now.
+        bool Apply(HBINK bink, Call call)
         {
-            if (bink == nullptr) return;
+            if (bink == nullptr) return false;
             ULONGLONG now = 0;
             bool pause = false;
             unsigned serial = 0;
@@ -499,14 +532,14 @@ namespace MelePause::Bink
                 {
                     // Opened before the hooks were live (the attach runs on its own thread). Only while BinkClose is hooked: a
                     // movie must never be tracked without its close being seen.
-                    if (BinkClose_orig.load(std::memory_order_acquire) == nullptr) return;
+                    if (BinkClose_orig.load(std::memory_order_acquire) == nullptr) return false;
                     m = &Track(bink, "(opened before MelePause)", 0);
                     LEASI_INFO("movie #{}: {} first seen in a player call, thread {}", m->Serial, bink, ThreadText(GetCurrentThreadId()));
                 }
                 m->LastCallAt = now;
-                if (m->Want == m->Paused) return;
-                if (m->Want && call != Call::Wait) return;
-                if (BinkPause_fn.load(std::memory_order_acquire) == nullptr) return;
+                if (m->Want == m->Paused) return m->Paused;
+                if (m->Want && call != Call::Wait) return m->Paused;
+                if (BinkPause_fn.load(std::memory_order_acquire) == nullptr) return m->Paused;
                 pause = m->Want;
                 m->Paused = pause;
                 m->ChangedAt = now;
@@ -521,6 +554,7 @@ namespace MelePause::Bink
                        pause ? "PAUSED" : "RESUMED", Where[static_cast<int>(call)], ThreadText(GetCurrentThreadId()), Since(now, requestedAt), result,
                        FrameText(bink));
             LEASI_FLUSH();
+            return pause;
         }
 
         /// After each of those calls: counts them, and reports now and then.
@@ -602,9 +636,11 @@ namespace MelePause::Bink
         int BinkWait_hook(HBINK bink)
         {
             Poll(bink);
-            Apply(bink, Call::Wait);
+            auto const paused = Apply(bink, Call::Wait);
             auto const result = Original(BinkWait_orig)(bink);
             Count(bink, Call::Wait, result);
+            // A paused movie presents nothing: the pause screen is presented from here, over its last frame.
+            if (paused && result != 0) Overlay::MovieIdle();
             return result;
         }
 
@@ -676,6 +712,8 @@ namespace MelePause::Bink
 
     int OpenMovies() { return OpenCount.load(std::memory_order_relaxed); }
 
+    int FileMovies() { return FileCount.load(std::memory_order_relaxed); }
+
     unsigned MovieSerial() { return Serial.load(std::memory_order_relaxed); }
 
     bool PauseWanted() { return Wanted.load(std::memory_order_acquire); }
@@ -704,6 +742,8 @@ namespace MelePause::Bink
     }
 
     ULONGLONG EscSeenDown() { return EscDownTick.load(std::memory_order_relaxed); }
+
+    ULONGLONG SpaceSeenDown() { return SpaceDownTick.load(std::memory_order_relaxed); }
 
     void RequestResume(char const* why)
     {

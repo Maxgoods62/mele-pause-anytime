@@ -17,6 +17,7 @@ SPI_IMPLEMENT_ATTACH
     ::MelePause::InitializeGlobals(Init);
     ::MelePause::InstallHooks(Init);
     ::MelePause::Bink::Install(Init);
+    ::MelePause::Overlay::Install(Init);
 
     LEASI_INFO("MelePause {} ready", VERSION_STRING_A);
     LEASI_FLUSH();
