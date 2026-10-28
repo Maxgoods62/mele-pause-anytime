@@ -20,8 +20,10 @@
 // hasn't called BinkWait lately isn't paused at all. A resume is applied at the movie's next call of any kind. Esc is read on
 // the movie's own thread, so a silent game thread (a load, a wait for this very movie) neither keeps it from resuming nor
 // lifts the pause. A pause whose movie has made no Bink call for 2 s is dropped by the next Esc at the latest (its thread
-// reads nothing any more: Esc goes back to the game), and Pause.cpp drops it when the HUD draws again. Every movie logs its
-// threads, how often each call comes, and whether it was a fullscreen one.
+// reads nothing any more: Esc goes back to the game), and Pause.cpp drops it when the HUD draws again. A gamepad's Start
+// can't be read here (XInput goes through the game, and Steam Input may stand in for it): the engine's movie input takes
+// its press too, but its repeats and its release reach Console.InputKey, where Pause.cpp toggles the same pause through
+// Toggle, on the game thread. Every movie logs its threads, how often each call comes, and whether it was a fullscreen one.
 namespace MelePause::Bink
 {
     namespace
@@ -363,7 +365,7 @@ namespace MelePause::Bink
         }
 
         /// Under Lock. A pause whose movie has made no Bink call for PausedSilentMs is dropped: its thread neither reads Esc
-        /// nor applies anything any more, and Esc must not stay the movies' (Pause.cpp asks OwnsEsc at each Esc). The movie
+        /// nor applies anything any more, and the pause keys must not stay the movies' (Pause.cpp asks OwnsKeys at each). The movie
         /// stays as BinkPause left it: if it calls again, the resume is applied then.
         void DropStale(ULONGLONG now)
         {
@@ -377,7 +379,7 @@ namespace MelePause::Bink
                 m.Want = false;
                 m.RequestedAt = now;
                 dropped = true;
-                LEASI_WARN("movie #{} '{}' has made no Bink call for {:.1f} s under our pause ({}): pause dropped, Esc goes back to the game, the resume is applied at its next call if any",
+                LEASI_WARN("movie #{} '{}' has made no Bink call for {:.1f} s under our pause ({}): pause dropped, Esc and Start go back to the game, the resume is applied at its next call if any",
                            m.Serial, m.Name, static_cast<double>(Since(now, last)) / 1000.0, m.Paused ? "applied" : "not applied yet");
             }
             if (!dropped) return;
@@ -392,6 +394,36 @@ namespace MelePause::Bink
             DWORD process = 0;
             if (window != nullptr) GetWindowThreadProcessId(window, &process);
             return process != 0 && process == GetCurrentProcessId();
+        }
+
+        /// Under Lock, after DropStale. One press of a pause key: resumes every movie we paused (or asked to), else asks the
+        /// pause of the newest fullscreen movie (not an older one still open). False when neither: no fullscreen movie, the
+        /// caller says so. <paramref name="what"/> opens the log line.
+        bool ToggleLocked(ULONGLONG now, std::string const& what)
+        {
+            auto const hud = HudSeen();
+            auto const movies = ListMovies(now, hud);
+            if (Wanted.load(std::memory_order_relaxed))
+            {
+                ResumeLocked(now);
+                LEASI_INFO("{}: movie resume asked, applied at each paused movie's next call; {}; open: {}", what, HudText(now, hud), movies);
+                LEASI_FLUSH();
+                return true;
+            }
+
+            Movie* target = nullptr;
+            for (auto& m : Movies)
+            {
+                if (NotFullscreen(m, now, hud) == nullptr && (target == nullptr || m.Serial > target->Serial)) target = &m;
+            }
+            if (target == nullptr) return false;
+            target->Want = true;
+            target->RequestedAt = now;
+            Recount();
+            LEASI_INFO("{}: movie pause asked: movie #{} '{}', applied at its next BinkWait; {}; open: {}", what, target->Serial, target->Name,
+                       HudText(now, hud), movies);
+            LEASI_FLUSH();
+            return true;
         }
 
         /// Before each BinkWait, on the thread that plays the movie: reads Esc, and its press (the up->down edge; repeats
@@ -438,42 +470,18 @@ namespace MelePause::Bink
                 Refuse(now, thread, "another program's window is in the foreground");
                 return;
             }
-            auto const movies = ListMovies(now, hud);
-            if (wanted)
+            if (!ToggleLocked(now, std::format("Esc pressed, read on thread {}", ThreadText(thread))))
             {
-                ResumeLocked(now);
-                Poller.Taken = true;
-                EscDownTick.store(now, std::memory_order_relaxed);
-                LEASI_INFO("Esc pressed, read on thread {}: movie resume asked, applied at each paused movie's next call; {}; open: {}", ThreadText(thread),
-                           HudText(now, hud), movies);
-                LEASI_FLUSH();
+                Refuse(now, thread, std::format("no fullscreen movie ({}); open: {}", HudText(now, hud), ListMovies(now, hud)));
                 return;
             }
-
-            // The newest fullscreen movie: not an older one still open.
-            Movie* target = nullptr;
-            for (auto& m : Movies)
-            {
-                if (NotFullscreen(m, now, hud) == nullptr && (target == nullptr || m.Serial > target->Serial)) target = &m;
-            }
-            if (target == nullptr)
-            {
-                Refuse(now, thread, std::format("no fullscreen movie ({}); open: {}", HudText(now, hud), movies));
-                return;
-            }
-            target->Want = true;
-            target->RequestedAt = now;
-            Recount();
             Poller.Taken = true;
             EscDownTick.store(now, std::memory_order_relaxed);
-            LEASI_INFO("Esc pressed, read on thread {}: movie pause asked: movie #{} '{}', applied at its next BinkWait; {}; open: {}", ThreadText(thread),
-                       target->Serial, target->Name, HudText(now, hud), movies);
-            LEASI_FLUSH();
         }
 
         /// Before each BinkWait, BinkDoFrame and BinkDoFrameAsync, on the thread that plays the movie: applies what Esc asked,
         /// a pause in BinkWait only, a resume in any of them. BinkPause is called outside the lock: the game thread may be
-        /// waiting for it (OwnsEsc, RequestResume). The tick is read under the lock: RequestedAt may have been set by the
+        /// waiting for it (OwnsKeys, Toggle, RequestResume). The tick is read under the lock: RequestedAt may have been set by the
         /// game thread while this one waited for it.
         void Apply(HBINK bink, Call call)
         {
@@ -672,7 +680,7 @@ namespace MelePause::Bink
 
     bool PauseWanted() { return Wanted.load(std::memory_order_acquire); }
 
-    bool OwnsEsc()
+    bool OwnsKeys()
     {
         if (!CanPause.load(std::memory_order_acquire)) return false;
         std::scoped_lock lock{ Lock };
@@ -680,6 +688,19 @@ namespace MelePause::Bink
         DropStale(now);
         auto const hud = HudSeen();
         return std::any_of(Movies.begin(), Movies.end(), [&](Movie const& m) { return m.Want || NotFullscreen(m, now, hud) == nullptr; });
+    }
+
+    bool Toggle(char const* what)
+    {
+        if (!CanPause.load(std::memory_order_acquire)) return false;
+        std::scoped_lock lock{ Lock };
+        auto const now = GetTickCount64();
+        DropStale(now);
+        if (ToggleLocked(now, std::format("{} on thread {}", what, ThreadText(GetCurrentThreadId())))) return true;
+        auto const hud = HudSeen();
+        LEASI_INFO("{} on thread {}: nothing to toggle, no fullscreen movie ({}); open: {}", what, ThreadText(GetCurrentThreadId()), HudText(now, hud),
+                   ListMovies(now, hud));
+        return false;
     }
 
     ULONGLONG EscSeenDown() { return EscDownTick.load(std::memory_order_relaxed); }

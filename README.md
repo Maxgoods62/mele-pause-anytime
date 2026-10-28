@@ -1,31 +1,33 @@
 # mele-pause
 
-`MelePause.asi`, our own ASI for Mass Effect 1 Legendary Edition: Esc pauses a conversation, an in-engine cutscene or a
-Bink movie, and Esc again resumes it. Everywhere else Esc does what it always did. It stands alone: it needs neither
+`MelePause.asi`, our own ASI for Mass Effect 1 Legendary Edition: Esc, or a gamepad's Start, pauses a conversation, an
+in-engine cutscene or a Bink movie, and pressing it again resumes it. Everywhere else both keys do what they always did. It stands alone: it needs neither
 MeleBridge nor anything else of this repo, and runs side by side with MeleBridge (both hook `ProcessEvent` through the ASI
 loader's shared hook manager).
 
-## What Esc does
+## What Esc and Start do
 
-| Where | Vanilla Esc | With MelePause |
+| Where | Vanilla Esc / Start | With MelePause (Esc or Start) |
 |---|---|---|
-| Conversation (game mode 5) | nothing | Pauses everything: picture, voice-over, music, lips. Esc again resumes at the same word, in sync. A "PAUSE" banner shows at the top. Tested. |
-| In-engine cutscene (mode 6, `GameMode_Cinematic`) | `SkipCinematic`, which only plays an error sound (`bEnableCinematicSkip` is off) | Same pause as a conversation. Tested. |
-| Fullscreen Bink movie the engine doesn't skip on Esc: opened from a file, while the HUD draws nothing (the galaxy map's travel movie) | the travel movie: nothing, it plays to its end | Pauses the movie (picture and sound). Esc again resumes it. No banner. Still to confirm in game (v2; v1 failed, see [Limits](#limits-and-unknowns)). |
+| Conversation (game mode 5) | nothing | Pauses everything: picture, voice-over, music, lips. Esc or Start again resumes at the same word, in sync. A "PAUSE" banner shows at the top, with "Start: resume" when Start paused it or the game uses the gamepad, else "Esc: resume". Esc and Start tested. |
+| In-engine cutscene (mode 6, `GameMode_Cinematic`) | Esc: `SkipCinematic`, which only plays an error sound (`bEnableCinematicSkip` is off); Start: nothing | Same pause as a conversation. Esc and Start tested. |
+| Fullscreen Bink movie the engine doesn't skip on Esc: opened from a file, while the HUD draws nothing (the galaxy map's travel movie) | the travel movie: nothing, it plays to its end (Esc and Start tested) | Pauses the movie (picture and sound). The key again resumes it. No banner. Esc (v2) and Start (v3) tested; Start reacts on its first repeat or its release, not its press (see [How it works](#how-it-works)). |
 | Fullscreen Bink movie the engine skips on Esc (a skippable one, in UE3's code) | skipped | still skipped: the engine's movie input acts on the press before us |
 | Loading-screen movie (played from memory) | nothing | unchanged |
 | Anywhere else (gameplay, menus, GUI, galaxy map, console open) | pause menu, close, ... | unchanged (tested in gameplay and the pause menu) |
 
-- **Keys:** Esc only, keyboard only. Space still skips a conversation line and a movie, paused or not (skipping a paused
-  movie resumes it first), except while a press of Esc we took is held down and a quarter second after its release: the
-  skips Esc is bound to are held back then, whichever key sent them.
-- **Not handled:** the gamepad's Start button. Loading-screen movies. Esc while the console is open (it closes the
-  console, as in vanilla). During a movie: Esc while another program's window is in the foreground, and Esc in the first
-  quarter second of the movie (the HUD's silence isn't long enough yet).
-- **Changed:** while a fullscreen movie plays, the Esc events that get past the engine's movie input (in the travel movie:
-  the release alone) no longer reach the game's bindings, outside the console. Space still skips. And any Esc pressed with
-  one of the game's windows in the foreground toggles the movie pause, also one that closes the console or the Steam
-  overlay: Esc is read from the keyboard, not from the game.
+- **Keys:** Esc on the keyboard, and Start on a gamepad: the game's `XboxTypeS_Start`, which an Xbox pad sends and a
+  PlayStation pad too through Steam Input or DS4Windows (Options, and the touchpad click by default). Space still skips a
+  conversation line and a movie, paused or not (skipping a paused movie resumes it first), except while a press of Esc or
+  Start we took is held down and a quarter second after its release: the skips Esc is bound to are held back then,
+  whichever key sent them.
+- **Not handled:** Loading-screen movies. Esc while the console is open (it closes the console, as in vanilla). During a
+  movie: Esc while another program's window is in the foreground, and a key in the first quarter second of the movie (the
+  HUD's silence isn't long enough yet).
+- **Changed:** while a fullscreen movie plays, the Esc and Start events that get past the engine's movie input (in the
+  travel movie: everything but the press) no longer reach the game's bindings, outside the console. Space still skips. And
+  any Esc pressed with one of the game's windows in the foreground toggles the movie pause, also one that closes the console
+  or the Steam overlay: Esc is read from the keyboard, not from the game. Start is read through the game.
 - **The pause is the game's own:** the world pause the `pause` console command sets (`PlayerController.Pause` ->
   `ServerPause` -> `GameInfo.SetPause`: `WorldInfo.Pauser`). Not `WorldInfo.bPlayersOnly` (the pause menu's and photo
   mode's): the conversation's clock, `TimeSeconds` and the music keep running under it.
@@ -58,8 +60,8 @@ loader's shared hook manager).
 
 | Hook | What it does |
 |---|---|
-| `ProcessEvent`: `Console.InputKey` (`Pause.cpp`) | Every key that gets past the engine reaches it, also while the world is paused. On an Esc press it reads the local player's controller (GEngine's first `LocalPlayer`), its `GameModeManager.CurrentMode` and `WorldInfo.Pauser`, then pauses or resumes the world, or lets the key through. A press it acted on is consumed (`ReturnValue` TRUE, the original not called), and so are that key's repeats and its release. While a fullscreen movie plays (or our movie pause is on), every Esc event is consumed without acting, except in the open console: the movie's thread toggles the movie pause. |
-| `ProcessEvent`: `SkipMovie`, `SkipCinematic`, `GuiKey` on an `SFXGameMode` | Dropped while our Esc is down (from the press we took to its release, 2 s at most, plus 250 ms after the release), whether `Console.InputKey` or the movie's thread took it. `GuiKey` only for the Escape and Start events the always-on Escape bind sends to Scaleform. A second line of defence in case the consumed key still reaches PlayerInput's mode bindings. |
+| `ProcessEvent`: `Console.InputKey` (`Pause.cpp`) | Every key that gets past the engine reaches it, also while the world is paused. On an Esc or Start press it reads the local player's controller (GEngine's first `LocalPlayer`), its `GameModeManager.CurrentMode` and `WorldInfo.Pauser`, then pauses or resumes the world, or lets the key through. A press it acted on is consumed (`ReturnValue` TRUE, the original not called), and so are that key's repeats and its release. While a fullscreen movie plays (or our movie pause is on), every Esc event is consumed without acting, except in the open console: the movie's thread toggles the movie pause. Start's press never comes then: the first repeat or release of a Start press it didn't see toggles the movie pause (`Bink::Toggle`), and the rest of that press is consumed. A Start press it saw and left to the game stays the game's to its release, also if a movie starts under it. |
+| `ProcessEvent`: `SkipMovie`, `SkipCinematic`, `GuiKey` on an `SFXGameMode` | Dropped while our Esc or Start is down (from the press we took to its release, 2 s at most, plus 250 ms after the release), whether `Console.InputKey` or the movie's thread took it. `GuiKey` only for the Escape and Start events the always-on Escape and Start binds send to Scaleform. A second line of defence in case the consumed key still reaches PlayerInput's mode bindings. |
 | `ProcessEvent`: after `BioHUD.PostRender` | Notes the time (the movie's thread tells a fullscreen movie by the HUD's silence), checks the world pause every frame, lifts a movie pause once the HUD has drawn for a second, and draws the banner with the HUD's Canvas (`Canvas.TextSize` and `Canvas.DrawText`, GEngine's `MediumFont`). |
 | `ProcessEvent`: every call on the game thread | Notes the time, for the movie reports only: does the game thread run under a fullscreen movie? |
 | `bink2w64_original.dll`: `BinkOpen`, `BinkOpenWithOptions`, `BinkClose`, `BinkWait`, `BinkDoFrame`, `BinkDoFrameAsync` (`Bink.cpp`) | Tracks the open movies (from a file or from memory) and logs who plays them. `BinkWait` also reads Esc, toggles the movie pause on its press and applies a pause. `BinkDoFrame` and `BinkDoFrameAsync` count calls and apply a resume, never a pause. |
@@ -89,7 +91,14 @@ loader's shared hook manager).
     the movie's), and only there. `BinkPause` only makes `BinkWait` answer "wait" and stops the sound, so a player that
     doesn't call `BinkWait` couldn't be paused anyway. A resume (`BinkPause(movie, 0)`) is applied at the movie's next call
     of any kind.
-  - Ends: on Esc, when the movie closes, when Space's `SkipMovie` reaches the game, or when the HUD has drawn again for a
+  - Start: the movie's thread can't read it (XInput goes through the game, and Steam Input may stand in for it), and the
+    engine's movie input takes its press as it takes Esc's. What it leaves reaches `Console.InputKey` on the game thread,
+    which keeps running under the movie: the repeats (after 0.2 s held, then every 0.1 s) and the release. The first of them
+    toggles the same pause there, through `Bink::Toggle`: a tap acts on its release, a held press on its first repeat. A
+    press with no event for half a second is over (its release lost to a focus change), unless the game thread stalled
+    since its last event (no `ProcessEvent` for a quarter second): the pad is read once a frame, so a stall holds its
+    repeats back too, and one press must not toggle twice.
+  - Ends: on Esc or Start, when the movie closes, when Space's `SkipMovie` reaches the game, or when the HUD has drawn again for a
     second (the game moved on). A pause whose movie has made no Bink call for 2 s is dropped, by the next Esc at the
     latest, which then goes back to the game: nothing reads Esc for that movie any more. A silent game thread doesn't end
     it: Esc is read on the movie's thread.
@@ -102,7 +111,17 @@ loader's shared hook manager).
 
 - **Tested in game (v1, 2026-10-28):** Esc pauses and resumes a conversation and an in-engine cutscene; Esc in gameplay
   and in the pause menu stays vanilla. The galaxy map's travel movie failed: v1 took Esc in `Console.InputKey`, which
-  never got the press during the movie. v2 reads Esc on the movie's thread; the travel movie is still to confirm.
+  never got the press during the movie. v2 reads Esc on the movie's thread: the travel movie pauses and resumes (tested,
+  a 6.7 s pause held, `BinkWait` kept coming at 240 a second while paused).
+- **Gamepad facts (live, before v3, Xbox pad):** the game loads `XINPUT1_4.dll`. In a conversation Start reaches
+  `Console.InputKey` as `XboxTypeS_Start` with `bGamepad` TRUE, press and release. During the travel movie vanilla Start
+  does nothing, and the first Start event that reached `Console.InputKey` was a repeat (event 2): its press was taken by
+  the engine.
+- **Tested in game (v3, 2026-10-28, Xbox pad):** Start pauses and resumes a conversation and an in-engine cutscene. In
+  the travel movie (three trips) a tap pauses it on its release, and the next tap resumes it: the log shows the release
+  alone reaching `Console.InputKey` (event 1), the pause applied at the next `BinkWait` within 0 to 15 ms. A `SkipMovie`
+  from the X button 160 ms after a Start release was dropped, as the guard says. Not seen in that log: a Start held into
+  its repeats in the movie, Esc and Start mixed, and Start in gameplay.
 - **What v1's log showed of the travel movie** (`..\..\BioGame\Movies\UCW_Loading_Flyby.bik`, flags `0x01004400`: from a
   file, 3840x2160, 150 frames, about 5 s, played to its end): it plays on Bink's own thread, not the game thread, which
   calls `BinkWait` in a loop (some 250 a second, `BinkDoFrame` never); `BioHUD.PostRender` doesn't run while it plays; the
@@ -114,8 +133,8 @@ loader's shared hook manager).
   movie isn't (its press was taken and nothing happened). Such a movie is skipped as the poll reads the press, and the
   pause asked then ends with its close. The log shows it: a movie closed right after an "Esc pressed, read on thread ..."
   line.
-- **Keyboard only, foreground only:** Esc is read from the keyboard's state, so the gamepad's Start doesn't pause a movie,
-  and a press while another program's window is in the foreground is ignored (logged). Any other Esc during a fullscreen
+- **Esc in a movie is read from the keyboard's state:** a press while another program's window is in the foreground is
+  ignored (logged). Start goes through the game's input, so it reaches us when the game reads the pad. Any other Esc during a fullscreen
   movie toggles it, also one meant for the console or the Steam overlay (the overlay keeps the game's window in front).
 - **The HUD's silence** tells a fullscreen movie from an in-level one. If the HUD went on drawing over some fullscreen
   movie, Esc would stay vanilla during it: its close line says "never a fullscreen movie (the HUD draws)". An in-level
@@ -124,7 +143,10 @@ loader's shared hook manager).
   says, for each `SkipMovie`/`SkipCinematic`, whether it was dropped.
 - **Scaleform first:** if a Scaleform movie with input focus takes Esc before the console, nothing reaches us (no
   "Esc pressed" line in the log). The movie pause doesn't depend on it.
-- **A GUI over a fullscreen movie:** Esc goes to the movie whatever the game mode is.
+- **A GUI over a fullscreen movie:** Esc and Start go to the movie whatever the game mode is.
+- **Start held into a movie:** a Start press the game kept (the pause menu's, say) stays the game's to its release, so
+  a press held from before the movie doesn't toggle it. If that press's release is lost, the next Start event half a
+  second later counts as a new press.
 - **Bink 2022.05 hang:** RAD fixed in 2025.05 a hang of players that call `BinkPause` and then stop calling `BinkWait`.
   The pause is only applied to a movie that calls `BinkWait`, and the reports during a pause count those calls. Without
   them nothing can be applied to that movie and Esc can't be read for it: after 2 s Esc goes back to the game ("has made
@@ -146,10 +168,15 @@ Install with `./build.sh --install` (game closed), then:
    reports while paused say how long the game thread has been silent). Then, on another travel, Space during the movie:
    does it skip it? If Esc does nothing, the log says why: no "is a fullscreen movie" line for it and its close line's
    "never a fullscreen movie (...)", or an "Esc pressed, read on thread ...: not taken, ..." line.
-4. **Gameplay:** Esc still opens the pause menu, and closes it.
-5. **Read `Binaries\Win64\Logs\MelePause.log`:** the "Bink: ... hooked" line at start (movie pause "on (Esc read in
+4. **Gameplay:** Esc still opens the pause menu, and closes it. Same with Start.
+5. **Start (v3), with a pad:** steps 1 to 3 with Start instead of Esc. The banner says "Start: resume". During the travel
+   movie: a tap pauses it on the release, a held press about 0.2 s in; Start again resumes. Then Esc pauses and Start
+   resumes, and the other way round. With a PlayStation pad through Steam Input: Options does the same.
+6. **Read `Binaries\Win64\Logs\MelePause.log`:** the "Bink: ... hooked" line at start (movie pause "on (Esc read in
    BinkWait)"); "first BioHUD.PostRender" (the HUD owner and GEngine's controller should be the same); one "Esc pressed:
-   mode ..." line per press that reaches `Console.InputKey`, with what it did. For the movie: its open line ("from a
+   mode ..." or "Start pressed: mode ..." line per press that reaches `Console.InputKey`, with what it did; during a
+   movie, "Start held (or released) during a fullscreen movie, its press unseen here on thread ...: movie pause asked"
+   (or resume asked). For the movie: its open line ("from a
    file"), "is a fullscreen movie" with the HUD's silence, "Console.InputKey runs while movie #N is open" (the game mode
    during it), one "Esc pressed, read on thread ..." line per press (movie pause or resume asked), the PAUSED/RESUMED
    lines and the reports between them (frame number staying put; `BinkWait` per second while paused: none for 2 s drops
