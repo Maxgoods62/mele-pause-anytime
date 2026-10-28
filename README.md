@@ -83,7 +83,8 @@ loader's shared hook manager).
 | `ProcessEvent`: `Console.InputKey`, `XboxTypeS_Y` and `F7` | Under our world pause of a conversation or a cutscene, a press enters photo mode (below); in our photo mode, a press of Y, F7, Esc or Start leaves it. A press it acted on is consumed with its repeats and release. Anywhere else the key goes to the game. |
 | `ProcessEvent`: after `PlayerController.PlayerTick` on our controller | While our photo mode is on: `SFXPlayerCamera.UpdateCamera`, so the camera follows the controller that `PlayerPhotoMode.PlayerMove` just moved. The engine doesn't update the camera under the world pause. |
 | `ProcessEvent`: `ShowMenuGui` on `SFXGameModePhoto` | Dropped while our photo mode is on: photo mode's own Esc and Start binds would hide it and open the pause menu over the conversation. |
-| Native: `BioPlayerInput::InputKey` (RVA 0xc6de70), `UPlayerInput::InputAxis` (RVA 0x68bc40) | While our photo mode is on, a call on our controller's `PlayerInput` runs with `WorldInfo.Pauser` cleared and put back after: the engine drops input under the world pause. Hooked only when the function's first bytes match this build. |
+| Native: `BioPlayerInput::InputKey` (RVA 0xc6de70), `UPlayerInput::InputAxis` (RVA 0x68bc40), `UBioSFManager::Tick` (RVA 0x193bc0) | While our photo mode is on, a call on our controller's `PlayerInput` or our GUI manager runs with `WorldInfo.Pauser` cleared and put back after: the engine drops input and stops the GUI under the world pause. Hooked only when the function's first bytes match this build. |
+| Native: `UBioSFManager::PlayGuiSound` (RVA 0x191ee0), `UAudioDevice::CreateComponent` (RVA 0x2ff470) | While our photo mode is on, the sound our GUI manager's `PlayGuiSound` makes is marked `bNonRealtime`: under the world pause the audio device starts only those. Hooked only when the function's first bytes match this build. |
 | `bink2w64_original.dll`: `BinkOpen`, `BinkOpenWithOptions`, `BinkClose`, `BinkWait`, `BinkDoFrame`, `BinkDoFrameAsync` (`Bink.cpp`) | Tracks the open movies (from a file or from memory) and logs who plays them. `BinkWait` also reads Esc, toggles the movie pause on its press and applies a pause. `BinkDoFrame` and `BinkDoFrameAsync` count calls and apply a resume, never a pause. |
 
 - **World pause:** Esc calls the controller's `Pause` exec (what the `pause` command runs), then checks that
@@ -134,13 +135,22 @@ loader's shared hook manager).
      counters are zeroed and `bAlwaysTick` set on the controller, so `PlayerTick` runs under the pause.
   5. The input: the engine drops it while `WorldInfo.Pauser` is set (`UInput::InputKey` keeps only the releases of keys
      held from before; `UPlayerInput::InputAxis` skips the axis binds), so the sticks, the keys and the mouse never reach
-     photo mode. Vanilla photo mode never meets this: it pauses with `bPlayersOnly`. Two native hooks,
-     `BioPlayerInput::InputKey` and `UPlayerInput::InputAxis`, clear the `Pauser` around each call on our controller's
-     `PlayerInput` while photo mode is on, and put it back as the call returns: input runs on the game thread between
-     ticks, so nothing else sees the world unpaused. Each hook first checks the function's first bytes; another build of
-     the game gets a warning in the log and no patch (photo mode then opens, but its camera doesn't move). Found in the
+     photo mode. The GUI manager's tick (`UBioSFManager::Tick`) stops too: no panel's movie advances (photo mode's tabs and
+     options don't change on screen), the focus stays, the button prompts aren't refreshed. Vanilla photo mode never meets this: it pauses with `bPlayersOnly`.
+     Three native hooks, `BioPlayerInput::InputKey` and `UPlayerInput::InputAxis` (on our controller's `PlayerInput`) and
+     `UBioSFManager::Tick` (on our GUI manager), clear the `Pauser` around each call while photo mode is on, and put it
+     back as the call returns: the game thread runs them between the world's ticks, so nothing else sees the world
+     unpaused. Each hook first checks the function's first bytes; another build of the game gets a warning in the log and
+     no patch (photo mode then opens, but neither its camera nor its panel answers). The key that opened photo mode sets
+     `PlayerInput.bUsingGamepad` (Y the pad, F7 the keyboard), as it would have had it reached the game: photo mode's
+     button prompts follow it, and the pad's sticks need it. Found in the
      game's code (dumped from memory: the exe is encrypted on disk), after the first v4 builds' camera didn't move
-     (tested). (The world pause's own input "absorb" doesn't matter here: with `bAlwaysTick` the controller is ticked
+     (tested), then the panel didn't answer (tabs, options, prompts: tested). The GUI
+     sounds: under the world pause the audio device (its `Update` gets `bGameTicking` off) starts no new sound and
+     advances none, except an `AudioComponent` marked `bNonRealtime`. Photo mode's click (`TakePhoto`), tab and option
+     sounds waited for the pause's end and all played then (35 found queued after one test). Two more hooks:
+     `UBioSFManager::PlayGuiSound` on our GUI manager, and `UAudioDevice::CreateComponent` inside it, marks the
+     component it makes `bNonRealtime`, so it plays at once (same first-bytes check). (The world pause's own input "absorb" doesn't matter here: with `bAlwaysTick` the controller is ticked
      instead.)
   6. One `UpdateCamera`, `LastTransitionTime` pushed back first (`GameTimeSeconds` stands still under the pause, and a camera
      switch within 0.1 s of the last is refused). The photo cameras get the shot's field of view: they start at 54.4
@@ -236,7 +246,9 @@ Install with `./build.sh --install` (game closed), then:
    movie: a tap pauses it on the release, a held press about 0.2 s in; Start again resumes. Then Esc pauses and Start
    resumes, and the other way round. With a PlayStation pad through Steam Input: Options does the same.
 6. **Photo mode (v4):** in a conversation, Start, then Y. Expected: the same shot, no wheel, no subtitle, no banner, photo
-   mode's controls at the bottom. Move with both sticks, LT/RT, take a screenshot with X. Y: back to the paused shot with
+   mode's controls at the bottom, with the pad's buttons. Move with both sticks, LT/RT; B hides and shows the options, their tabs
+   switch (with the buttons the panel shows), X takes a screenshot (a click, and a new file in `Documents\BioWare\Mass Effect Legendary
+   Edition\ScreenShots`). Y: back to the paused shot with
    the wheel, the subtitle and the banner. Y again, then Start: back too. Start: the conversation resumes at the same
    word, and picking a reply with the stick works (a southpaw profile too). Then the same in an in-engine cutscene, and with
    Esc and F7 on the keyboard (hold the right mouse button to look). Y in gameplay, or in an unpaused conversation: vanilla.
@@ -247,9 +259,10 @@ Install with `./build.sh --install` (game closed), then:
    (or resume asked). For photo mode: "photo mode enter, mode ..." (the view target, the shot, the subtitle), "photo mode
    on: ..." (the camera mode, how far the controller and the view are from the shot: 0 expected), then "Y pressed ...: left
    photo mode", "photo mode exit: ignore counters ...", "photo mode left (Y) after ... s: mode 5 (Conversation), camera mode
-   ...", with the number of static binds set back, of camera steps, and the input line: "N key and M axis event(s) let past
-   the pause (0 changed the Pauser: put back)" (M in the thousands after moving a stick or the mouse). At start: "input
-   hooked: photo mode's keys and axes get past the world pause" (else a "not found at RVA" warning). For the movie: its open line ("from a
+   ...", with the number of static binds set back, of camera steps, and what got past the pause: "N key and M axis
+   event(s), G GUI tick(s) (0 changed the Pauser: put back), S GUI sound(s)" (M in the thousands after moving a stick or the mouse, G
+   about one per frame, S at least one per screenshot). "photo mode on" says "pad prompts" after Y, "keyboard prompts" after F7. At start: "input and
+   GUI hooked: ..." and "GUI sounds hooked: ..." (else a "not found at RVA" warning). For the movie: its open line ("from a
    file"), "is a fullscreen movie" with the HUD's silence, "Console.InputKey runs while movie #N is open" (the game mode
    during it), one "Esc pressed, read on thread ..." line per press (movie pause or resume asked), the PAUSED/RESUMED
    lines and the reports between them (frame number staying put; `BinkWait` per second while paused: none for 2 s drops

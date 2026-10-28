@@ -469,7 +469,11 @@ namespace MelePause
             Kept<UPlayerInput> Input;
             unsigned InputKeys = 0;
             unsigned InputAxes = 0;
+            /// The GUI manager's ticks run past the pause: photo mode's panel answers (tabs, options, prompts, sounds).
+            unsigned GuiTicks = 0;
             unsigned InputPauserChanged = 0;
+            /// The GUI manager's sounds made realtime so they play under the pause (see PlayGuiSound_hook).
+            unsigned GuiSounds = 0;
             ULONGLONG EnteredAt = 0;
             LARGE_INTEGER LastCameraAt{};
             /// PlayerTick drove the camera since the last BioHUD.PostRender.
@@ -496,8 +500,10 @@ namespace MelePause
             CachedFunction SetStaticConsoleBinding;
         };
         PhotoFunctions PFn;
-        /// Both input hooks are in (see PauseLift): without them the photo camera gets no input under the world pause.
+        /// The input and GUI hooks are in (see PauseLift): without them photo mode gets no input under the world pause.
         bool InputHooked = false;
+        /// The GUI sound hooks are in (see PlayGuiSound_hook): without them photo mode's sounds wait for the pause's end.
+        bool SoundHooked = false;
 
         /// Calls that function of the object, when its class has one (logged once per class when not).
         template <class Parms>
@@ -669,7 +675,7 @@ namespace MelePause
 
         /// Y or F7 under our pause of a conversation or a cutscene. Returns what it did, or null when refused. The session is
         /// recorded before anything changes: when this stops midway, DropPhoto gives back what it got to.
-        char const* EnterPhoto(ABioPlayerController* pc, unsigned char mode)
+        char const* EnterPhoto(ABioPlayerController* pc, unsigned char mode, bool gamepad)
         {
             auto const world = pc->WorldInfo;
             auto const manager = pc->GameModeManager;
@@ -770,6 +776,10 @@ namespace MelePause
                 s.Done |= DoneTether;
             }
 
+            // The key we took never reaches PlayerInput, whose bUsingGamepad (the last input's device) picks photo mode's button
+            // prompts and lets the sticks drive its camera: set as that key would have.
+            if (pc->PlayerInput != nullptr) pc->PlayerInput->bUsingGamepad = gamepad ? 1 : 0;
+
             // 6. The game's own entry: EnableMode(Photo) -> Activated (PushState PlayerPhotoMode at CameraCache's shot,
             //    PauseGame(TRUE), post process, static binds, subtitle cleared) -> UpdateCurrentMode; then the photo panel.
             auto const show = FunctionOf(gui, L"ShowPhotoMode", PFn.ShowPhotoMode);
@@ -810,11 +820,12 @@ namespace MelePause
             UpdateCamera(camera, 0.0f);
             QueryPerformanceCounter(&s.LastCameraAt);
             LEASI_INFO("photo mode on: camera mode {}, controller {:.0f} uu from the shot{}, view {:.0f} uu from it, FOV {:.1f}, photo handler {}, {} timer(s) "
-                       "held, ignore counters were look {} move {}, input {}",
+                       "held, ignore counters were look {} move {}, {} prompts, input {}, GUI sounds {}",
                        PathOf(camera->CurrentCameraMode), pcOff, pcOff > 1.0f ? " (put on it)" : "",
                        Distance(camera->CameraCache.POV.Location, pov.Location), camera->CameraCache.POV.FOV, PathOf(shown.ReturnValue), s.Timers.size(),
-                       s.OldIgnoreLook, s.OldIgnoreMove,
-                       InputHooked ? "let past the pause" : "NOT hooked (the camera won't move: see the start of this log)");
+                       s.OldIgnoreLook, s.OldIgnoreMove, gamepad ? "pad" : "keyboard",
+                       InputHooked ? "and GUI let past the pause" : "NOT hooked (the camera and the panel won't answer: see the start of this log)",
+                       SoundHooked ? "made realtime" : "NOT hooked (they play when the pause ends: see the start of this log)");
             return "entered photo mode";
         }
 
@@ -982,10 +993,10 @@ namespace MelePause
             }
             if (refreeze && camera != nullptr) RefreezeCamera(s, camera);
             LEASI_INFO("photo mode left ({}) after {:.1f} s: mode {} ({}), camera mode {}, {} static bind(s) set back, {} PlayerTick and {} HUD camera "
-                       "steps, input: {} key and {} axis event(s) let past the pause ({} changed the Pauser: put back)",
+                       "steps, let past the pause: {} key and {} axis event(s), {} GUI tick(s) ({} changed the Pauser: put back), {} GUI sound(s)",
                        why, HeldFor(s.EnteredAt), manager != nullptr ? manager->CurrentMode : NoMode,
                        manager != nullptr ? ModeName(manager->CurrentMode) : "none", camera != nullptr ? PathOf(camera->CurrentCameraMode) : "None", binds,
-                       s.TickSteps, s.HudSteps, s.InputKeys, s.InputAxes, s.InputPauserChanged);
+                       s.TickSteps, s.HudSteps, s.InputKeys, s.InputAxes, s.GuiTicks, s.InputPauserChanged, s.GuiSounds);
         }
 
         void ExitPhotoEntry(void* why) { ExitPhoto(static_cast<char const*>(why)); }
@@ -1259,7 +1270,7 @@ namespace MelePause
             }
             else if (G.WorldPaused && pc != nullptr && pc == G.Controller && (mode == ModeConversation || mode == ModeCinematic))
             {
-                action = EnterPhoto(pc, mode);
+                action = EnterPhoto(pc, mode, key == Key::Y);
                 // What Enter got to before it stopped.
                 if (action == nullptr) DropPhoto("refused", false);
             }
@@ -1639,9 +1650,11 @@ namespace MelePause
         // ========================================
 
         // The engine drops input while WorldInfo.Pauser is set: UInput::InputKey keeps only the releases of keys held from
-        // before, and UPlayerInput::InputAxis skips the axis binds. Vanilla photo mode never meets it (it pauses with
-        // bPlayersOnly). While ours is on, its controller's key and axis events run with the Pauser cleared, put back as the
-        // call returns: the game thread dispatches input between ticks, so nothing else sees the world unpaused.
+        // before, and UPlayerInput::InputAxis skips the axis binds. The GUI manager's tick stops too: no panel advances (its
+        // movie doesn't play what it is told: tabs, options shown or hidden), no focus change, no button prompt refresh, no
+        // GUI sound. Vanilla photo mode never meets it (it pauses with bPlayersOnly). While ours is on, its controller's key
+        // and axis events and its GUI manager's ticks run with the Pauser cleared, put back as the call returns: the game
+        // thread runs them between the world's ticks, so nothing else sees the world unpaused.
 
         /// BioPlayerInput::InputKey (it ends in UPlayerInput::InputKey, then UInput::InputKey) and UPlayerInput::InputAxis
         /// (BioPlayerInput::InputAxis ends in a jump to it), with their first bytes in this build of MassEffect1.exe. The key
@@ -1654,8 +1667,16 @@ namespace MelePause
         constexpr unsigned long long InputAxisRva = 0x68bc40;
         constexpr unsigned char InputAxisStart[] = { 0x48, 0x8B, 0xC4, 0x56, 0x57, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x70 };
 
+        /// UBioSFManager::Tick: the GUI manager's frame (event cooldowns, its script Update, each panel's movie, the focus,
+        /// the UI world). Under the Pauser it returns right after marking which panels take input.
+        using t_GuiTick = void(UObject* Manager, float DeltaTime);
+
+        constexpr unsigned long long GuiTickRva = 0x193bc0;
+        constexpr unsigned char GuiTickStart[] = { 0x40, 0x53, 0x57, 0x41, 0x54, 0x48, 0x83, 0xEC, 0x50 };
+
         std::atomic<t_InputKey*> InputKey_orig{ nullptr };
         std::atomic<t_InputAxis*> InputAxis_orig{ nullptr };
+        std::atomic<t_GuiTick*> GuiTick_orig{ nullptr };
 
         /// As for ProcessEvent: a call that arrives before InstallHook handed back the original waits for it.
         template <typename T>
@@ -1670,14 +1691,14 @@ namespace MelePause
             return f;
         }
 
-        /// For one input call: clears the world's Pauser when the call is our photo session's PlayerInput, on the game
-        /// thread, and puts it back after.
+        /// For one call: clears the world's Pauser when the call is on our photo session's object, on the game thread, and
+        /// puts it back after.
         class PauseLift
         {
         public:
-            PauseLift(UObject* input, unsigned& count)
+            PauseLift(UObject* object, UObject* ours, unsigned& count)
             {
-                if (!Photo.On || input != Photo.Input.Object || GetCurrentThreadId() != GameThreadId.load(std::memory_order_relaxed)) return;
+                if (!Photo.On || object != ours || GetCurrentThreadId() != GameThreadId.load(std::memory_order_relaxed)) return;
                 auto const world = Photo.World.Live();
                 if (world == nullptr || world->Pauser == nullptr) return;
                 World.Set(world);
@@ -1705,33 +1726,88 @@ namespace MelePause
         unsigned long InputKey_hook(UObject* input, int controllerId, unsigned long long key, int event, float amount, unsigned long gamepad)
         {
             auto const orig = OriginalOf(InputKey_orig);
-            PauseLift lift(input, Photo.InputKeys);
+            PauseLift lift(input, Photo.Input.Object, Photo.InputKeys);
             return orig(input, controllerId, key, event, amount, gamepad);
         }
 
         unsigned long InputAxis_hook(UObject* input, int controllerId, unsigned long long key, float delta, float deltaTime, unsigned long gamepad)
         {
             auto const orig = OriginalOf(InputAxis_orig);
-            PauseLift lift(input, Photo.InputAxes);
+            PauseLift lift(input, Photo.Input.Object, Photo.InputAxes);
             return orig(input, controllerId, key, delta, deltaTime, gamepad);
         }
 
-        /// Hooks one input function after checking its first bytes: another build of the game gets a warning, not a patch.
+        void GuiTick_hook(UObject* manager, float deltaTime)
+        {
+            auto const orig = OriginalOf(GuiTick_orig);
+            PauseLift lift(manager, Photo.Gui.Object, Photo.GuiTicks);
+            orig(manager, deltaTime);
+        }
+
+        // ! GUI sounds under the world pause
+        // ========================================
+
+        // While the world is paused, the audio device (its Update gets bGameTicking off) starts no new sound and advances
+        // none, except those whose AudioComponent is bNonRealtime. The GUI manager's sounds aren't: under our pause, photo
+        // mode's click (TakePhoto), tab and option sounds would wait for the pause's end and all play then. While ours is
+        // on, the components our GUI manager's PlayGuiSound makes are marked bNonRealtime: they play at once.
+
+        /// UBioSFManager::PlayGuiSound (virtual): its GuiSounds 2DA's row (an FName, in a register) gives the cue it plays,
+        /// with no owner, through UAudioDevice::CreateComponent(Cue, Scene, Actor, bPlay, bStopWhenOwnerDestroyed, Location).
+        using t_PlayGuiSound = void(UObject* Manager, unsigned long long Sound);
+        using t_CreateAudioComponent = UAudioComponent*(USoundCue* Cue, void* Scene, AActor* Actor, unsigned long bPlay,
+                                                        unsigned long bStopWhenOwnerDestroyed, FVector* Location);
+
+        constexpr unsigned long long PlayGuiSoundRva = 0x191ee0;
+        constexpr unsigned char PlayGuiSoundStart[] = { 0x40, 0x57, 0x48, 0x83, 0xEC, 0x50, 0x48, 0xC7, 0x44, 0x24, 0x30, 0xFE, 0xFF, 0xFF, 0xFF };
+        constexpr unsigned long long CreateAudioComponentRva = 0x2ff470;
+        constexpr unsigned char CreateAudioComponentStart[] = { 0x48, 0x8B, 0xC4, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x81, 0xEC, 0xA0 };
+
+        std::atomic<t_PlayGuiSound*> PlayGuiSound_orig{ nullptr };
+        std::atomic<t_CreateAudioComponent*> CreateAudioComponent_orig{ nullptr };
+
+        /// Our session's GUI manager is in PlayGuiSound (game thread only).
+        unsigned GuiSoundDepth = 0;
+
+        void PlayGuiSound_hook(UObject* manager, unsigned long long sound)
+        {
+            auto const orig = OriginalOf(PlayGuiSound_orig);
+            auto const ours = Photo.On && manager == Photo.Gui.Object && GetCurrentThreadId() == GameThreadId.load(std::memory_order_relaxed);
+            if (ours) GuiSoundDepth++;
+            orig(manager, sound);
+            if (ours) GuiSoundDepth--;
+        }
+
+        UAudioComponent* CreateAudioComponent_hook(USoundCue* cue, void* scene, AActor* actor, unsigned long play, unsigned long stopWhenOwnerDestroyed,
+                                                   FVector* location)
+        {
+            auto const orig = OriginalOf(CreateAudioComponent_orig);
+            auto const component = orig(cue, scene, actor, play, stopWhenOwnerDestroyed, location);
+            if (component != nullptr && GetCurrentThreadId() == GameThreadId.load(std::memory_order_relaxed) && GuiSoundDepth > 0)
+            {
+                component->bNonRealtime = 1;
+                Photo.GuiSounds++;
+            }
+            return component;
+        }
+
+        /// Hooks one native after checking its first bytes: another build of the game gets a warning (saying what photo mode
+        /// loses), not a patch.
         template <typename T>
-        bool HookInput(::LESDK::Initializer& Init, char const* name, unsigned long long rva, unsigned char const* start, size_t size, T* detour,
-                       std::atomic<T*>& orig)
+        bool HookNative(::LESDK::Initializer& Init, char const* name, unsigned long long rva, unsigned char const* start, size_t size, T* detour,
+                        std::atomic<T*>& orig, char const* loss)
         {
             auto const target = Init.ResolveTyped<T>(::LESDK::Address::FromOffset(rva));
             if (target == nullptr || std::memcmp(reinterpret_cast<void const*>(target), start, size) != 0)
             {
-                LEASI_WARN("{} not found at RVA {:#x} (another build of the game?): photo mode under the pause gets no input", name, rva);
+                LEASI_WARN("{} not found at RVA {:#x} (another build of the game?): {}", name, rva, loss);
                 return false;
             }
             orig.store(reinterpret_cast<T*>(Init.InstallHook(name, reinterpret_cast<void*>(target), reinterpret_cast<void*>(detour))),
                        std::memory_order_release);
             if (orig.load() == nullptr)
             {
-                LEASI_WARN("hooking {} failed: photo mode under the pause gets no input", name);
+                LEASI_WARN("hooking {} failed: {}", name, loss);
                 return false;
             }
             return true;
@@ -1754,10 +1830,21 @@ namespace MelePause
         ProcessEvent_orig.store(orig, std::memory_order_release);
         LEASI_INFO("ProcessEvent hooked");
 
-        auto const keys = HookInput(Init, "BioPlayerInput::InputKey", InputKeyRva, InputKeyStart, sizeof(InputKeyStart), InputKey_hook, InputKey_orig);
-        auto const axes = HookInput(Init, "UPlayerInput::InputAxis", InputAxisRva, InputAxisStart, sizeof(InputAxisStart), InputAxis_hook, InputAxis_orig);
-        InputHooked = keys && axes;
-        if (InputHooked) LEASI_INFO("input hooked: photo mode's keys and axes get past the world pause");
+        constexpr auto noInput = "photo mode under the pause won't answer it";
+        auto const keys = HookNative(Init, "BioPlayerInput::InputKey", InputKeyRva, InputKeyStart, sizeof(InputKeyStart), InputKey_hook, InputKey_orig,
+                                     noInput);
+        auto const axes = HookNative(Init, "UPlayerInput::InputAxis", InputAxisRva, InputAxisStart, sizeof(InputAxisStart), InputAxis_hook,
+                                     InputAxis_orig, noInput);
+        auto const gui = HookNative(Init, "UBioSFManager::Tick", GuiTickRva, GuiTickStart, sizeof(GuiTickStart), GuiTick_hook, GuiTick_orig, noInput);
+        InputHooked = keys && axes && gui;
+        if (InputHooked) LEASI_INFO("input and GUI hooked: photo mode's keys, axes and panel get past the world pause");
+
+        constexpr auto noSound = "photo mode's GUI sounds under the pause wait for its end";
+        auto const play = HookNative(Init, "UBioSFManager::PlayGuiSound", PlayGuiSoundRva, PlayGuiSoundStart, sizeof(PlayGuiSoundStart),
+                                     PlayGuiSound_hook, PlayGuiSound_orig, noSound);
+        SoundHooked = play && HookNative(Init, "UAudioDevice::CreateComponent", CreateAudioComponentRva, CreateAudioComponentStart,
+                                         sizeof(CreateAudioComponentStart), CreateAudioComponent_hook, CreateAudioComponent_orig, noSound);
+        if (SoundHooked) LEASI_INFO("GUI sounds hooked: photo mode's sounds play under the world pause");
     }
 
     DWORD GameThread() { return GameThreadId.load(std::memory_order_relaxed); }
