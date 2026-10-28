@@ -1,6 +1,6 @@
 # Third-party code in MelePause
 
-MelePause is GPL-3.0, like the rest of this repo (see [`../../LICENSE`](../../LICENSE)). It builds with, or follows, the code below.
+MelePause is GPL-3.0, like the rest of this repo (see [`LICENSE`](LICENSE)). It builds with, or follows, the code below.
 
 | What | Where it comes from | License | How we use it |
 |---|---|---|---|

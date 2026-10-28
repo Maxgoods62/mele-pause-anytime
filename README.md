@@ -320,6 +320,6 @@ Install with `./build.sh --install` (game closed), then:
 
 ## License
 
-GPL-3.0 ([`LICENSE`](../../LICENSE)). Third-party code and fonts, and what they are used for: [`THIRD_PARTY.md`](THIRD_PARTY.md).
+GPL-3.0 ([`LICENSE`](LICENSE)). Third-party code and fonts, and what they are used for: [`THIRD_PARTY.md`](THIRD_PARTY.md).
 If `MelePause.asi` is ever shared, ship the GPL-3.0 text with it, spdlog's and Dear ImGui's MIT notices, and Exo 2's
 [`OFL.txt`](src/fonts/OFL.txt).
