@@ -500,8 +500,10 @@ namespace MelePause
             CachedFunction SetStaticConsoleBinding;
         };
         PhotoFunctions PFn;
-        /// The input and GUI hooks are in (see PauseLift): without them photo mode gets no input under the world pause.
+        /// The input hooks are in (see PauseLift): without them photo mode's camera gets no input under the world pause.
         bool InputHooked = false;
+        /// The GUI tick hook is in (see PauseLift): without it photo mode's panel stands still under the world pause.
+        bool GuiTickHooked = false;
         /// The GUI sound hooks are in (see PlayGuiSound_hook): without them photo mode's sounds wait for the pause's end.
         bool SoundHooked = false;
 
@@ -671,6 +673,18 @@ namespace MelePause
             s.Timers.clear();
         }
 
+        /// The subtitle line Activated cleared, unless another one shows now.
+        void RestoreSubtitle(PhotoSession& s)
+        {
+            auto const subtitles = s.Subtitles.Live();
+            if (subtitles == nullptr || s.Subtitle.empty() || subtitles->m_sSubtitle.Length() != 0) return;
+            FString const text{ s.Subtitle.c_str() };
+            UBioSubtitles_execDisplaySubtitle_Parms p;
+            std::memcpy(&p.sSubtitle, &text, sizeof(FString));
+            p.fDuration = s.SubtitleTime;
+            Call(subtitles, L"DisplaySubtitle", PFn.DisplaySubtitle, p);
+        }
+
         unsigned char AddCounter(unsigned char a, unsigned char b) { return static_cast<unsigned char>(std::min(255, a + b)); }
 
         /// Y or F7 under our pause of a conversation or a cutscene. Returns what it did, or null when refused. The session is
@@ -794,6 +808,10 @@ namespace MelePause
                 LEASI_WARN("photo mode refused: the mode is {} ({}) after ShowPhotoMode", manager->CurrentMode, ModeName(manager->CurrentMode));
                 return nullptr;
             }
+            // Activated cleared the subtitle line: back now, in the hidden conversation panel. The GUI ticks let past the pause
+            // run the panel's handler, whose Update hides the panel's line when the text changes, and nothing shows it again
+            // before the world resumes. Only with the panel there: without it, the GUI manager's Update would open one.
+            if (s.Done & DonePanel) RestoreSubtitle(s);
 
             // 7. The conversation's ignore counters (1 each) would zero the sticks: kept, zeroed, given back at the exit.
             s.OldIgnoreLook = pc->bIgnoreLookInput;
@@ -820,11 +838,12 @@ namespace MelePause
             UpdateCamera(camera, 0.0f);
             QueryPerformanceCounter(&s.LastCameraAt);
             LEASI_INFO("photo mode on: camera mode {}, controller {:.0f} uu from the shot{}, view {:.0f} uu from it, FOV {:.1f}, photo handler {}, {} timer(s) "
-                       "held, ignore counters were look {} move {}, {} prompts, input {}, GUI sounds {}",
+                       "held, ignore counters were look {} move {}, {} prompts, input {}, panel {}, GUI sounds {}",
                        PathOf(camera->CurrentCameraMode), pcOff, pcOff > 1.0f ? " (put on it)" : "",
                        Distance(camera->CameraCache.POV.Location, pov.Location), camera->CameraCache.POV.FOV, PathOf(shown.ReturnValue), s.Timers.size(),
                        s.OldIgnoreLook, s.OldIgnoreMove, gamepad ? "pad" : "keyboard",
-                       InputHooked ? "and GUI let past the pause" : "NOT hooked (the camera and the panel won't answer: see the start of this log)",
+                       InputHooked ? "let past the pause" : "NOT hooked (the camera won't answer: see the start of this log)",
+                       GuiTickHooked ? "let past the pause" : "NOT hooked (tabs, options and prompts won't answer: see the start of this log)",
                        SoundHooked ? "made realtime" : "NOT hooked (they play when the pause ends: see the start of this log)");
             return "entered photo mode";
         }
@@ -930,18 +949,6 @@ namespace MelePause
             // Deactivated's PauseGame(FALSE) wrote 0; Activated's TRUE stays when Deactivated never ran.
             if (world != nullptr) world->bPlayersOnly = s.OldPlayersOnly ? 1 : 0;
             if (calls && pc != nullptr) SetPcPlace(pc, s.OldPcLocation, s.OldPcRotation);
-        }
-
-        /// The subtitle line Activated cleared, unless another one shows now.
-        void RestoreSubtitle(PhotoSession& s)
-        {
-            auto const subtitles = s.Subtitles.Live();
-            if (subtitles == nullptr || s.Subtitle.empty() || subtitles->m_sSubtitle.Length() != 0) return;
-            FString const text{ s.Subtitle.c_str() };
-            UBioSubtitles_execDisplaySubtitle_Parms p;
-            std::memcpy(&p.sSubtitle, &text, sizeof(FString));
-            p.fDuration = s.SubtitleTime;
-            Call(subtitles, L"DisplaySubtitle", PFn.DisplaySubtitle, p);
         }
 
         /// The game's own exit, then our fields, then one camera update: the paused shot is on screen again. Works on PhotoExit.
@@ -1830,14 +1837,17 @@ namespace MelePause
         ProcessEvent_orig.store(orig, std::memory_order_release);
         LEASI_INFO("ProcessEvent hooked");
 
-        constexpr auto noInput = "photo mode under the pause won't answer it";
+        constexpr auto noInput = "photo mode's camera under the pause won't answer it";
         auto const keys = HookNative(Init, "BioPlayerInput::InputKey", InputKeyRva, InputKeyStart, sizeof(InputKeyStart), InputKey_hook, InputKey_orig,
                                      noInput);
         auto const axes = HookNative(Init, "UPlayerInput::InputAxis", InputAxisRva, InputAxisStart, sizeof(InputAxisStart), InputAxis_hook,
                                      InputAxis_orig, noInput);
-        auto const gui = HookNative(Init, "UBioSFManager::Tick", GuiTickRva, GuiTickStart, sizeof(GuiTickStart), GuiTick_hook, GuiTick_orig, noInput);
-        InputHooked = keys && axes && gui;
-        if (InputHooked) LEASI_INFO("input and GUI hooked: photo mode's keys, axes and panel get past the world pause");
+        InputHooked = keys && axes;
+        if (InputHooked) LEASI_INFO("input hooked: photo mode's keys and axes get past the world pause");
+
+        GuiTickHooked = HookNative(Init, "UBioSFManager::Tick", GuiTickRva, GuiTickStart, sizeof(GuiTickStart), GuiTick_hook, GuiTick_orig,
+                                   "photo mode's panel under the pause won't answer (tabs, options, prompts)");
+        if (GuiTickHooked) LEASI_INFO("GUI tick hooked: photo mode's panel gets past the world pause");
 
         constexpr auto noSound = "photo mode's GUI sounds under the pause wait for its end";
         auto const play = HookNative(Init, "UBioSFManager::PlayGuiSound", PlayGuiSoundRva, PlayGuiSoundStart, sizeof(PlayGuiSoundStart),

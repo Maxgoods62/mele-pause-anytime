@@ -131,7 +131,10 @@ loader's shared hook manager).
   3. `SFXGameModePhoto.Priority` raised to 3 (`ModePriority_Menus`), above Conversation (2): `ShowPhotoMode` then makes it the
      current mode. In a cutscene, the director's `CameraActor` view target is swapped for the controller, and the photo
      tether (`PhotoModeTetherDistance`, 1000) widened when the shot is far from the pawn.
-  4. `ShowPhotoMode`: the game's own entry (it places the controller on the shot and clears the subtitle). Then the ignore
+  4. `ShowPhotoMode`: the game's own entry (it places the controller on the shot and clears the subtitle). The subtitle
+     line is put back at once, in the hidden conversation panel: the GUI ticks let past the pause (step 5) run its
+     handler, whose `Update` would hide the panel's line on the change, and nothing would show it again before the world
+     resumes (found by review). Then the ignore
      counters are zeroed and `bAlwaysTick` set on the controller, so `PlayerTick` runs under the pause.
   5. The input: the engine drops it while `WorldInfo.Pauser` is set (`UInput::InputKey` keeps only the releases of keys
      held from before; `UPlayerInput::InputAxis` skips the axis binds), so the sticks, the keys and the mouse never reach
@@ -141,7 +144,7 @@ loader's shared hook manager).
      `UBioSFManager::Tick` (on our GUI manager), clear the `Pauser` around each call while photo mode is on, and put it
      back as the call returns: the game thread runs them between the world's ticks, so nothing else sees the world
      unpaused. Each hook first checks the function's first bytes; another build of the game gets a warning in the log and
-     no patch (photo mode then opens, but neither its camera nor its panel answers). The key that opened photo mode sets
+     no patch (photo mode then opens, but what that hook covers doesn't answer: the camera, or the panel). The key that opened photo mode sets
      `PlayerInput.bUsingGamepad` (Y the pad, F7 the keyboard), as it would have had it reached the game: photo mode's
      button prompts follow it, and the pad's sticks need it. Found in the
      game's code (dumped from memory: the exe is encrypted on disk), after the first v4 builds' camera didn't move
@@ -158,7 +161,7 @@ loader's shared hook manager).
 - **Photo mode, leaving** (`ExitPhoto`): `HidePhotoMode` (the game's exit: the mode off, the controller's state popped), then
   the static console binds it reset to the defaults (the conversation's stick swap for a southpaw profile; a key bound
   twice, told apart by Ctrl, Shift or Alt, is left alone: the game's setter edits the first only), every field above, the
-  subtitle line (`BioSubtitles.DisplaySubtitle`), the controller's place, and one `UpdateCamera`. A camera the conversation
+  subtitle line when the entry couldn't (`BioSubtitles.DisplaySubtitle`), the controller's place, and one `UpdateCamera`. A camera the conversation
   had frozen is frozen again after that update, on the saved shot. The PC binds aren't touched: neither a conversation
   nor a cutscene changes them, and their defaults hold such pairs (Enter and Alt+Enter). Each frame and
   each key also check it: if the world pause ends without us, the world goes, or the mode leaves Photo, our photo session
@@ -261,8 +264,8 @@ Install with `./build.sh --install` (game closed), then:
    photo mode", "photo mode exit: ignore counters ...", "photo mode left (Y) after ... s: mode 5 (Conversation), camera mode
    ...", with the number of static binds set back, of camera steps, and what got past the pause: "N key and M axis
    event(s), G GUI tick(s) (0 changed the Pauser: put back), S GUI sound(s)" (M in the thousands after moving a stick or the mouse, G
-   about one per frame, S at least one per screenshot). "photo mode on" says "pad prompts" after Y, "keyboard prompts" after F7. At start: "input and
-   GUI hooked: ..." and "GUI sounds hooked: ..." (else a "not found at RVA" warning). For the movie: its open line ("from a
+   about one per frame, S at least one per screenshot). "photo mode on" says "pad prompts" after Y, "keyboard prompts" after F7. At start: "input hooked:
+   ...", "GUI tick hooked: ..." and "GUI sounds hooked: ..." (else a "not found at RVA" warning). For the movie: its open line ("from a
    file"), "is a fullscreen movie" with the HUD's silence, "Console.InputKey runs while movie #N is open" (the game mode
    during it), one "Esc pressed, read on thread ..." line per press (movie pause or resume asked), the PAUSED/RESUMED
    lines and the reports between them (frame number staying put; `BinkWait` per second while paused: none for 2 s drops
