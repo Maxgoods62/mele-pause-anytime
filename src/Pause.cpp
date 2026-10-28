@@ -1,10 +1,14 @@
 #include "MelePause/Pause.hpp"
 #include "Common/Objects.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <iterator>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 // Esc pauses a conversation or an in-engine cutscene with the world pause the "pause" console command sets
 // (PlayerController.Pause -> ServerPause -> GameInfo.SetPause: WorldInfo.Pauser), which stops the picture, the voice-over,
@@ -13,7 +17,8 @@
 // and reads Esc itself on the movie's thread (a fullscreen movie's Esc press never reaches Console.InputKey); here Esc is only
 // kept from the game while a fullscreen movie plays. A gamepad's Start (XboxTypeS_Start: an Xbox pad, or a PlayStation one
 // through Steam Input) does what Esc does; during a fullscreen movie its press is taken by the engine too, and what reaches
-// Console.InputKey of it (its repeats, its release) toggles the movie pause from here. Anywhere else both keys keep their
+// Console.InputKey of it (its repeats, its release) toggles the movie pause from here. Under our world pause, a gamepad's Y
+// or F7 opens the game's photo mode over it, and closes it again (so do Esc and Start). Anywhere else these keys keep their
 // vanilla behavior. Everything here runs on the game thread, inside the ProcessEvent calls it reacts to.
 namespace MelePause
 {
@@ -26,7 +31,11 @@ namespace MelePause
         constexpr unsigned char ModeConversation = 5;
         constexpr unsigned char ModeCinematic = 6;
         constexpr unsigned char ModeMovie = 8;
+        constexpr unsigned char ModePhoto = 11;
         constexpr unsigned char NoMode = 0xFF;
+
+        /// SFXGameModeBase.EModePriority.ModePriority_Menus: above Conversation (2) and Cinematic (Base, 0).
+        constexpr unsigned char PriorityMenus = 3;
 
         // Engine.Interaction.EInputEvent. IE_Repeat (2) and the rest only matter as "not a press".
         constexpr unsigned char IE_Pressed = 0;
@@ -97,6 +106,9 @@ namespace MelePause
 
             KeyState Esc;
             KeyState Start;
+            /// Photo mode's keys: a gamepad's Y, and F7.
+            KeyState Y;
+            KeyState F7;
 
             /// Turned off for the session by an access violation while drawing, or a missing Canvas function.
             bool BannerOff = false;
@@ -160,6 +172,30 @@ namespace MelePause
                 }
             }
             return nullptr;
+        }
+
+        /// A function of an object's class, looked up again when the class changes.
+        struct CachedFunction
+        {
+            UClass* Class = nullptr;
+            UFunction* Function = nullptr;
+        };
+
+        UFunction* FunctionOf(UObject* object, wchar_t const* name, CachedFunction& cache)
+        {
+            if (object->Class != cache.Class)
+            {
+                cache.Class = object->Class;
+                cache.Function = FindFunction(object->Class, SFXName{ name, 0 });
+                if (cache.Function == nullptr) LEASI_ERROR("no {} function in {}", ToUtf8(name), PathOf(object->Class));
+            }
+            return cache.Function;
+        }
+
+        std::string NameText(SFXName const& name)
+        {
+            auto const text = name.Instanced();
+            return ToUtf8(std::wstring_view(text.Chars(), text.Length()));
         }
 
         /// ProcessEvent refuses a function with an opcode number (iNative): zeroed for the call, it runs the native like any
@@ -263,15 +299,8 @@ namespace MelePause
         /// PlayerController.Pause, the "pause" console command: ServerPause toggles SetPause(!IsPaused()).
         bool CallPause(ABioPlayerController* pc)
         {
-            static SFXName const PauseName{ L"Pause", 0 };
-            static UClass* seenClass = nullptr;
-            static UFunction* pause = nullptr;
-            if (pc->Class != seenClass)
-            {
-                seenClass = pc->Class;
-                pause = FindFunction(pc->Class, PauseName);
-                if (pause == nullptr) LEASI_ERROR("no Pause function in {}", PathOf(pc->Class));
-            }
+            static CachedFunction cache;
+            auto const pause = FunctionOf(pc, L"Pause", cache);
             if (pause == nullptr) return false;
             APlayerController_execPause_Parms parms;
             CallGame(pc, pause, &parms);
@@ -344,12 +373,663 @@ namespace MelePause
                            GetCurrentThreadId());
         }
 
-        /// Every frame and every Esc: our world pause ends when someone else ended it (Pauser None: the game, a load, the
-        /// Steam overlay closing clears every CanUnpause that agrees), when its WorldInfo is gone, or when the mode left
-        /// Conversation and Cinematic under it. The movie pause isn't checked here: Bink.cpp ends it (close, Esc, its movie
-        /// gone silent), and SkipMovie and the HUD drawing again do.
+        // ! Photo mode
+        // ========================================
+
+        // The game's own photo mode, over our world pause. Vanilla opens it only from the pause menu, which the game refuses in
+        // a conversation or a cutscene; its real entry, MassEffectGuiManager.ShowPhotoMode, has no gate. The world doesn't tick
+        // under the pause: our controller is made to (bAlwaysTick: PlayerInput, then PlayerPhotoMode.PlayerMove), and the
+        // camera is updated from here once a frame. What stands in the way is set aside for the session and given back at its
+        // end: photo mode's priority (below Conversation's), the conversation panel (it eats the sticks, and shows the wheel
+        // and the subtitle), the ignore counters, the controller's timers, a cutscene's director camera. The exit is the
+        // game's own (HidePhotoMode), then ours.
+
+        /// A game object we changed, with its object index: checked again before each write back.
+        template <class T>
+        struct Kept
+        {
+            T* Object = nullptr;
+            int Index = -1;
+
+            void Set(T* object)
+            {
+                Object = object;
+                Index = object != nullptr ? object->ObjectInternalInteger : -1;
+            }
+
+            T* Live() const { return Alive(Object, Index) ? Object : nullptr; }
+        };
+
+        /// What the session changed, one bit per step: the exit gives back only those, and clears each bit once done.
+        enum : unsigned
+        {
+            DonePriority = 1u << 0,
+            DoneShown = 1u << 1,      // ShowPhotoMode ran: EnableMode(Photo) and the photo panel
+            DonePanel = 1u << 2,      // the conversation panel's input and picture
+            DoneInput = 1u << 3,      // the ignore counters zeroed
+            DoneTicking = 1u << 4,    // bAlwaysTick
+            DoneViewTarget = 1u << 5, // a cutscene's CameraActor swapped for the controller
+            DoneTether = 1u << 6,
+            DoneCamEnabled = 1u << 7, // the camera's bDisabled cleared
+        };
+
+        struct SavedBind
+        {
+            SFXName Name;
+            std::wstring Command;
+        };
+
+        struct HeldTimer
+        {
+            SFXName FuncName;
+            UObject* TimerObj;
+        };
+
+        struct PhotoSession
+        {
+            bool On = false;
+            unsigned Done = 0;
+            /// The mode under it: Conversation or Cinematic.
+            unsigned char Mode = NoMode;
+            Kept<ABioPlayerController> Pc;
+            Kept<ASFXPlayerCamera> Camera;
+            Kept<USFXGameModeManager> Manager;
+            Kept<USFXGameModePhoto> Photo;
+            Kept<UMassEffectGuiManager> Gui;
+            Kept<UBioSFPanel> Panel;
+            Kept<AActor> OldTarget;
+            Kept<AWorldInfo> World;
+            Kept<UBioSubtitles> Subtitles;
+            unsigned char OldPriority = 0;
+            unsigned char OldIgnoreLook = 0;
+            unsigned char OldIgnoreMove = 0;
+            bool OldAlwaysTick = false;
+            bool OldPlayersOnly = false;
+            bool OldCamDisabled = false;
+            bool OldPanelInputDisabled = false;
+            bool OldPanelHandleInput = false;
+            bool OldPanelVisible = false;
+            float OldTether = 0.0f;
+            float OldVehicleTether = 0.0f;
+            FVector OldPcLocation{};
+            FRotator OldPcRotation{};
+            /// The shot on screen when the key was pressed.
+            FTPOV EnterPov{};
+            /// The subtitle line on screen: photo mode's Activated clears it.
+            std::wstring Subtitle;
+            float SubtitleTime = 0.0f;
+            /// The static console binds: photo mode's Deactivated puts the defaults back, the conversation's stick swap lost.
+            std::vector<SavedBind> ConsoleBinds;
+            /// A frozen camera's (bDisabled) aspect, which the session's camera updates overwrite.
+            float OldAspectRatio = 0.0f;
+            bool OldConstrainAspect = false;
+            std::vector<HeldTimer> Timers;
+            /// Our controller's PlayerInput, whose key and axis events get past the world pause (see PauseLift), and how many
+            /// did. A Pauser that changed during one of them is put back all the same: counted for the log.
+            Kept<UPlayerInput> Input;
+            unsigned InputKeys = 0;
+            unsigned InputAxes = 0;
+            unsigned InputPauserChanged = 0;
+            ULONGLONG EnteredAt = 0;
+            LARGE_INTEGER LastCameraAt{};
+            /// PlayerTick drove the camera since the last BioHUD.PostRender.
+            bool CameraThisFrame = false;
+            unsigned TickSteps = 0;
+            unsigned HudSteps = 0;
+        };
+
+        PhotoSession Photo;
+        /// The session being left: Photo is already over while the exit runs.
+        PhotoSession PhotoExit;
+
+        struct PhotoFunctions
+        {
+            CachedFunction GetScaleFormManager;
+            CachedFunction ShowPhotoMode;
+            CachedFunction HidePhotoMode;
+            CachedFunction UpdateCurrentMode;
+            CachedFunction DisableMode;
+            CachedFunction SetLocation;
+            CachedFunction SetRotation;
+            CachedFunction UpdateCamera;
+            CachedFunction DisplaySubtitle;
+            CachedFunction SetStaticConsoleBinding;
+        };
+        PhotoFunctions PFn;
+        /// Both input hooks are in (see PauseLift): without them the photo camera gets no input under the world pause.
+        bool InputHooked = false;
+
+        /// Calls that function of the object, when its class has one (logged once per class when not).
+        template <class Parms>
+        bool Call(UObject* object, wchar_t const* name, CachedFunction& cache, Parms& parms)
+        {
+            auto const function = FunctionOf(object, name, cache);
+            if (function == nullptr) return false;
+            CallGame(object, function, &parms);
+            return true;
+        }
+
+        USFXGameModePhoto* PhotoMode(USFXGameModeManager* manager)
+        {
+            auto const& modes = manager->GameModes;
+            for (UINT i = 0; i < modes.Count(); i++)
+            {
+                auto const mode = modes.GetData()[(i + ModePhoto) % modes.Count()];
+                if (mode != nullptr && mode->IsA(USFXGameModePhoto::StaticClass())) return static_cast<USFXGameModePhoto*>(mode);
+            }
+            return nullptr;
+        }
+
+        UMassEffectGuiManager* GuiOf(ABioPlayerController* pc)
+        {
+            APlayerController_execGetScaleFormManager_Parms p;
+            if (!Call(pc, L"GetScaleFormManager", PFn.GetScaleFormManager, p)) return nullptr;
+            auto const gui = p.ReturnValue;
+            return gui != nullptr && gui->IsA(UMassEffectGuiManager::StaticClass()) ? static_cast<UMassEffectGuiManager*>(gui) : nullptr;
+        }
+
+        UBioPlayerInput* BioInput(APlayerController* pc)
+        {
+            auto const input = pc->PlayerInput;
+            return input != nullptr && input->IsA(UBioPlayerInput::StaticClass()) ? static_cast<UBioPlayerInput*>(input) : nullptr;
+        }
+
+        void UpdateCurrentMode(USFXGameModeManager* manager)
+        {
+            USFXGameModeManager_execUpdateCurrentMode_Parms p;
+            Call(manager, L"UpdateCurrentMode", PFn.UpdateCurrentMode, p);
+        }
+
+        /// Camera.UpdateCamera: the view target, the camera mode's Tick, CameraCache. The world tick doesn't run it under the
+        /// pause: we do.
+        void UpdateCamera(ASFXPlayerCamera* camera, float dt)
+        {
+            ACamera_eventUpdateCamera_Parms p;
+            p.DeltaTime = dt;
+            Call(camera, L"UpdateCamera", PFn.UpdateCamera, p);
+        }
+
+        /// PickCameraMode only switches modes when GameTimeSeconds - LastTransitionTime > 0.1 s, and GameTimeSeconds stands
+        /// still under the pause: a switch just before it would keep the photo camera from ever being picked.
+        void AllowCameraSwitch(ASFXPlayerCamera* camera, AWorldInfo* world) { camera->LastTransitionTime = world->GameTimeSeconds - 1.0f; }
+
+        void SetPcPlace(ABioPlayerController* pc, FVector const& location, FRotator const& rotation)
+        {
+            AActor_execSetLocation_Parms at;
+            at.NewLocation = location;
+            Call(pc, L"SetLocation", PFn.SetLocation, at);
+            AActor_execSetRotation_Parms to;
+            to.NewRotation = rotation;
+            Call(pc, L"SetRotation", PFn.SetRotation, to);
+        }
+
+        /// The photo cameras start at 54.4 degrees: a conversation's shot is often much narrower, and seen wider it looks
+        /// like another shot.
+        void SetPhotoFov(USFXCameraMode_Photo* mode, float fov)
+        {
+            if (mode == nullptr) return;
+            mode->CurrentFOV = fov;
+            mode->TargetFOV = fov;
+        }
+
+        float Distance(FVector const& a, FVector const& b)
+        {
+            auto const x = a.X - b.X;
+            auto const y = a.Y - b.Y;
+            auto const z = a.Z - b.Z;
+            return std::sqrt(x * x + y * y + z * z);
+        }
+
+        /// Seconds since the last call (0 for the first), at most 0.1.
+        float SecondsSince(LARGE_INTEGER& last)
+        {
+            LARGE_INTEGER now;
+            LARGE_INTEGER frequency;
+            QueryPerformanceCounter(&now);
+            QueryPerformanceFrequency(&frequency);
+            auto const dt = last.QuadPart != 0 ? static_cast<float>(now.QuadPart - last.QuadPart) / static_cast<float>(frequency.QuadPart) : 0.0f;
+            last = now;
+            return std::clamp(dt, 0.0f, 0.1f);
+        }
+
+        std::vector<SavedBind> SaveBinds(TArray<FStaticKeyBind> const& binds)
+        {
+            std::vector<SavedBind> saved;
+            saved.reserve(binds.Count());
+            for (UINT i = 0; i < binds.Count(); i++)
+            {
+                auto const& bind = binds.GetData()[i];
+                saved.push_back({ bind.Name, std::wstring(bind.Command.Chars(), bind.Command.Length()) });
+            }
+            return saved;
+        }
+
+        /// The static console binds photo mode's Deactivated reset to the defaults (the conversation's stick swap, for a
+        /// southpaw profile), set back through the manager's own setter. The setter edits the first bind of a name, so a name
+        /// held more than once (told apart by Ctrl, Shift or Alt) is left alone. The PC binds aren't: neither a conversation
+        /// nor a cutscene changes them, and their defaults hold such pairs (Enter and Alt+Enter). Returns how many were set back.
+        unsigned RestoreConsoleBinds(USFXGameModeManager* manager, std::vector<SavedBind> const& saved, TArray<FStaticKeyBind> const& binds)
+        {
+            unsigned restored = 0;
+            for (auto const& s : saved)
+            {
+                auto const savedCount = std::count_if(saved.begin(), saved.end(), [&](SavedBind const& other) { return other.Name == s.Name; });
+                FStaticKeyBind const* live = nullptr;
+                auto liveCount = 0;
+                for (UINT i = 0; i < binds.Count(); i++)
+                {
+                    if (binds.GetData()[i].Name != s.Name) continue;
+                    if (liveCount++ == 0) live = &binds.GetData()[i];
+                }
+                if (savedCount != 1 || liveCount > 1) continue;
+                if (live != nullptr && std::wstring_view(live->Command.Chars(), live->Command.Length()) == s.Command) continue;
+                FString const command{ s.Command.c_str() };
+                USFXGameModeManager_execHelper_SetStaticConsoleBinding_Parms p;
+                p.Key = s.Name;
+                std::memcpy(&p.Command, &command, sizeof(FString));
+                Call(manager, L"Helper_SetStaticConsoleBinding", PFn.SetStaticConsoleBinding, p);
+                restored++;
+            }
+            return restored;
+        }
+
+        /// Our controller ticks under the pause (bAlwaysTick), and so do its timers: the conversation's SkipNode (0.3 s, set by
+        /// BioSFHandler_Conversation.Update) would move the conversation on. Every running timer of the controller is held,
+        /// as the pause holds them without bAlwaysTick; the exit lets go of those held here.
+        void HoldTimers(ABioPlayerController* pc, PhotoSession& s)
+        {
+            auto& timers = pc->Timers;
+            for (UINT i = 0; i < timers.Count(); i++)
+            {
+                auto& timer = timers.GetData()[i];
+                if (timer.bPaused) continue;
+                timer.bPaused = 1;
+                auto const known = std::any_of(s.Timers.begin(), s.Timers.end(), [&](HeldTimer const& held) {
+                    return held.FuncName == timer.FuncName && held.TimerObj == timer.TimerObj;
+                });
+                if (!known) s.Timers.push_back({ timer.FuncName, timer.TimerObj });
+            }
+        }
+
+        void ReleaseTimers(ABioPlayerController* pc, PhotoSession& s)
+        {
+            auto& timers = pc->Timers;
+            for (UINT i = 0; i < timers.Count(); i++)
+            {
+                auto& timer = timers.GetData()[i];
+                auto const held = std::any_of(s.Timers.begin(), s.Timers.end(), [&](HeldTimer const& h) {
+                    return h.FuncName == timer.FuncName && h.TimerObj == timer.TimerObj;
+                });
+                if (held) timer.bPaused = 0;
+            }
+            s.Timers.clear();
+        }
+
+        unsigned char AddCounter(unsigned char a, unsigned char b) { return static_cast<unsigned char>(std::min(255, a + b)); }
+
+        /// Y or F7 under our pause of a conversation or a cutscene. Returns what it did, or null when refused. The session is
+        /// recorded before anything changes: when this stops midway, DropPhoto gives back what it got to.
+        char const* EnterPhoto(ABioPlayerController* pc, unsigned char mode)
+        {
+            auto const world = pc->WorldInfo;
+            auto const manager = pc->GameModeManager;
+            auto const camera = pc->PlayerCamera != nullptr && pc->PlayerCamera->IsA(ASFXPlayerCamera::StaticClass())
+                                    ? static_cast<ASFXPlayerCamera*>(pc->PlayerCamera)
+                                    : nullptr;
+            auto const photo = manager != nullptr ? PhotoMode(manager) : nullptr;
+            auto const gui = GuiOf(pc);
+            if (world == nullptr || manager == nullptr || camera == nullptr || photo == nullptr || gui == nullptr || photo->bIsActive != 0)
+            {
+                LEASI_WARN("photo mode refused: world {}, mode manager {}, camera {}, photo mode {} (active {}), GUI manager {}", PathOf(world),
+                           PathOf(manager), PathOf(camera), PathOf(photo), photo != nullptr && photo->bIsActive != 0, PathOf(gui));
+                return nullptr;
+            }
+
+            auto& s = Photo;
+            s = {};
+            s.On = true;
+            s.Mode = mode;
+            s.EnteredAt = GetTickCount64();
+            s.Pc.Set(pc);
+            s.Camera.Set(camera);
+            s.Manager.Set(manager);
+            s.Photo.Set(photo);
+            s.Gui.Set(gui);
+            s.World.Set(world);
+            s.Input.Set(pc->PlayerInput);
+            s.EnterPov = camera->CameraCache.POV;
+            s.OldPcLocation = pc->Location;
+            s.OldPcRotation = pc->Rotation;
+            s.OldPlayersOnly = world->bPlayersOnly != 0;
+            if (world->IsA(ABioWorldInfo::StaticClass()))
+            {
+                if (auto const subtitles = static_cast<ABioWorldInfo*>(world)->m_Subtitles)
+                {
+                    s.Subtitles.Set(subtitles);
+                    s.Subtitle.assign(subtitles->m_sSubtitle.Chars(), subtitles->m_sSubtitle.Length());
+                    s.SubtitleTime = subtitles->m_fTimeRemaining;
+                }
+            }
+            if (auto const input = BioInput(pc)) s.ConsoleBinds = SaveBinds(input->StaticConsoleBinds);
+            auto const& pov = s.EnterPov;
+            LEASI_INFO("photo mode enter, mode {} ({}): view target {} (pending {}), CameraStyle {}, camera mode {}, camera disabled {}, shot at ({:.0f} "
+                       "{:.0f} {:.0f}) FOV {:.1f}, controller at ({:.0f} {:.0f} {:.0f}), pawn {}, subtitle {} chars",
+                       mode, ModeName(mode), PathOf(camera->ViewTarget.Target), PathOf(camera->PendingViewTarget.Target), NameText(camera->CameraStyle),
+                       PathOf(camera->CurrentCameraMode), camera->bDisabled != 0, pov.Location.X, pov.Location.Y, pov.Location.Z, pov.FOV,
+                       pc->Location.X, pc->Location.Y, pc->Location.Z, PathOf(pc->Pawn), s.Subtitle.size());
+
+            // 1. The controller's timers stand still, as the pause holds them.
+            HoldTimers(pc, s);
+
+            // 2. The conversation panel: no input (it would eat the sticks, and A or Enter would pick a reply), and hidden (the
+            //    wheel, the subtitle). Activated does the input part itself, for ambient conversations only.
+            if (auto const panel = gui->m_oConversationPanel)
+            {
+                s.Panel.Set(panel);
+                s.OldPanelInputDisabled = panel->bInputDisabled != 0;
+                s.OldPanelHandleInput = panel->bHandleInputThisFrame != 0;
+                s.OldPanelVisible = panel->IsVisible != 0;
+                panel->bInputDisabled = 1;
+                panel->bHandleInputThisFrame = 1;
+                panel->IsVisible = 0;
+                s.Done |= DonePanel;
+            }
+
+            // 3. Photo above Conversation and Cinematic: EnableMode's own UpdateCurrentMode then makes it current.
+            s.OldPriority = photo->Priority;
+            photo->Priority = PriorityMenus;
+            s.Done |= DonePriority;
+
+            // 4. A cutscene's director camera: SFXPlayerCamera.UpdateViewTarget renders a CameraActor target as it is, past the
+            //    camera modes. The controller is the target for the session (written raw: SetViewTarget would blend).
+            if (auto const target = camera->ViewTarget.Target; target != nullptr && target->IsA(ACameraActor::StaticClass()))
+            {
+                s.OldTarget.Set(target);
+                camera->ViewTarget.Target = pc;
+                s.Done |= DoneViewTarget;
+            }
+            // A frozen camera (BioConversation.DisableCamera) answers CameraCache and never runs the photo camera.
+            if (camera->bDisabled)
+            {
+                s.OldCamDisabled = true;
+                s.OldAspectRatio = camera->m_fLastAspectRatio;
+                s.OldConstrainAspect = camera->m_bLastConstrainAspect != 0;
+                camera->bDisabled = 0;
+                s.Done |= DoneCamEnabled;
+            }
+
+            // 5. PlayerPhotoMode.PlayerMove keeps the camera within PhotoModeTetherDistance (1000) of the pawn: a cutscene's shot
+            //    may be farther. No pawn: of the origin.
+            auto const away = pc->Pawn != nullptr ? Distance(pov.Location, pc->Pawn->Location) : Distance(pov.Location, FVector{});
+            if (away + 500.0f > pc->PhotoModeTetherDistance)
+            {
+                s.OldTether = pc->PhotoModeTetherDistance;
+                s.OldVehicleTether = pc->VehiclePhotoModeTetherDistance;
+                pc->PhotoModeTetherDistance = away + 1000.0f;
+                pc->VehiclePhotoModeTetherDistance = std::max(pc->VehiclePhotoModeTetherDistance, away + 1000.0f);
+                s.Done |= DoneTether;
+            }
+
+            // 6. The game's own entry: EnableMode(Photo) -> Activated (PushState PlayerPhotoMode at CameraCache's shot,
+            //    PauseGame(TRUE), post process, static binds, subtitle cleared) -> UpdateCurrentMode; then the photo panel.
+            auto const show = FunctionOf(gui, L"ShowPhotoMode", PFn.ShowPhotoMode);
+            if (show == nullptr) return nullptr;
+            // Before the call: a fault inside it still gets the game's exit.
+            s.Done |= DoneShown;
+            UMassEffectGuiManager_execShowPhotoMode_Parms shown;
+            CallGame(gui, show, &shown);
+            if (manager->CurrentMode != ModePhoto) UpdateCurrentMode(manager);
+            if (manager->CurrentMode != ModePhoto)
+            {
+                LEASI_WARN("photo mode refused: the mode is {} ({}) after ShowPhotoMode", manager->CurrentMode, ModeName(manager->CurrentMode));
+                return nullptr;
+            }
+
+            // 7. The conversation's ignore counters (1 each) would zero the sticks: kept, zeroed, given back at the exit.
+            s.OldIgnoreLook = pc->bIgnoreLookInput;
+            s.OldIgnoreMove = pc->bIgnoreMoveInput;
+            pc->bIgnoreLookInput = 0;
+            pc->bIgnoreMoveInput = 0;
+            s.Done |= DoneInput;
+
+            // 8. PlayerTick under the pause: PlayerInput, then PlayerPhotoMode.PlayerMove moves the controller.
+            s.OldAlwaysTick = pc->bAlwaysTick != 0;
+            pc->bAlwaysTick = 1;
+            s.Done |= DoneTicking;
+
+            // 9. The photo camera now (PickCameraMode -> PhotoCamFree), at the shot's field of view.
+            AllowCameraSwitch(camera, world);
+            UpdateCamera(camera, 0.0f);
+            if (pov.FOV > 1.0f && pov.FOV < 170.0f)
+            {
+                SetPhotoFov(photo->PhotoCamFree, pov.FOV);
+                SetPhotoFov(photo->PhotoCamOrbit, pov.FOV);
+            }
+            auto const pcOff = Distance(pc->Location, pov.Location);
+            if (pcOff > 1.0f) SetPcPlace(pc, pov.Location, pov.Rotation);
+            UpdateCamera(camera, 0.0f);
+            QueryPerformanceCounter(&s.LastCameraAt);
+            LEASI_INFO("photo mode on: camera mode {}, controller {:.0f} uu from the shot{}, view {:.0f} uu from it, FOV {:.1f}, photo handler {}, {} timer(s) "
+                       "held, ignore counters were look {} move {}, input {}",
+                       PathOf(camera->CurrentCameraMode), pcOff, pcOff > 1.0f ? " (put on it)" : "",
+                       Distance(camera->CameraCache.POV.Location, pov.Location), camera->CameraCache.POV.FOV, PathOf(shown.ReturnValue), s.Timers.size(),
+                       s.OldIgnoreLook, s.OldIgnoreMove,
+                       InputHooked ? "let past the pause" : "NOT hooked (the camera won't move: see the start of this log)");
+            return "entered photo mode";
+        }
+
+        /// After PlayerController.PlayerTick on our controller: PlayerMove has moved it, so the camera follows in the same
+        /// frame, before the view is drawn.
+        void PhotoTick(ABioPlayerController* pc, float dt)
+        {
+            auto& s = Photo;
+            auto const camera = s.Camera.Live();
+            if (!s.On || pc != s.Pc.Object || camera == nullptr) return;
+            auto const measured = SecondsSince(s.LastCameraAt);
+            UpdateCamera(camera, dt > 0.0f && dt < 0.1f ? dt : measured);
+            s.CameraThisFrame = true;
+            s.TickSteps++;
+        }
+
+        /// Each frame, after Validate: what the game may have set again (an ignore counter, a timer, bAlwaysTick), and the
+        /// camera when no PlayerTick drove it this frame (seen one frame late then).
+        void PhotoFrame()
+        {
+            auto& s = Photo;
+            if (!s.On) return;
+            auto const pc = s.Pc.Live();
+            if (pc == nullptr) return;
+            // Counted in for the give-back.
+            if (pc->bIgnoreLookInput != 0)
+            {
+                s.OldIgnoreLook = AddCounter(s.OldIgnoreLook, pc->bIgnoreLookInput);
+                pc->bIgnoreLookInput = 0;
+            }
+            if (pc->bIgnoreMoveInput != 0)
+            {
+                s.OldIgnoreMove = AddCounter(s.OldIgnoreMove, pc->bIgnoreMoveInput);
+                pc->bIgnoreMoveInput = 0;
+            }
+            if (!pc->bAlwaysTick) pc->bAlwaysTick = 1;
+            HoldTimers(pc, s);
+            if (!s.CameraThisFrame)
+            {
+                if (auto const camera = s.Camera.Live())
+                {
+                    if (s.HudSteps++ == 0) LEASI_WARN("photo mode: no PlayerTick on our controller this frame, the camera is driven from BioHUD.PostRender");
+                    UpdateCamera(camera, SecondsSince(s.LastCameraAt));
+                }
+            }
+            s.CameraThisFrame = false;
+        }
+
+        /// A camera the conversation froze (BioConversation.DisableCamera) is frozen again on its own shot: a frozen camera
+        /// shows CameraCache as it is, and the session filled it with photo mode's views.
+        void RefreezeCamera(PhotoSession const& s, ASFXPlayerCamera* camera)
+        {
+            camera->bDisabled = 1;
+            camera->CameraCache.POV = s.EnterPov;
+            camera->m_fLastAspectRatio = s.OldAspectRatio;
+            camera->m_bLastConstrainAspect = s.OldConstrainAspect ? 1 : 0;
+        }
+
+        /// Field writes on what is still alive; with calls, the controller's place too. Each step clears its bit once done.
+        void RestoreFields(PhotoSession& s, bool calls)
+        {
+            auto const pc = s.Pc.Live();
+            auto const camera = s.Camera.Live();
+            auto const photo = s.Photo.Live();
+            auto const panel = s.Panel.Live();
+            auto const world = s.World.Live();
+            if ((s.Done & DonePriority) && photo != nullptr) photo->Priority = s.OldPriority;
+            s.Done &= ~DonePriority;
+            if ((s.Done & DoneInput) && pc != nullptr)
+            {
+                LEASI_INFO("photo mode exit: ignore counters look {} move {}, given back look +{} move +{}", pc->bIgnoreLookInput, pc->bIgnoreMoveInput,
+                           s.OldIgnoreLook, s.OldIgnoreMove);
+                pc->bIgnoreLookInput = AddCounter(pc->bIgnoreLookInput, s.OldIgnoreLook);
+                pc->bIgnoreMoveInput = AddCounter(pc->bIgnoreMoveInput, s.OldIgnoreMove);
+            }
+            s.Done &= ~DoneInput;
+            if ((s.Done & DonePanel) && panel != nullptr)
+            {
+                panel->bInputDisabled = s.OldPanelInputDisabled ? 1 : 0;
+                panel->bHandleInputThisFrame = s.OldPanelHandleInput ? 1 : 0;
+                panel->IsVisible = s.OldPanelVisible ? 1 : 0;
+            }
+            s.Done &= ~DonePanel;
+            if ((s.Done & DoneViewTarget) && camera != nullptr) camera->ViewTarget.Target = s.OldTarget.Live() != nullptr ? s.OldTarget.Object : pc;
+            s.Done &= ~DoneViewTarget;
+            if ((s.Done & DoneCamEnabled) && camera != nullptr) RefreezeCamera(s, camera);
+            s.Done &= ~DoneCamEnabled;
+            if ((s.Done & DoneTether) && pc != nullptr)
+            {
+                pc->PhotoModeTetherDistance = s.OldTether;
+                pc->VehiclePhotoModeTetherDistance = s.OldVehicleTether;
+            }
+            s.Done &= ~DoneTether;
+            if ((s.Done & DoneTicking) && pc != nullptr) pc->bAlwaysTick = s.OldAlwaysTick ? 1 : 0;
+            s.Done &= ~DoneTicking;
+            if (pc != nullptr)
+            {
+                ReleaseTimers(pc, s);
+                // The right mouse button's hold, if it was down at the exit.
+                pc->bPhotoModeCameraUnlocked = 0;
+            }
+            // Deactivated's PauseGame(FALSE) wrote 0; Activated's TRUE stays when Deactivated never ran.
+            if (world != nullptr) world->bPlayersOnly = s.OldPlayersOnly ? 1 : 0;
+            if (calls && pc != nullptr) SetPcPlace(pc, s.OldPcLocation, s.OldPcRotation);
+        }
+
+        /// The subtitle line Activated cleared, unless another one shows now.
+        void RestoreSubtitle(PhotoSession& s)
+        {
+            auto const subtitles = s.Subtitles.Live();
+            if (subtitles == nullptr || s.Subtitle.empty() || subtitles->m_sSubtitle.Length() != 0) return;
+            FString const text{ s.Subtitle.c_str() };
+            UBioSubtitles_execDisplaySubtitle_Parms p;
+            std::memcpy(&p.sSubtitle, &text, sizeof(FString));
+            p.fDuration = s.SubtitleTime;
+            Call(subtitles, L"DisplaySubtitle", PFn.DisplaySubtitle, p);
+        }
+
+        /// The game's own exit, then our fields, then one camera update: the paused shot is on screen again. Works on PhotoExit.
+        void ExitPhoto(char const* why)
+        {
+            auto& s = PhotoExit;
+            auto const gui = s.Gui.Live();
+            auto const manager = s.Manager.Live();
+            auto const photo = s.Photo.Live();
+            auto const camera = s.Camera.Live();
+            auto const world = s.World.Live();
+            auto const pc = s.Pc.Live();
+
+            // 1. RemovePanel + DisableMode(Photo): Deactivated (PopState -> PoppedState: the rotation back; PauseGame(FALSE); the
+            //    static binds back to the defaults) -> UpdateCurrentMode. HidePhotoMode only disables the mode while its panel
+            //    is there.
+            unsigned binds = 0;
+            if (s.Done & DoneShown)
+            {
+                if (gui != nullptr)
+                {
+                    UMassEffectGuiManager_execHidePhotoMode_Parms p;
+                    Call(gui, L"HidePhotoMode", PFn.HidePhotoMode, p);
+                }
+                if (manager != nullptr && photo != nullptr && photo->bIsActive)
+                {
+                    USFXGameModeManager_eventDisableMode_Parms p;
+                    p.Mode = ModePhoto;
+                    Call(manager, L"DisableMode", PFn.DisableMode, p);
+                }
+                s.Done &= ~DoneShown;
+                auto const input = pc != nullptr ? BioInput(pc) : nullptr;
+                if (manager != nullptr && input != nullptr) binds = RestoreConsoleBinds(manager, s.ConsoleBinds, input->StaticConsoleBinds);
+            }
+
+            // 2. Our fields: Priority first, then the conversation or the cutscene is current again. A frozen camera is frozen
+            //    again only after step 3: frozen, it would skip PickCameraMode and keep the photo camera.
+            auto const refreeze = (s.Done & DoneCamEnabled) != 0;
+            s.Done &= ~DoneCamEnabled;
+            RestoreFields(s, true);
+            RestoreSubtitle(s);
+            if (manager != nullptr && manager->CurrentMode == ModePhoto) UpdateCurrentMode(manager);
+
+            // 3. One camera update: PickCameraMode picks the conversation's (or the director's) camera again.
+            if (camera != nullptr && world != nullptr)
+            {
+                AllowCameraSwitch(camera, world);
+                UpdateCamera(camera, 0.0f);
+            }
+            if (refreeze && camera != nullptr) RefreezeCamera(s, camera);
+            LEASI_INFO("photo mode left ({}) after {:.1f} s: mode {} ({}), camera mode {}, {} static bind(s) set back, {} PlayerTick and {} HUD camera "
+                       "steps, input: {} key and {} axis event(s) let past the pause ({} changed the Pauser: put back)",
+                       why, HeldFor(s.EnteredAt), manager != nullptr ? manager->CurrentMode : NoMode,
+                       manager != nullptr ? ModeName(manager->CurrentMode) : "none", camera != nullptr ? PathOf(camera->CurrentCameraMode) : "None", binds,
+                       s.TickSteps, s.HudSteps, s.InputKeys, s.InputAxes, s.InputPauserChanged);
+        }
+
+        void ExitPhotoEntry(void* why) { ExitPhoto(static_cast<char const*>(why)); }
+
+        void RestoreFieldsEntry(void*) { RestoreFields(PhotoExit, false); }
+
+        /// Ends the session: the game's exit and ours, under a guard (worldGone: field writes only, on what is still alive,
+        /// nothing called in a world being torn down). After a fault, the fields are given back raw.
+        void DropPhoto(char const* why, bool worldGone)
+        {
+            if (!Photo.On) return;
+            PhotoExit = std::move(Photo);
+            Photo = {};
+            if (worldGone)
+            {
+                if (!Guarded(RestoreFieldsEntry, nullptr)) LEASI_ERROR("access violation while giving back photo mode's fields ({})", why);
+                LEASI_INFO("photo mode dropped ({}): fields given back on what is still alive", why);
+            }
+            else if (!Guarded(ExitPhotoEntry, const_cast<char*>(why)))
+            {
+                LEASI_ERROR("access violation while leaving photo mode ({}): fields given back raw, photo mode may stay on", why);
+                if (!Guarded(RestoreFieldsEntry, nullptr)) LEASI_ERROR("access violation while giving back photo mode's fields");
+            }
+            PhotoExit = {};
+            LEASI_FLUSH();
+        }
+
+        // ! World pause: checks
+        // ========================================
+
+        /// Every frame and every key of ours: our world pause ends when someone else ended it (Pauser None: the game, a load,
+        /// the Steam overlay closing clears every CanUnpause that agrees), when its WorldInfo is gone, or when the mode left
+        /// Conversation and Cinematic under it (Photo is ours while our photo session runs). Our photo session ends first,
+        /// with the world or the mode it stands on. The movie pause isn't checked here: Bink.cpp ends it (close, Esc, its
+        /// movie gone silent), and SkipMovie and the HUD drawing again do.
         void Validate(ABioPlayerController* pc, char const* where)
         {
+            if (Photo.On)
+            {
+                auto const photoPc = Photo.Pc.Live();
+                if (Photo.World.Live() == nullptr || photoPc == nullptr) DropPhoto("its world or controller is gone", true);
+                else if (!G.WorldPaused || photoPc->WorldInfo != G.World || G.World->Pauser == nullptr) DropPhoto("the world pause ended", false);
+                else if (ModeOf(photoPc) != ModePhoto) DropPhoto("the mode left Photo", false);
+            }
             if (G.WorldPaused)
             {
                 if (!Alive(G.World, G.WorldIndex))
@@ -365,7 +1045,7 @@ namespace MelePause
                     EndWorldPause();
                     LEASI_FLUSH();
                 }
-                else if (pc != nullptr && pc->WorldInfo == G.World)
+                else if (!Photo.On && pc != nullptr && pc->WorldInfo == G.World)
                 {
                     auto const mode = ModeOf(pc);
                     if (mode != ModeConversation && mode != ModeCinematic)
@@ -405,12 +1085,22 @@ namespace MelePause
                        Bink::OwnsKeys() ? "the movie's" : "vanilla", GetCurrentThreadId());
         }
 
-        enum class Key { Esc, Start };
+        enum class Key { Esc, Start, Y, F7 };
 
-        char const* KeyName(Key key) { return key == Key::Esc ? "Esc" : "Start"; }
+        char const* KeyName(Key key)
+        {
+            switch (key)
+            {
+            case Key::Esc: return "Esc";
+            case Key::Start: return "Start";
+            case Key::Y: return "Y";
+            default: return "F7";
+            }
+        }
 
-        /// A fresh press of Esc or Start, outside the open console: the fullscreen movie's, else it resumes our world pause,
-        /// else pauses the world in a conversation or a cutscene. Returns what it did, or null for a press left to the game.
+        /// A fresh press of Esc or Start, outside the open console: the fullscreen movie's, else it leaves our photo mode, else
+        /// it resumes our world pause, else pauses the world in a conversation or a cutscene. Returns what it did, or null for
+        /// a press left to the game.
         char const* Press(UConsole* console, UFunction* function, Key key)
         {
             auto const pc = LocalController(console);
@@ -428,6 +1118,12 @@ namespace MelePause
                 // That thread can't read Start.
                 if (key == Key::Esc) action = "taken for the fullscreen movie, its thread toggles the movie pause";
                 else action = Bink::Toggle("Start pressed") ? "toggled the movie pause" : "taken for the fullscreen movie, nothing to toggle";
+            }
+            else if (Photo.On)
+            {
+                // Photo mode's own Esc and Start (ShowMenuGui) would open the pause menu over the conversation.
+                DropPhoto(KeyName(key), false);
+                action = "left photo mode, the world stays paused";
             }
             else if (G.WorldPaused)
             {
@@ -546,15 +1242,69 @@ namespace MelePause
             return true;
         }
 
+        /// A fresh press of Y or F7, outside the open console: in our photo mode it leaves it, under our pause of a
+        /// conversation or a cutscene it enters it. Anywhere else, and during a fullscreen movie, the key is the game's.
+        char const* PressPhoto(UConsole* console, UFunction* function, Key key)
+        {
+            auto const pc = LocalController(console);
+            Validate(pc, KeyName(key));
+            auto const mode = ModeOf(pc);
+            char const* action = nullptr;
+            if (Bink::OwnsKeys())
+                action = nullptr;
+            else if (Photo.On)
+            {
+                DropPhoto(KeyName(key), false);
+                action = "left photo mode, the world stays paused";
+            }
+            else if (G.WorldPaused && pc != nullptr && pc == G.Controller && (mode == ModeConversation || mode == ModeCinematic))
+            {
+                action = EnterPhoto(pc, mode);
+                // What Enter got to before it stopped.
+                if (action == nullptr) DropPhoto("refused", false);
+            }
+            LEASI_INFO("{} pressed: mode {} ({}), world paused by us {}, {}: {} (function {}, thread {})", KeyName(key), mode, ModeName(mode), G.WorldPaused,
+                       PathOf(pc), action != nullptr ? action : "vanilla", PathOf(function), GetCurrentThreadId());
+            LEASI_FLUSH();
+            return action;
+        }
+
+        /// Y and F7: a press we acted on takes its repeats and its release too. Returns true when the event is ours.
+        bool TakePhotoKey(UConsole* console, UFunction* function, UConsole_execInputKey_Parms* p, KeyState& k, Key key, ULONGLONG now)
+        {
+            if (p->Event != IE_Pressed)
+            {
+                if (!k.Held) return false;
+                if (p->Event == IE_Released)
+                {
+                    k.Held = false;
+                    k.ReleasedAt = now;
+                }
+                p->ReturnValue = 1;
+                return true;
+            }
+            k.Held = false;
+            k.ReleasedAt = 0;
+            if (ConsoleOpen(function) || PressPhoto(console, function, key) == nullptr) return false;
+            k.Held = true;
+            k.PressedAt = now;
+            p->ReturnValue = 1;
+            return true;
+        }
+
         /// Returns true when the key is ours: the caller skips the original, which tells the viewport the key was handled.
         bool TakeKey(UConsole* console, UFunction* function, UConsole_execInputKey_Parms* p)
         {
             static SFXName const Escape{ L"Escape", 0 };
             static SFXName const Start{ L"XboxTypeS_Start", 0 };
+            static SFXName const PadY{ L"XboxTypeS_Y", 0 };
+            static SFXName const F7{ L"F7", 0 };
             GameThreadId.store(GetCurrentThreadId(), std::memory_order_relaxed);
             NoteInputDuringMovie(console, p);
             if (p->Key == Escape) return TakeEsc(console, function, p, GetTickCount64());
             if (p->Key == Start) return TakeStart(console, function, p, GetTickCount64());
+            if (p->Key == PadY) return TakePhotoKey(console, function, p, G.Y, Key::Y, GetTickCount64());
+            if (p->Key == F7) return TakePhotoKey(console, function, p, G.F7, Key::F7, GetTickCount64());
             return false;
         }
 
@@ -646,9 +1396,9 @@ namespace MelePause
             }
         }
 
-        /// "PAUSE" near the top centre, and how to resume under it: Start when Start paused or the player uses a gamepad
-        /// (PlayerInput's bUsingGamepad, which the game's own button prompts follow), else Esc. The HUD's own font, position
-        /// and colour are put back.
+        /// "PAUSE" near the top centre, and the keys under it: Start and Y when Start paused or the player uses a gamepad
+        /// (PlayerInput's bUsingGamepad, which the game's own button prompts follow), else Esc and F7. The HUD's own font,
+        /// position and colour are put back.
         void DrawBanner(ABioHUD* hud)
         {
             auto const canvas = hud->Canvas;
@@ -684,7 +1434,8 @@ namespace MelePause
             DrawCentered(canvas, L"PAUSE", height * 0.08f, 2.5f * scale, Color(255, 255, 255, 235));
             auto const input = hud->PlayerOwner != nullptr ? hud->PlayerOwner->PlayerInput : nullptr;
             auto const gamepad = G.PausedByStart || (input != nullptr && input->bUsingGamepad != 0);
-            DrawCentered(canvas, gamepad ? L"Start: resume" : L"Esc: resume", height * 0.08f + 48.0f * scale, 1.1f * scale, Color(200, 200, 200, 220));
+            DrawCentered(canvas, gamepad ? L"Start: resume     Y: photo mode" : L"Esc: resume     F7: photo mode", height * 0.08f + 48.0f * scale,
+                         1.1f * scale, Color(200, 200, 200, 220));
 
             canvas->Font = savedFont;
             canvas->DrawColor = savedColor;
@@ -725,6 +1476,7 @@ namespace MelePause
             }
 
             Validate(pc, "frame");
+            PhotoFrame();
         }
 
         // ! Guarded entry points
@@ -750,12 +1502,26 @@ namespace MelePause
 
         void ResumeWorldEntry(void*) { ResumeWorld("fault"); }
 
+        struct TickCall
+        {
+            ABioPlayerController* Pc;
+            float DeltaTime;
+        };
+
+        void PhotoTickEntry(void* context)
+        {
+            auto const c = static_cast<TickCall*>(context);
+            PhotoTick(c->Pc, c->DeltaTime);
+        }
+
         constexpr unsigned MaxFrameFaults = 3;
 
-        /// After an access violation in the per-frame checks: our state may be what faulted, so it ends here, and a world we
-        /// paused is resumed (under its own guard) rather than left paused with nothing of ours to resume it.
+        /// After an access violation in the per-frame checks: our state may be what faulted, so it ends here, photo mode
+        /// first, and a world we paused is resumed (under its own guard) rather than left paused with nothing of ours to
+        /// resume it.
         void DropState()
         {
+            DropPhoto("fault", false);
             if (G.WorldPaused && !Guarded(ResumeWorldEntry, nullptr))
                 LEASI_ERROR("access violation while resuming the world: if the game stays paused, the console's \"pause\" resumes it");
             EndWorldPause();
@@ -802,6 +1568,8 @@ namespace MelePause
             static SFXName const SkipMovie{ L"SkipMovie", 0 };
             static SFXName const SkipCinematic{ L"SkipCinematic", 0 };
             static SFXName const GuiKey{ L"GuiKey", 0 };
+            static SFXName const ShowMenuGui{ L"ShowMenuGui", 0 };
+            static SFXName const PlayerTick{ L"PlayerTick", 0 };
 
             auto const& name = Function->Name;
             if (name == InputKey)
@@ -811,8 +1579,9 @@ namespace MelePause
                     KeyCall call{ static_cast<UConsole*>(Context), Function, static_cast<UConsole_execInputKey_Parms*>(Parms), false };
                     if (!Guarded(TakeKeyEntry, &call))
                     {
-                        LEASI_ERROR("access violation while reading a key: passed to the game");
+                        LEASI_ERROR("access violation while reading a key: passed to the game{}", Photo.On ? ", photo mode left" : "");
                         call.Taken = false;
+                        DropPhoto("fault while reading a key", false);
                     }
                     if (call.Taken) return;
                 }
@@ -821,8 +1590,28 @@ namespace MelePause
             {
                 if (Context->IsA(USFXGameModeBase::StaticClass()) && DropSkip(Context, Function, Parms, name == GuiKey)) return;
             }
+            else if (name == ShowMenuGui)
+            {
+                // Photo mode's Esc and Start binds: they would hide it and open the pause menu over the conversation. Ours
+                // take those keys first in Console.InputKey; this is for a bind that gets past it.
+                if (Photo.On && Context->IsA(USFXGameModePhoto::StaticClass()))
+                {
+                    LEASI_INFO("ShowMenuGui on {} dropped: our photo mode is left with Esc, Start, Y or F7", PathOf(Context));
+                    return;
+                }
+            }
 
             orig(Context, Function, Parms, Result);
+
+            if (name == PlayerTick && Photo.On && Context == Photo.Pc.Object && Parms != nullptr)
+            {
+                TickCall call{ static_cast<ABioPlayerController*>(Context), static_cast<APlayerController_eventPlayerTick_Parms*>(Parms)->DeltaTime };
+                if (!Guarded(PhotoTickEntry, &call))
+                {
+                    LEASI_ERROR("access violation while driving the photo camera: photo mode left");
+                    DropPhoto("fault in the photo camera", false);
+                }
+            }
 
             if (name == PostRender && Context->IsA(ABioHUD::StaticClass()))
             {
@@ -838,12 +1627,114 @@ namespace MelePause
                                 MaxFrameFaults, G.FrameFaults == MaxFrameFaults ? ", per-frame checks off for the session" : "");
                     DropState();
                 }
-                if (G.WorldPaused && !G.BannerOff && !Guarded(DrawBannerEntry, Context))
+                if (G.WorldPaused && !Photo.On && !G.BannerOff && !Guarded(DrawBannerEntry, Context))
                 {
                     LEASI_ERROR("access violation while drawing the banner: banner off");
                     G.BannerOff = true;
                 }
             }
+        }
+
+        // ! Input under the world pause
+        // ========================================
+
+        // The engine drops input while WorldInfo.Pauser is set: UInput::InputKey keeps only the releases of keys held from
+        // before, and UPlayerInput::InputAxis skips the axis binds. Vanilla photo mode never meets it (it pauses with
+        // bPlayersOnly). While ours is on, its controller's key and axis events run with the Pauser cleared, put back as the
+        // call returns: the game thread dispatches input between ticks, so nothing else sees the world unpaused.
+
+        /// BioPlayerInput::InputKey (it ends in UPlayerInput::InputKey, then UInput::InputKey) and UPlayerInput::InputAxis
+        /// (BioPlayerInput::InputAxis ends in a jump to it), with their first bytes in this build of MassEffect1.exe. The key
+        /// is an 8-byte FName, passed in a register.
+        using t_InputKey = unsigned long(UObject* Input, int ControllerId, unsigned long long Key, int Event, float Amount, unsigned long bGamepad);
+        using t_InputAxis = unsigned long(UObject* Input, int ControllerId, unsigned long long Key, float Delta, float DeltaTime, unsigned long bGamepad);
+
+        constexpr unsigned long long InputKeyRva = 0xc6de70;
+        constexpr unsigned char InputKeyStart[] = { 0x4C, 0x89, 0x44, 0x24, 0x18, 0x53, 0x55, 0x41, 0x54, 0x41, 0x56, 0x41, 0x57 };
+        constexpr unsigned long long InputAxisRva = 0x68bc40;
+        constexpr unsigned char InputAxisStart[] = { 0x48, 0x8B, 0xC4, 0x56, 0x57, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x70 };
+
+        std::atomic<t_InputKey*> InputKey_orig{ nullptr };
+        std::atomic<t_InputAxis*> InputAxis_orig{ nullptr };
+
+        /// As for ProcessEvent: a call that arrives before InstallHook handed back the original waits for it.
+        template <typename T>
+        T* OriginalOf(std::atomic<T*>& orig)
+        {
+            auto f = orig.load(std::memory_order_acquire);
+            while (f == nullptr)
+            {
+                YieldProcessor();
+                f = orig.load(std::memory_order_acquire);
+            }
+            return f;
+        }
+
+        /// For one input call: clears the world's Pauser when the call is our photo session's PlayerInput, on the game
+        /// thread, and puts it back after.
+        class PauseLift
+        {
+        public:
+            PauseLift(UObject* input, unsigned& count)
+            {
+                if (!Photo.On || input != Photo.Input.Object || GetCurrentThreadId() != GameThreadId.load(std::memory_order_relaxed)) return;
+                auto const world = Photo.World.Live();
+                if (world == nullptr || world->Pauser == nullptr) return;
+                World.Set(world);
+                Pauser = world->Pauser;
+                world->Pauser = nullptr;
+                count++;
+            }
+
+            ~PauseLift()
+            {
+                auto const world = World.Live();
+                if (world == nullptr) return;
+                if (world->Pauser != nullptr && world->Pauser != Pauser) Photo.InputPauserChanged++;
+                world->Pauser = Pauser;
+            }
+
+            PauseLift(PauseLift const&) = delete;
+            PauseLift& operator=(PauseLift const&) = delete;
+
+        private:
+            Kept<AWorldInfo> World;
+            APlayerReplicationInfo* Pauser = nullptr;
+        };
+
+        unsigned long InputKey_hook(UObject* input, int controllerId, unsigned long long key, int event, float amount, unsigned long gamepad)
+        {
+            auto const orig = OriginalOf(InputKey_orig);
+            PauseLift lift(input, Photo.InputKeys);
+            return orig(input, controllerId, key, event, amount, gamepad);
+        }
+
+        unsigned long InputAxis_hook(UObject* input, int controllerId, unsigned long long key, float delta, float deltaTime, unsigned long gamepad)
+        {
+            auto const orig = OriginalOf(InputAxis_orig);
+            PauseLift lift(input, Photo.InputAxes);
+            return orig(input, controllerId, key, delta, deltaTime, gamepad);
+        }
+
+        /// Hooks one input function after checking its first bytes: another build of the game gets a warning, not a patch.
+        template <typename T>
+        bool HookInput(::LESDK::Initializer& Init, char const* name, unsigned long long rva, unsigned char const* start, size_t size, T* detour,
+                       std::atomic<T*>& orig)
+        {
+            auto const target = Init.ResolveTyped<T>(::LESDK::Address::FromOffset(rva));
+            if (target == nullptr || std::memcmp(reinterpret_cast<void const*>(target), start, size) != 0)
+            {
+                LEASI_WARN("{} not found at RVA {:#x} (another build of the game?): photo mode under the pause gets no input", name, rva);
+                return false;
+            }
+            orig.store(reinterpret_cast<T*>(Init.InstallHook(name, reinterpret_cast<void*>(target), reinterpret_cast<void*>(detour))),
+                       std::memory_order_release);
+            if (orig.load() == nullptr)
+            {
+                LEASI_WARN("hooking {} failed: photo mode under the pause gets no input", name);
+                return false;
+            }
+            return true;
         }
     }
 
@@ -862,6 +1753,11 @@ namespace MelePause
         CHECK_RESOLVED(orig);
         ProcessEvent_orig.store(orig, std::memory_order_release);
         LEASI_INFO("ProcessEvent hooked");
+
+        auto const keys = HookInput(Init, "BioPlayerInput::InputKey", InputKeyRva, InputKeyStart, sizeof(InputKeyStart), InputKey_hook, InputKey_orig);
+        auto const axes = HookInput(Init, "UPlayerInput::InputAxis", InputAxisRva, InputAxisStart, sizeof(InputAxisStart), InputAxis_hook, InputAxis_orig);
+        InputHooked = keys && axes;
+        if (InputHooked) LEASI_INFO("input hooked: photo mode's keys and axes get past the world pause");
     }
 
     DWORD GameThread() { return GameThreadId.load(std::memory_order_relaxed); }
