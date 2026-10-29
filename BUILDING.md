@@ -52,10 +52,10 @@ file name), and its branch in `Game.hpp`: the tree's `VisualStudio` preset turns
 listed game that does not compile breaks the whole tree's build in Visual Studio.
 `package.sh` packs a game only once `game_readme` in `scripts/games.sh` has its `README.txt` text.
 
-LE2 builds, with photo mode and the movie pause off, but has never run in the game, and it is not a released game: a
-plain `./build.sh` leaves it out. `all` includes it, so `--game all --install` copies it into ME2 too, or stops when ME2
-has no ASI loader: name `--game LE1` to install LE1 alone. `./package.sh --game all` (or `--game LE2`) refuses before it
-builds anything, since LE2 has no `README.txt` text: package LE1 with a plain `./package.sh`. See
+LE2 builds, with photo mode and the movie pause off, and has passed the test sheet once, but it is not a released game:
+a plain `./build.sh` leaves it out. `all` includes it, so `--game all --install` copies it into ME2 too, or stops when
+ME2 has no ASI loader: name `--game LE1` to install LE1 alone. `./package.sh --game all` (or `--game LE2`) refuses
+before it builds anything, since LE2 has no `README.txt` text: package LE1 with a plain `./package.sh`. See
 [docs/games/LE2.md](docs/games/LE2.md).
 
 ## Install checks

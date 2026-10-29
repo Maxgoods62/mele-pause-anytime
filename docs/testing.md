@@ -72,9 +72,11 @@ Bink call" and no "the HUD has drawn for 1 s" line should appear during a pause 
 
 ## Tested so far
 
-All in LE1. On 2026-10-28, builds v2 to v5, with an Xbox pad for the gamepad steps; v6 changed only the build. On
-2026-10-29, the v7 code before the rename passed the full sheet with keyboard and mouse and with an Xbox pad, and Start
-in gameplay stayed vanilla. The renamed `LE1MelePause.asi` has not been through the sheet yet.
+### LE1
+
+On 2026-10-28, builds v2 to v5, with an Xbox pad for the gamepad steps; v6 changed only the build. On 2026-10-29, the
+v7 code before the rename passed the full sheet with keyboard and mouse and with an Xbox pad, and Start in gameplay
+stayed vanilla. The renamed `LE1MelePause.asi` passed it with keyboard and mouse; the gamepad steps were not rerun.
 
 | Area | Result |
 |---|---|
@@ -88,3 +90,20 @@ in gameplay stayed vanilla. The renamed `LE1MelePause.asi` has not been through 
 
 Not covered by a recorded test yet: a Start press held into its repeats during a movie, Esc and Start mixed during a
 movie, a PlayStation pad, and a skippable fullscreen movie.
+
+### LE2
+
+On 2026-10-29, the v7 build, with photo mode and the movie pause off, passed the
+[LE2 sheet](games/LE2.md#sheet-for-a-first-run) with keyboard and mouse and with a gamepad, over three runs.
+
+| Area | Result |
+|---|---|
+| Steam overlay, before MelePause was installed | Stops the picture, voice, lips and music; all resume together about 2 s after it closes. |
+| Esc and Start in a conversation and in an in-engine cutscene | Pause and resume in sync. Space and A resume. The pause screen shows keyboard or gamepad prompts and no photo key. One pause held 11 minutes, with the console opened and closed during it. |
+| Skips | With nothing paused, the skip keys skip a skippable cutscene. The Esc or Start that paused or resumed one did not skip it. |
+| Esc and Start elsewhere | Vanilla in gameplay (the pause menu), in menus and on the galaxy map. Esc skips a loading movie as in the vanilla game, and the world never paused under a movie. |
+| Console | Opening it hides the pause screen at once. Esc or the console key closes it, and the pause holds. |
+| Y and F7 | Vanilla. |
+
+Not covered yet: the Kasumi DLC's montage ([games/LE2.md](games/LE2.md#open-questions), question 2), a PlayStation pad,
+and the build `package.sh` makes.

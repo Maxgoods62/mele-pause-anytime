@@ -23,7 +23,7 @@ among other ASIs' hooks (below).
 - The file has Windows version info: version `7.0.4.0`, a description, and its original file name.
 - `build.sh` and `package.sh` take `--game LE1|LE2|LE3|all`, once per game, or the setting `MELE_GAMES`; by default
   they build the released games, LE1. `src/CMakeLists.txt` also builds `LE2MelePause.asi`, with photo mode and the
-  movie pause off; it is not released and has never run ([docs/games/LE2.md](docs/games/LE2.md)). See
+  movie pause off; it is not released ([docs/games/LE2.md](docs/games/LE2.md)). See
   [BUILDING.md](BUILDING.md#games).
 - `--install` checks every game before the build: the ASI loader, the ASI folder, and the game closed. It checks again
   before it copies.

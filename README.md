@@ -19,7 +19,7 @@ it from source and copy it into the game ([Install](#install)).
 | Pause screen; Space and A resume | since v5 | no | no |
 
 LE2 and LE3 are not supported, and `LE1MelePause.asi` belongs in ME1's ASI folder only. The sources also build
-`LE2MelePause.asi`, without the movie pause and photo mode, but it has never run in the game
+`LE2MelePause.asi`, without the movie pause and photo mode. It has passed the test sheet once but is not released
 ([docs/games/LE2.md](docs/games/LE2.md)).
 
 ## What Esc and Start do

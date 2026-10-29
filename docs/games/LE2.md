@@ -1,9 +1,10 @@
 # MelePause in LE2
 
-Status: compiles, never run. `./build.sh --game LE2` builds `LE2MelePause.asi` from the same sources as LE1, against
-LE2's SDK, with photo mode and the movie pause off. The file has never been loaded in the game. LE2 is not a released
-game (`RELEASED_GAMES` in `scripts/games.sh`): a plain `./build.sh` or `./package.sh` leaves it out, and `package.sh`
-has no `README.txt` text for it.
+Status: runs, not released. `./build.sh --game LE2` builds `LE2MelePause.asi` from the same sources as LE1, against
+LE2's SDK, with photo mode and the movie pause off. On 2026-10-29 the v7 build passed the sheet below with keyboard and
+mouse and with a gamepad ([testing.md](../testing.md#tested-so-far)). LE2 is not a released game (`RELEASED_GAMES` in
+`scripts/games.sh`): a plain `./build.sh` or `./package.sh` leaves it out, and `package.sh` has no `README.txt` text for
+it.
 
 ## What the build has
 
@@ -47,6 +48,14 @@ Where LE2's binds differ from what the shared code expects:
   `KEY_ESCAPE`; Start sends `BUTTON_START` (21, released 42) in both. The skip guard drops those four while a press
   MelePause took is down.
 
+Seen in the game:
+
+- The world pause holds the picture, voice, lips and music together, and they resume in sync. The pauser is the
+  player's `SFXPRI`.
+- Keys reach `SFXGame.SFXConsole.InputKey`. With the console open, Esc comes to `SFXConsole.Open.InputKey` and closes
+  it, as in LE1, and the per-frame console check (`Console.StateFrame`, `Typing` or `Open`) holds.
+- `BioHUD.PostRender` runs every frame in conversations and in-engine cutscenes: the pause screen shows in both.
+
 ## Sheet for a first run
 
 The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` needs the ASI loader in ME2
@@ -62,7 +71,7 @@ The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` 
   that resumes must not skip it. With nothing paused, Space and X skip a skippable cutscene as in the vanilla game.
 - S3, fullscreen movie. Esc and Start do what they do in the vanilla game (Esc skips a movie the game lets you skip),
   and the world does not pause under the movie. In the Kasumi DLC's montage, note what Esc and Start do ([question
-  5](#open-questions)).
+  2](#open-questions)).
 - S4, gameplay. Esc and Start open the pause menu and close it.
 - S5, resume keys and the console. Pause with Esc and resume with Space, pause with Start and resume with A. With
   nothing paused, Space skips the line. Open the console during a pause: the pause screen hides, and Esc closes the
@@ -75,16 +84,9 @@ The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` 
 
 ## Open questions
 
-1. Sync. Does the world pause keep voice, lips and music in sync in LE2? Another mod that pauses LE2 conversations has a
-   user report of its audio drifting by seconds. L0 checks it first. The answer decides whether LE2's cutscenes pause.
-2. Esc in a skippable cutscene. LE2 binds Esc to the cutscene skip. Should Esc pause there (Space and X still skip), or
-   stay the game's, so that only Start pauses? Keeping Esc for the pause needs no change; leaving it to the game needs
-   a new name in each `game/LE<n>.hpp`, read by `Pause.cpp`.
-3. The HUD. Does `BioHUD.PostRender` run every frame in conversations and cutscenes, and stop over fullscreen movies?
-   The per-frame checks, the pause screen and the movie pause's test for a fullscreen movie rest on it.
-4. The console. `Pause.cpp` reads the console's state, `Typing` or `Open`, through `Console.StateFrame`. Does that hold
-   for LE2's `SFXConsole` (`SFXGame_classes.hpp:14462`)?
-5. Movies in Matinee. The Kasumi DLC (`DLC_HEN_MT`: `Montage_1.bik` and others) and `DLC_METR_Patch01` play movies from
+1. The HUD over a fullscreen movie. Does `BioHUD.PostRender` stop there? The movie pause's test for a fullscreen movie
+   rests on it, so this matters once LE2 has the movie pause.
+2. Movies in Matinee. The Kasumi DLC (`DLC_HEN_MT`: `Montage_1.bik` and others) and `DLC_METR_Patch01` play movies from
    a Matinee track, `SFXInterpTrackMovieBink` (`SFXGame_classes.hpp:15489`). Kismet's `BioSeqAct_MovieBink` turns Movie
    mode on, so Esc stays the game's there; whether this track does is unknown. If it does not, the mode stays Cinematic,
    and only the engine's movie input, which takes Esc's press first, keeps Esc from pausing the world under a movie that
