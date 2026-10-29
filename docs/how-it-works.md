@@ -1,7 +1,8 @@
 # How MelePause works
 
-MelePause is an ASI plugin, `LE1MelePause.asi` for LE1. The ASI loader, LEBinkProxy, loads it after the game's code is
-decrypted and gives it a shared hook manager, which MeleBridge and other ASIs use too. The sources:
+MelePause is an ASI plugin, one file per game: `LE1MelePause.asi` for LE1 and `LE2MelePause.asi` for LE2. The ASI
+loader, LEBinkProxy, loads it after the game's code is decrypted and gives it a shared hook manager, which MeleBridge
+and other ASIs use too. The sources:
 
 | File | What it holds |
 |---|---|
@@ -11,7 +12,7 @@ decrypted and gives it a shared hook manager, which MeleBridge and other ASIs us
 | `src/Photo.hpp`, `src/PhotoLE1.cpp` | Photo mode under the pause: the session, the camera, and the natives that let its input, panel and sounds past the pause. |
 | `src/PhotoOff.cpp` | The same calls for a game whose `game/LE<n>.hpp` turns photo mode off (`MELEPAUSE_PHOTO 0`): Y and F7 stay the game's. |
 | `src/Engine.cpp` | Helpers for calling into the game and reading its objects (`CallGame`, `PathOf`, `Alive`, ...). |
-| `src/game/` | What differs per game: `Game.hpp` picks `LE1.hpp` or `LE2.hpp` for the build's SDK target (modes, GuiKey events, the photo mode and movie pause switches, ...). `LE2.hpp` turns both switches off; the LE2 build has never run ([games/LE2.md](games/LE2.md)). |
+| `src/game/` | What differs per game: `Game.hpp` picks `LE1.hpp` or `LE2.hpp` for the build's SDK target (modes, GuiKey events, the photo mode and movie pause switches, ...). `LE2.hpp` turns both switches off, so the LE2 build has no movie pause and no photo mode ([games/LE2.md](games/LE2.md)). |
 | `src/Bink.cpp` | The movie pause, on the thread that plays the movie. |
 | `src/Overlay.cpp`, `src/Blur.cpp` | The pause screen, on the render thread. |
 | `src/Api.hpp` | What `Pause.cpp`, `Bink.cpp` and `Overlay.cpp` call of each other. No game class: the last two include only it. |

@@ -57,7 +57,7 @@ Before a version is tagged, each game its CHANGELOG entry names (the `Games:` li
 
 | When | Lines |
 |---|---|
-| At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ...", or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>MelePause N ready", such as "LE1MelePause 7 ready". In a build without the movie pause or photo mode, "movie pause: not in the LE<n> build" stands for the Bink line, and "photo mode under the pause: not in the LE<n> build" for the three hook lines. |
+| At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ...", or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>MelePause N ready", where N is the build's `ASI_VERSION`. In a build without the movie pause or photo mode, "movie pause: not in the LE<n> build" stands for the Bink line, and "photo mode under the pause: not in the LE<n> build" for the three hook lines. |
 | At the first frame | "overlay ready: back buffer ..., text in <language>, Exo 2 embedded, blur ready". "first BioHUD.PostRender": the HUD owner and GEngine's controller should be the same. |
 | Each press that reaches `Console.InputKey` | One "Esc pressed: mode ..." or "Start pressed: mode ..." line, with what it did. |
 | Each pause | "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts", then "overlay hidden" ("at once" for photo mode). |
@@ -77,6 +77,8 @@ Bink call" and no "the HUD has drawn for 1 s" line should appear during a pause 
 On 2026-10-28, builds v2 to v5, with an Xbox pad for the gamepad steps; v6 changed only the build. On 2026-10-29, the
 v7 code before the rename passed the full sheet with keyboard and mouse and with an Xbox pad, and Start in gameplay
 stayed vanilla. The renamed `LE1MelePause.asi` passed it with keyboard and mouse; the gamepad steps were not rerun.
+The v8 file from `LE1MelePause-v8.zip` passed the smoke sheet with keyboard and mouse and with a gamepad: Esc and
+Start in conversations and cutscenes, the travel movie paused with Start and resumed with A, photo mode with Y and F7.
 
 | Area | Result |
 |---|---|
@@ -94,7 +96,9 @@ movie, a PlayStation pad, and a skippable fullscreen movie.
 ### LE2
 
 On 2026-10-29, the v7 build, with photo mode and the movie pause off, passed the
-[LE2 sheet](games/LE2.md#sheet-for-a-first-run) with keyboard and mouse and with a gamepad, over three runs.
+[LE2 sheet](games/LE2.md#sheet-for-a-first-run) with keyboard and mouse and with a gamepad, over three runs. The v8 file
+from `LE2MelePause-v8.zip` passed it again with keyboard and mouse (conversation, cutscene, Space resume, Esc vanilla
+elsewhere) and with the gamepad's Start and A.
 
 | Area | Result |
 |---|---|
@@ -105,5 +109,5 @@ On 2026-10-29, the v7 build, with photo mode and the movie pause off, passed the
 | Console | Opening it hides the pause screen at once. Esc or the console key closes it, and the pause holds. |
 | Y and F7 | Vanilla. |
 
-Not covered yet: the Kasumi DLC's montage ([games/LE2.md](games/LE2.md#open-questions), question 2), a PlayStation pad,
-and the build `package.sh` makes.
+Not covered yet: the Kasumi DLC's montage ([games/LE2.md](games/LE2.md#open-questions), question 2) and a PlayStation
+pad.

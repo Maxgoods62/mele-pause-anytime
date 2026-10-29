@@ -1,10 +1,9 @@
 # MelePause in LE2
 
-Status: runs, not released. `./build.sh --game LE2` builds `LE2MelePause.asi` from the same sources as LE1, against
-LE2's SDK, with photo mode and the movie pause off. On 2026-10-29 the v7 build passed the sheet below with keyboard and
-mouse and with a gamepad ([testing.md](../testing.md#tested-so-far)). LE2 is not a released game (`RELEASED_GAMES` in
-`scripts/games.sh`): a plain `./build.sh` or `./package.sh` leaves it out, and `package.sh` has no `README.txt` text for
-it.
+Status: from v8, LE2 is in `RELEASED_GAMES` (`scripts/games.sh`), so a plain `./build.sh` or `./package.sh` covers it.
+`./build.sh --game LE2` builds `LE2MelePause.asi` from the same sources as LE1, against LE2's SDK, with photo mode and
+the movie pause off. On 2026-10-29 the v7 build passed the sheet below with keyboard and mouse and with a gamepad
+([testing.md](../testing.md#le2)).
 
 ## What the build has
 
@@ -14,7 +13,7 @@ it.
 | Pause screen, and the Canvas banner where it cannot draw | compiled in | on |
 | Movie pause (`MELEPAUSE_MOVIES`) | off: `Bink::Install` is not called, and Esc and Start in a movie stay the game's | on |
 | Photo mode under the pause (`MELEPAUSE_PHOTO`) | off: `PhotoOff.cpp`. Y and F7 stay the game's, and the pause screen offers no photo key | on |
-| File | `LE2MelePause.asi`, Windows version `7.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `7.0.4.0` |
+| File | `LE2MelePause.asi`, Windows version `8.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `8.0.4.0` |
 
 Why the two switches are off:
 
@@ -79,13 +78,14 @@ The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` 
 - S6, Y and F7 under the pause. They do what they do in the vanilla game, and the log has no line for them.
 - S7, the log. At start: "movie pause: not in the LE2 build" and no Bink line; "photo mode under the pause: not in the
   LE2 build" and no input, GUI tick or GUI sound hook line; "overlay: swap chain hooks Present true ..."; a line that
-  ends in "LE2MelePause 7 ready". At the first frame, "first BioHUD.PostRender" with the same controller for the HUD
-  owner and GEngine. Each press: "Esc pressed: mode 5 (Conversation)" and the like, with LE2's mode names.
+  ends in "LE2MelePause N ready" (N is `ASI_VERSION`). At the first frame, "first BioHUD.PostRender" with the same
+  controller for the HUD owner and GEngine. Each press: "Esc pressed: mode 5 (Conversation)" and the like, with LE2's
+  mode names.
 
 ## Open questions
 
-1. The HUD over a fullscreen movie. Does `BioHUD.PostRender` stop there? The movie pause's test for a fullscreen movie
-   rests on it, so this matters once LE2 has the movie pause.
+1. The HUD over a fullscreen movie. Does `BioHUD.PostRender` stop there? LE1's movie pause tells a fullscreen movie by
+   that silence.
 2. Movies in Matinee. The Kasumi DLC (`DLC_HEN_MT`: `Montage_1.bik` and others) and `DLC_METR_Patch01` play movies from
    a Matinee track, `SFXInterpTrackMovieBink` (`SFXGame_classes.hpp:15489`). Kismet's `BioSeqAct_MovieBink` turns Movie
    mode on, so Esc stays the game's there; whether this track does is unknown. If it does not, the mode stays Cinematic,

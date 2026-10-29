@@ -3,6 +3,23 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## v8 (unreleased)
+
+Games: LE1, LE2
+
+LE2 gets its own file, `LE2MelePause.asi`. In LE1 the ASI does the same as v7.
+
+- In LE2, Esc or Start pauses a conversation or an in-engine cutscene with the game's world pause, and Esc, Start, Space
+  or A resumes it, under the same pause screen as in LE1. Everywhere else Esc and Start keep their vanilla jobs.
+- LE2 lets Esc skip a skippable cutscene. With MelePause, Esc pauses it instead; Space, or a gamepad's X, still skips it
+  when nothing is paused. The skips are held back while a press that paused or resumed is down, and for a quarter
+  second after its release.
+- Not in LE2: the movie pause (LE2's movies play their sound through Wwise, which a Bink pause does not stop) and photo
+  mode under the pause. Fullscreen movies, Y and F7 keep their vanilla jobs ([docs/games/LE2.md](docs/games/LE2.md)).
+- `./build.sh` and `./package.sh` cover LE1 and LE2 by default, so `./build.sh --install` also copies into ME2, and
+  stops before building when ME2 has no ASI loader. To install LE1 alone, name `--game LE1`, or set `MELE_GAMES=LE1`.
+- `package.sh` also writes `dist/LE2MelePause-v8.zip`.
+
 ## v7 (unreleased)
 
 Games: LE1

@@ -1,26 +1,26 @@
 # MelePause
 
-MelePause is an ASI plugin for Mass Effect 1 in the Legendary Edition (LE1), installed as `LE1MelePause.asi`. Esc, or
-Start on a gamepad, pauses a conversation, an in-engine cutscene or a fullscreen movie such as the galaxy map's travel
-movie, and the same key resumes it. While the game is paused, the picture is blurred and darkened under a pause screen.
-In a paused conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot. Everywhere
-else these keys do what they always did.
+MelePause is an ASI plugin for Mass Effect 1 and Mass Effect 2 in the Legendary Edition (LE1 and LE2), installed as
+`LE1MelePause.asi` and `LE2MelePause.asi`. Esc, or Start on a gamepad, pauses a conversation or an in-engine cutscene,
+and in LE1 a fullscreen movie such as the galaxy map's travel movie, and the same key resumes it. While the game is
+paused, the picture is blurred and darkened under a pause screen. In LE1, in a paused conversation or cutscene, a
+gamepad's Y or F7 opens the game's photo mode on the paused shot. Everywhere else these keys do what they always did.
 
-Version 7 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
+Version 8 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
 it from source and copy it into the game ([Install](#install)).
 
 ## Games
 
 | Feature | LE1 | LE2 | LE3 |
 |---|---|---|---|
-| Esc pauses a conversation, an in-engine cutscene or a fullscreen movie | since v2 | no | no |
-| Start on a gamepad does the same | since v3 | no | no |
+| Esc pauses a conversation or an in-engine cutscene | since v2 | since v8 | no |
+| Esc pauses a fullscreen movie | since v2 | no | no |
+| Start on a gamepad pauses what Esc pauses | since v3 | since v8 | no |
 | Photo mode on the paused shot (Y or F7) | since v4 | no | no |
-| Pause screen; Space and A resume | since v5 | no | no |
+| Pause screen; Space and A resume | since v5 | since v8 | no |
 
-LE2 and LE3 are not supported, and `LE1MelePause.asi` belongs in ME1's ASI folder only. The sources also build
-`LE2MelePause.asi`, without the movie pause and photo mode. It has passed the test sheet once but is not released
-([docs/games/LE2.md](docs/games/LE2.md)).
+LE3 is not supported. Each game has its own file, for its own ASI folder: `LE1MelePause.asi` for ME1,
+`LE2MelePause.asi` for ME2. The sections below describe LE1; [In LE2](#in-le2) says what differs there.
 
 ## What Esc and Start do
 
@@ -44,6 +44,18 @@ Esc and Space are held back, so the press that resumes never skips as well.
 
 The pause is the game's own world pause, the one the `pause` console command sets. The pause menu and photo mode use a
 lighter pause, under which a conversation's clock and the music keep running.
+
+## In LE2
+
+- Esc or Start pauses a conversation or an in-engine cutscene, with the same world pause and pause screen as in LE1.
+  Esc, Start, Space or A resumes it.
+- LE2 lets Esc skip a skippable cutscene. With MelePause, Esc pauses it instead; Space, or a gamepad's X, still skips it
+  when nothing is paused.
+- Fullscreen movies do not pause: Esc and Start do there what they do in the vanilla game. LE2's movies play their
+  sound through Wwise, which MelePause's Bink pause does not stop.
+- There is no photo mode under the pause. Y and F7 keep their vanilla job, and the pause screen shows no photo mode key.
+
+The details, and the open questions: [docs/games/LE2.md](docs/games/LE2.md).
 
 ## Photo mode
 
@@ -78,9 +90,9 @@ happens when the swap chain cannot be hooked, when the overlay fails to start or
 
 ## Requirements
 
-- Mass Effect Legendary Edition. MelePause supports ME1 (LE1) only ([Games](#games)).
+- Mass Effect Legendary Edition. MelePause supports LE1 and LE2 ([Games](#games)).
 - An ASI loader: [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy), the `bink2w64.dll` proxy that loads every
-  `.asi` file in `Game\ME1\Binaries\Win64\ASI`. ME3Tweaks Mod Manager installs it with any mod.
+  `.asi` file in `Game\ME<n>\Binaries\Win64\ASI`, one per game. ME3Tweaks Mod Manager installs it with any mod.
 - The [Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), 14.50 or newer, and no older
   than the MSVC tools that built your copy. MelePause is built with Visual Studio 2026 against the shared runtime
   (`MSVCP140.dll`, `VCRUNTIME140.dll`), and an older `msvcp140.dll` can make it crash.
@@ -89,32 +101,35 @@ MelePause needs no other mod, MeleBridge included.
 
 ## Install
 
-No prebuilt `LE1MelePause.asi` is published yet. A build compiles in code from LExSDKv2 and LExASIs, which publish no
+No prebuilt MelePause is published yet. A build compiles in code from LExSDKv2 and LExASIs, which publish no
 license, so a download waits for their authors' permission, or for ME3Tweaks to build MelePause for its ASI Manager.
 Until then, build it yourself: [BUILDING.md](BUILDING.md).
 
 Close the game, then install it one of two ways:
 
-- `./build.sh --install` builds `LE1MelePause.asi` and copies it into the game's ASI folder. It checks first that the
-  ASI loader is there and that `MassEffect1.exe` is not running, and builds nothing when one of them fails.
-- A copy by hand does the same: put `LE1MelePause.asi` from `dist/` (or your `MELE_STAGE`) into
-  `<LE folder>\Game\ME1\Binaries\Win64\ASI\`.
+- `./build.sh --install` builds `LE1MelePause.asi` and `LE2MelePause.asi` and copies each into its game's ASI folder.
+  It checks first, for each game, that the ASI loader is there and that the game is not running, and builds nothing
+  when a check fails. To install one game alone, name it: `./build.sh --game LE1 --install`.
+- A copy by hand does the same: put `LE<n>MelePause.asi` from `dist/` (or your `MELE_STAGE`) into
+  `<LE folder>\Game\ME<n>\Binaries\Win64\ASI\`, LE1's into ME1's and LE2's into ME2's.
 
 `<LE folder>` is the Legendary Edition folder, the one that holds `Game`. To update, build again and install again: the
 file name carries no version, so the new copy replaces the old one.
 
-Versions 6 and older were called `MelePause.asi`. `./build.sh --install` deletes that file from the ASI folder. After a
+Versions 6 and older, for LE1 only, were called `MelePause.asi`. `./build.sh --install` deletes that file from ME1's ASI
+folder. After a
 copy by hand, delete it yourself: while it is there, the ASI loader loads both files, the old version runs and
 `LE1MelePause.asi` stays off.
 
-To check that it loaded, start the game and open `<LE folder>\Game\ME1\Binaries\Win64\Logs\MelePause.log`. It has a line
-that ends in `LE1MelePause 7 ready`. A line that ends in `MelePause 6 ready`, or an older number, means that the old
-`MelePause.asi` is still in the ASI folder.
+To check that it loaded, start the game and open `<LE folder>\Game\ME<n>\Binaries\Win64\Logs\MelePause.log`. It has a
+line that ends in `LE<n>MelePause 8 ready`. In LE1, a line that ends in `MelePause 6 ready`, or an older number, means
+that the old `MelePause.asi` is still in the ASI folder.
 
 ## Uninstall
 
-With the game closed, run `./build.sh --uninstall`, or delete `LE1MelePause.asi` from
-`<LE folder>\Game\ME1\Binaries\Win64\ASI\`. `--uninstall` also deletes an old `MelePause.asi` there. The log,
+With the game closed, run `./build.sh --uninstall` (or `--game LE1 --uninstall` for one game), or delete
+`LE<n>MelePause.asi` from `<LE folder>\Game\ME<n>\Binaries\Win64\ASI\`. `--uninstall` also deletes an old
+`MelePause.asi` in ME1's. The log,
 `Logs\MelePause.log` in `Binaries\Win64`, stays; delete it too if you like.
 
 ## Compatibility

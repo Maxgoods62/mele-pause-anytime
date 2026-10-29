@@ -3,7 +3,7 @@
 # HERE (the repo) and die().
 
 # What a build or a package covers when neither --game nor MELE_GAMES names a game.
-RELEASED_GAMES=(LE1)
+RELEASED_GAMES=(LE1 LE2)
 
 # game_info LE<n> sets GAME_ME (the game's folder under Game), GAME_EXE (its executable), GAME_ASI (our file in its
 # Binaries\Win64\ASI folder) and GAME_LEGACY (the file name of v6 and older there, which build.sh deletes; or empty).
@@ -52,6 +52,14 @@ Start on a gamepad, pauses a conversation, an in-engine cutscene or a fullscreen
 the galaxy map's travel movie, and Esc, Start, Space or A resumes it. While the game is paused,
 the picture is blurred and darkened under a pause screen. In a paused conversation or cutscene,
 a gamepad's Y or F7 opens the game's photo mode on the paused shot.
+EOF
+            ;;
+        LE2) cat <<'EOF'
+LE2MelePause.asi is an ASI plugin for Mass Effect 2 in the Legendary Edition (LE2). Esc, or
+Start on a gamepad, pauses a conversation or an in-engine cutscene, and Esc, Start, Space or A
+resumes it. While the game is paused, the picture is blurred and darkened under a pause screen.
+In a skippable cutscene, Esc pauses instead of skipping it: Space, or X on a gamepad, still
+skips. Fullscreen movies do not pause, and there is no photo mode under the pause in LE2.
 EOF
             ;;
         *) return 1 ;;
