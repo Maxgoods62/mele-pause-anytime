@@ -3,5 +3,6 @@ obj/
 dist/
 .vs/
 *.user
-.claude/settings.local.json
+.mcp.json
+.claude/
 build.env

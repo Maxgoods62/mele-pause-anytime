@@ -1,0 +1,45 @@
+name: Bug report
+description: Something goes wrong in the game with MelePause installed.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what the game did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Where in the game (mission, conversation, cutscene or movie) and the keys or buttons you pressed.
+      placeholder: |
+        1. Start the conversation with ...
+        2. Press Esc
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MelePause version
+      description: The number in the log line that ends in "MelePause N ready".
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Game, other ASIs and mods
+      description: >-
+        Steam or EA app, and the game version if you know it. The other files in
+        `Game\ME1\Binaries\Win64\ASI`, your other mods, and keyboard or which gamepad.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file
+      description: >-
+        Attach `Logs\MelePause.log` from `<LE folder>\Game\ME1\Binaries\Win64` (drag it here).
+        MelePause rewrites it each time the game starts, so copy it before you start the game again.

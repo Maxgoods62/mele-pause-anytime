@@ -31,6 +31,7 @@ The result is `dist/MelePause.asi`, with its `MelePause.pdb`. To install it, see
 | `./build.sh` | Builds and stages `MelePause.asi` and `MelePause.pdb` in `MELE_STAGE`. |
 | `./build.sh --install` | Builds, stages, then copies `MelePause.asi` into `Game\ME1\Binaries\Win64\ASI` of the game. Refuses while `MassEffect1.exe` runs ("built, not installed"). |
 | `./build.sh --uninstall` | Removes `MelePause.asi` from that folder. Refuses while `MassEffect1.exe` runs. Builds nothing and needs no Visual Studio. |
+| `./package.sh` | Builds into `dist/stage`, then writes `dist/MelePause-v<N>.zip` (the `.asi`, a `README.txt` and the license texts) and `dist/SHA256SUMS`. Needs `python3`. The zip is not to be published yet (see [THIRD_PARTY.md](THIRD_PARTY.md)). |
 
 The game check uses `tasklist.exe`, and a failed `tasklist` counts as "running". `--install` copies into the existing
 `ASI` folder, which the ASI loader uses; install the loader first.
