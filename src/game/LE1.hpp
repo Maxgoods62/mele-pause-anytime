@@ -36,4 +36,18 @@ namespace MelePause::Game
     {
         return pc != nullptr ? pc->GameModeManager : nullptr;
     }
+
+    /// Every movie carries its sound in its .bik, which BinkPause stops: no Wwise event to pause, no list of Bink-audio
+    /// movies to keep.
+    inline constexpr MoviePolicy Movies = MoviePolicy::Bink;
+    inline constexpr std::array<char const*, 0> BinkAudioMovies{};
+    inline constexpr std::array<char const*, 0> MovieLanguages{};
+
+    /// The engine's movie input is not hooked (MovieInput::Install does nothing for 0): the travel movie's pause works
+    /// without.
+    inline constexpr unsigned long long MovieInputRva = 0;
+    inline constexpr std::array<unsigned char, 0> MovieInputStart{};
+
+    /// Under MoviePolicy::Bink no Kismet movie action is read: none (LE1's BioSeqAct_MovieBink has no Wwise event).
+    inline bool MovieActionOf(UObject*, MovieAction&) { return false; }
 }

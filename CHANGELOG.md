@@ -3,6 +3,24 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## v9 (unreleased)
+
+Games: LE1, LE2
+
+LE2 gets the movie pause. In LE1 the ASI does the same as v8.
+
+- In LE2, Esc or Start pauses a fullscreen movie whose sound MelePause knows, and Esc, Start, Space or A resumes it,
+  under the pause screen. Its sound is the Wwise event that the movie's Kismet action starts beside the picture:
+  MelePause pauses and resumes that event with the picture, through the game's own `ExecuteActionOnEvent`. The sound is
+  known when that action starts nothing else that may make a sound beside the movie: 71 of the 117 actions with an
+  event, the mass relay jump among them. Any other movie keeps vanilla Esc and Start.
+- LE2's engine skips a skippable movie on the press of Esc or Start before any script sees it. MelePause hooks that
+  native input, after checking the game's code: in a movie it can pause, Esc and Start pause instead, and no key skips
+  a paused movie. On another build of the game the hook is left out and the log says so.
+- In LE2, Space and a gamepad's X skip a fullscreen movie the game lets you skip. Their `SkipMovie` binding does nothing
+  in the vanilla game.
+- `package.sh` writes `dist/LE1MelePause-v9.zip` and `dist/LE2MelePause-v9.zip`.
+
 ## v8 (unreleased)
 
 Games: LE1, LE2

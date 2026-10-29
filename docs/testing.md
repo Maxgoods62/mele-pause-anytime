@@ -111,3 +111,16 @@ elsewhere) and with the gamepad's Start and A.
 
 Not covered yet: the Kasumi DLC's montage ([games/LE2.md](games/LE2.md#open-questions), question 2) and a PlayStation
 pad.
+
+On 2026-10-30 a test build of the LE2 movie pause (v9's code, still numbered 8) passed S3 of the
+[LE2 sheet](games/LE2.md#sheet-for-a-first-run) with keyboard and mouse and with a gamepad.
+
+| Area | Result |
+|---|---|
+| Relay jump (`GLO_01_Relay`) | Esc and Start pause the picture and the whoosh together, and resume them in sync (Wwise pause and resume: AKRESULT 1). Five pauses in one jump and a 15 s hold, with no offset. Space does nothing: the game does not let this movie skip. |
+| Citadel arrival (`CitHub_Arrival`) | Esc and Start pause and resume it, with no skip. Space and X skip it, and no sound plays on. Under the pause, X and Enter skip nothing; Space and A resume. |
+| Log | "movie input hooked" at start; "kept from the engine's movie input" for each Esc and Start press; "given to the engine's movie input as Enter" for Space and X. |
+
+Not covered yet: a movie with no known sound (Esc must skip it as in the vanilla game), the Prologue's FirstFlight
+movie (level music plays beside it) and `visionavi` (Bink audio). The same build passed S3 in LE1 (the travel movie):
+Esc paused it, Start resumed it after 8 s, Start paused it and A resumed it, twice, with no movie-input hook line.

@@ -3,11 +3,18 @@
 #include "Common/Base.hpp"
 
 #include <atomic>
+#include <span>
+#include <string>
 
-// What Pause.cpp, Overlay.cpp and Bink.cpp ask of each other. No game class here: Overlay.cpp and Bink.cpp include only
-// this file, so they build the same against every game's SDK.
+// What Pause.cpp, Overlay.cpp, Bink.cpp and MovieSound.cpp ask of each other. No game class here: the last three include
+// only this file, so they build the same against every game's SDK.
 namespace MelePause
 {
+    /// Where a game's fullscreen movies keep their sound (game/LE<n>.hpp's Game::Movies). Bink: in the .bik, which BinkPause
+    /// stops (LE1). BinkAndEvent: mostly in a Wwise event that a Kismet BioSeqAct_MovieBink posts beside the picture, which
+    /// MovieSound pauses beside BinkPause; only a few movies carry Bink audio (LE2).
+    enum class MoviePolicy : unsigned char { Bink, BinkAndEvent };
+
     // ! Pause.cpp
     // ========================================
 
@@ -61,8 +68,12 @@ namespace MelePause
     namespace Bink
     {
         /// Hooks the Bink 2 exports. A missing module or export is logged and turns the movie pause off; the world pause works
-        /// without it.
-        void Install(::LESDK::Initializer& Init);
+        /// without it. Under BinkAndEvent a fullscreen movie takes the pause keys only if we know its sound: the Wwise event
+        /// of the Kismet movie action latched for it (MovieSound), or its own Bink audio (<paramref name="binkAudio"/>: base
+        /// names, no folder or .bik). Any other keeps vanilla Esc and Start. A localized movie's file adds one of
+        /// <paramref name="languages"/> to the action's name (Opening_SunMid_INT.bik for Opening_SunMid).
+        void Install(::LESDK::Initializer& Init, MoviePolicy policy, std::span<char const* const> binkAudio,
+                     std::span<char const* const> languages);
 
         /// Movies opened (or first seen) since Install and not closed yet.
         int OpenMovies();
@@ -98,5 +109,61 @@ namespace MelePause
 
         /// Game thread (SkipMovie, the HUD drawing again, a fault): every movie we paused resumes at its next call.
         void RequestResume(char const* why);
+    }
+
+    // ! MovieInput.cpp
+    // ========================================
+
+    namespace MovieInput
+    {
+        /// Hooks the engine's movie input (the movie player's native InputKey, at <paramref name="rva"/> of the game's exe,
+        /// once its first bytes are <paramref name="start"/>), which takes a press ahead of Console.InputKey and skips a
+        /// movie the game lets skip on it. Esc and Start then reach Console.InputKey while the pause keys are the movies'
+        /// (Bink::OwnsKeys), no press skips a movie under our pause, and Space and X skip as Enter does. Nothing for an rva
+        /// of 0; another build of the game gets a warning, not a patch.
+        void Install(::LESDK::Initializer& Init, unsigned long long rva, std::span<unsigned char const> start);
+    }
+
+    // ! MovieSound.cpp
+    // ========================================
+
+    namespace MovieSound
+    {
+        /// Under BinkAndEvent only (Bink::Install): finds AK::SoundEngine::ExecuteActionOnEvent and GetIDFromString among the
+        /// game exe's exports. A missing one is logged; without ExecuteActionOnEvent no movie has a known sound.
+        void Install();
+
+        /// ExecuteActionOnEvent was found.
+        bool Ready();
+
+        /// What the game thread latched at the latest BioSeqAct_MovieBink.Activated: the movie that action plays (its
+        /// m_sMovieName), the id of the Wwise event it posts beside it (0: none), and whether its Kismet runs more beside
+        /// the movie than that event (an op on its Out or HasStarted output, or the Matinee that starts it): then its sound
+        /// is not known. An empty Movie: nothing latched.
+        struct Latched
+        {
+            std::string Movie;
+            unsigned Id = 0;
+            bool Beside = false;
+        };
+
+        /// Game thread, at BioSeqAct_MovieBink.Activated.
+        void Latch(std::string movie, unsigned id, bool beside);
+
+        /// Game thread, at BioSeqAct_MovieBink.Deactivated: clears the latch if it is that movie's. False when it was not
+        /// (another movie's latch is kept, or nothing was latched).
+        bool Unlatch(std::string const& movie);
+
+        /// Any thread: a copy of the latch.
+        Latched Current();
+
+        /// Any thread, for the logs: GetIDFromString of the name (Wwise's ids are the FNV-1 hash of the lowercased name),
+        /// 0 without the export.
+        unsigned Hash(char const* name);
+
+        /// Any thread: pauses or resumes, at once (no fade), what the event's Play actions play, on every game object. Wwise
+        /// applies it at its next audio frame. Returns the AKRESULT (1 is AK_Success), or 0 without the export. Calls no
+        /// ProcessEvent: safe on a movie's thread.
+        int Set(unsigned id, bool pause);
     }
 }

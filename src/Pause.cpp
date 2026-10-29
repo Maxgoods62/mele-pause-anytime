@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <format>
 #include <iterator>
 #include <string>
 #include <string_view>
@@ -22,7 +23,8 @@
 // through Steam Input) does what Esc does; during a fullscreen movie its press is taken by the engine too, and what reaches
 // Console.InputKey of it (its repeats, its release) toggles the movie pause from here. Under our world pause, a gamepad's Y
 // or F7 opens the game's photo mode over it, and closes it again (so do Esc and Start). Anywhere else these keys keep their
-// vanilla behavior. Everything here runs on the game thread, inside the ProcessEvent calls it reacts to.
+// vanilla behavior. Everything here runs on the game thread, inside the ProcessEvent calls it reacts to. Where a movie's
+// sound is a Wwise event (MoviePolicy::BinkAndEvent), the Kismet movie action that starts it is latched here for Bink.cpp.
 namespace MelePause
 {
     namespace
@@ -667,6 +669,50 @@ namespace MelePause
             return ours != nullptr;
         }
 
+        // ! Kismet movie actions
+        // ========================================
+
+        /// BioSeqAct_MovieBink.Activated and Deactivated, under BinkAndEvent: the movie a Kismet action plays and the id of the
+        /// Wwise event it posts beside the picture are latched for Bink.cpp, which pauses that event with the movie; its
+        /// Deactivated clears them, unless another movie's action was latched since. The line cross-checks the id with
+        /// GetIDFromString of the event's lowercased name.
+        void LatchMovie(UObject* object, bool activated)
+        {
+            MovieAction action;
+            if (!MovieActionOf(object, action)) return;
+            auto const movie = action.Movie != nullptr ? ToUtf8(std::wstring_view(action.Movie->Chars(), action.Movie->Length())) : std::string{};
+            if (!activated)
+            {
+                LEASI_INFO("movie event {}: {} (Deactivated), {}, thread {}", MovieSound::Unlatch(movie) ? "cleared" : "not cleared, the latch is not this movie's",
+                           movie, PathOf(object), GetCurrentThreadId());
+                LEASI_FLUSH();
+                return;
+            }
+            MovieSound::Latch(movie, action.EventId, action.Beside != nullptr);
+            std::string check = "no Wwise event";
+            if (action.Event != nullptr)
+            {
+                auto event = NameText(action.Event->Name);
+                for (auto& c : event)
+                {
+                    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+                }
+                auto const hash = MovieSound::Hash(event.c_str());
+                check = hash == 0 ? std::format("no hash of {}: the exe exports no GetIDFromString", NameText(action.Event->Name))
+                                  : std::format("hash of {} {}{}", NameText(action.Event->Name), hash, hash == action.EventId ? "" : ": DIFFERS");
+            }
+            if (action.Beside != nullptr)
+            {
+                auto const via = action.Via == L"Matinee"      ? std::string{ "a Matinee's event track starts it:" }
+                               : action.Via == L"Conversation" ? std::string{ "a conversation line starts it:" }
+                               : action.Via == L"Beside"       ? std::string{ "it starts with" }
+                                                               : std::format("its {} output starts", ToUtf8(action.Via));
+                check += std::format("; its sound is not known: {} {}", via, PathOf(action.Beside));
+            }
+            LEASI_INFO("movie event latched: {} id {} ({}), {}, thread {}", movie, action.EventId, check, PathOf(object), GetCurrentThreadId());
+            LEASI_FLUSH();
+        }
+
         // ! Banner
         // ========================================
 
@@ -854,6 +900,18 @@ namespace MelePause
 
         void ResumeWorldEntry(void*) { ResumeWorld("fault"); }
 
+        struct MovieCall
+        {
+            UObject* Action;
+            bool Activated;
+        };
+
+        void LatchMovieEntry(void* context)
+        {
+            auto const c = static_cast<MovieCall*>(context);
+            LatchMovie(c->Action, c->Activated);
+        }
+
         struct TickCall
         {
             ABioPlayerController* Pc;
@@ -919,6 +977,18 @@ namespace MelePause
             {
                 orig(Context, Function, Parms, Result);
                 return;
+            }
+
+            // Before the original: the movie its Activated starts finds the latch in place.
+            if constexpr (Game::Movies == MoviePolicy::BinkAndEvent)
+            {
+                static SFXName const Activated{ L"Activated", 0 };
+                static SFXName const Deactivated{ L"Deactivated", 0 };
+                if (Function->Name == Activated || Function->Name == Deactivated)
+                {
+                    MovieCall call{ Context, Function->Name == Activated };
+                    if (!Guarded(LatchMovieEntry, &call)) LEASI_ERROR("access violation while reading a Kismet movie action: nothing latched or cleared");
+                }
             }
 
             static SFXName const InputKey{ L"InputKey", 0 };

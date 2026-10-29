@@ -4,7 +4,9 @@
 #include <cstring>
 #include <format>
 #include <mutex>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Bink 2 movies (the galaxy map's travel movies, ...) keep playing under the world pause: Esc pauses them with BinkPause
@@ -24,6 +26,10 @@
 // can't be read here (XInput goes through the game, and Steam Input may stand in for it): the engine's movie input takes
 // its press too, but its repeats and its release reach Console.InputKey, where Pause.cpp toggles the same pause through
 // Toggle, on the game thread. Every movie logs its threads, how often each call comes, and whether it was a fullscreen one.
+// In LE2 (MoviePolicy::BinkAndEvent) most movies have no Bink audio: their sound is a Wwise event a Kismet movie action
+// posts beside the picture. There a fullscreen movie takes the pause keys only if we know its sound: the event latched for
+// it on the game thread, paused and resumed right after BinkPause (MovieSound.cpp), or Bink audio (the game's list). Any
+// other movie leaves Esc and Start to the game, which skips it.
 namespace MelePause::Bink
 {
     namespace
@@ -87,6 +93,8 @@ namespace MelePause::Bink
             HBINK Handle = nullptr;
             unsigned Serial = 0;
             std::string Name;
+            /// Name without its folder and .bik, in lower case (BaseName).
+            std::string Base;
             unsigned int Flags = 0;
             DWORD OpenThread = 0;
             ULONGLONG OpenedAt = 0;
@@ -106,6 +114,11 @@ namespace MelePause::Bink
             /// The latest hooked call of any kind: a pause whose movie stopped calling is dropped.
             ULONGLONG LastCallAt = 0;
 
+            /// BinkAndEvent: the Wwise event paused with the picture, taken when the pause was asked (0: none, Bink audio);
+            /// SoundPaused once its pause was sent, until its resume is.
+            unsigned SoundId = 0;
+            bool SoundPaused = false;
+
             Counter Waits;
             Counter Frames;
             Counter AsyncFrames;
@@ -122,6 +135,11 @@ namespace MelePause::Bink
         std::atomic<bool> Wanted{ false };
         /// BinkPause, BinkWait's hook and BinkClose's are there.
         std::atomic<bool> CanPause{ false };
+        /// Set by Install before any hook, under Lock: read under it. The Bink-audio movies as BaseName gives them.
+        MoviePolicy Policy = MoviePolicy::Bink;
+        std::vector<std::string> BinkAudio;
+        /// The language suffixes of localized movie files, in lower case, no underscore.
+        std::vector<std::string> Languages;
 
         /// Esc as the BinkWait polls see it, on whichever thread: under Lock.
         struct EscPoll
@@ -243,6 +261,30 @@ namespace MelePause::Bink
             return text;
         }
 
+        /// A movie's file name without its folder and .bik, in lower case: how a Kismet movie action and the Bink-audio list
+        /// name it (BinkOpen gets a path like ..\..\BioGame\Movies\GLO_01_Relay.bik).
+        std::string BaseName(std::string_view path)
+        {
+            auto const slash = path.find_last_of("\\/");
+            if (slash != std::string_view::npos) path.remove_prefix(slash + 1);
+            std::string base{ path };
+            for (auto& c : base)
+            {
+                if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+            }
+            if (base.size() > 4 && base.ends_with(".bik")) base.resize(base.size() - 4);
+            return base;
+        }
+
+        /// Under Lock. The file a Kismet movie action named, as BaseName gives both: the same name, or that name and one of
+        /// the game's language suffixes (opening_sunmid_int for opening_sunmid).
+        bool SameMovie(std::string_view named, std::string_view opened)
+        {
+            if (opened == named) return true;
+            if (opened.size() <= named.size() + 1 || !opened.starts_with(named) || opened[named.size()] != '_') return false;
+            return std::find(Languages.begin(), Languages.end(), opened.substr(named.size() + 1)) != Languages.end();
+        }
+
         /// Under Lock.
         Movie* Find(HBINK bink)
         {
@@ -267,6 +309,7 @@ namespace MelePause::Bink
             m.Handle = bink;
             m.Serial = Serial.fetch_add(1, std::memory_order_relaxed) + 1;
             m.Name = std::move(name);
+            m.Base = BaseName(m.Name);
             m.Flags = flags;
             m.OpenThread = GetCurrentThreadId();
             m.OpenedAt = now;
@@ -286,6 +329,50 @@ namespace MelePause::Bink
             return nullptr;
         }
 
+        /// A movie's sound as we know it.
+        struct Sound
+        {
+            /// The Wwise event that plays it; 0 for Bink audio, or when unknown.
+            unsigned Event = 0;
+            /// Why we don't know it, or null when we do.
+            char const* Unknown = nullptr;
+        };
+
+        /// Under Lock. Under Bink every movie carries Bink audio. Under BinkAndEvent its sound is known when the Kismet movie
+        /// action latched last plays this very movie and posts a Wwise event (its id is not 0), else when its base name is on
+        /// the game's Bink-audio list. The event comes first: a listed movie that has one too gets both paused.
+        Sound SoundOf(Movie const& m)
+        {
+            if (Policy == MoviePolicy::Bink) return {};
+            if (!MovieSound::Ready()) return { 0, "the exe exports no ExecuteActionOnEvent" };
+            auto const latched = MovieSound::Current();
+            auto const mine = !latched.Movie.empty() && SameMovie(BaseName(latched.Movie), m.Base);
+            if (mine && latched.Beside) return { 0, "its Kismet runs more beside it, see the latch line" };
+            if (mine && latched.Id != 0) return { latched.Id, nullptr };
+            if (std::find(BinkAudio.begin(), BinkAudio.end(), m.Base) != BinkAudio.end()) return {};
+            if (latched.Movie.empty()) return { 0, "no Kismet movie action latched" };
+            if (!mine) return { 0, "the latched Kismet movie action plays another movie" };
+            return { 0, "its Kismet movie action posts no Wwise event" };
+        }
+
+        /// Under Lock. Why Esc wouldn't pause the movie, or null: NotFullscreen's reasons, and under BinkAndEvent a sound we
+        /// don't know (the movie is then the game's: Esc skips it).
+        char const* NotPausable(Movie const& m, ULONGLONG now, ULONGLONG hud)
+        {
+            if (auto const why = NotFullscreen(m, now, hud); why != nullptr) return why;
+            return Policy == MoviePolicy::BinkAndEvent && SoundOf(m).Unknown != nullptr ? "no known sound" : nullptr;
+        }
+
+        /// Under Lock, under BinkAndEvent: the movie's sound and the latch, for its fullscreen line.
+        std::string SoundText(Movie const& m)
+        {
+            auto const sound = SoundOf(m);
+            auto const latched = MovieSound::Current();
+            auto const latch = latched.Movie.empty() ? std::string{ "nothing latched" } : std::format("latched '{}' event {}", latched.Movie, latched.Id);
+            if (sound.Unknown != nullptr) return std::format("no known sound ({}; {})", sound.Unknown, latch);
+            return sound.Event != 0 ? std::format("its sound is Wwise event {} ({})", sound.Event, latch) : std::format("its sound is Bink audio ({})", latch);
+        }
+
         /// Under Lock. The open movies, for the logs.
         std::string ListMovies(ULONGLONG now, ULONGLONG hud)
         {
@@ -294,7 +381,7 @@ namespace MelePause::Bink
             {
                 if (!text.empty()) text += ", ";
                 auto const waited = m.LastWaitAt != 0 ? std::format("BinkWait {} ms ago", Since(now, m.LastWaitAt)) : std::string{ "BinkWait never" };
-                auto const why = NotFullscreen(m, now, hud);
+                auto const why = NotPausable(m, now, hud);
                 auto const pending = m.Want && !m.Paused ? ", the pause not applied yet" : !m.Want && m.Paused ? ", the resume not applied yet" : "";
                 text += std::format("#{} '{}' ({}, {}, {}{})", m.Serial, m.Name, m.Paused ? "paused" : "playing", waited, why != nullptr ? why : "fullscreen",
                                     pending);
@@ -421,11 +508,14 @@ namespace MelePause::Bink
             Movie* target = nullptr;
             for (auto& m : Movies)
             {
-                if (NotFullscreen(m, now, hud) == nullptr && (target == nullptr || m.Serial > target->Serial)) target = &m;
+                if (NotPausable(m, now, hud) == nullptr && (target == nullptr || m.Serial > target->Serial)) target = &m;
             }
             if (target == nullptr) return false;
             target->Want = true;
             target->RequestedAt = now;
+            // The Wwise event to pause with it, as known now: the latch may change before the movie closes. A pause of it
+            // still unresumed keeps its id.
+            if (!target->SoundPaused) target->SoundId = SoundOf(*target).Event;
             Recount();
             LEASI_INFO("{}: movie pause asked: movie #{} '{}', applied at its next BinkWait; {}; open: {}", what, target->Serial, target->Name,
                        HudText(now, hud), movies);
@@ -464,7 +554,8 @@ namespace MelePause::Bink
             auto const now = GetTickCount64();
             auto const hud = HudSeen();
 
-            // Each movie says once that it is a fullscreen one; its close line says why it never was.
+            // Each movie says once that it is a fullscreen one (under BinkAndEvent, with what we know of its sound then: "no
+            // known sound" leaves it to the game); its close line says why it never was.
             if (auto const self = Find(bink); self != nullptr)
             {
                 self->LastCallAt = now;
@@ -473,8 +564,12 @@ namespace MelePause::Bink
                 else if (!self->Fullscreen)
                 {
                     self->Fullscreen = true;
-                    LEASI_INFO("movie #{} '{}' is a fullscreen movie {:.1f} s after its open (from a file, calling BinkWait, {}): Esc read on thread {} pauses it",
-                               self->Serial, self->Name, static_cast<double>(Since(now, self->OpenedAt)) / 1000.0, HudText(now, hud), ThreadText(thread));
+                    auto const pauses = std::format("Esc read on thread {} pauses it", ThreadText(thread));
+                    auto const what = Policy == MoviePolicy::Bink ? pauses
+                                    : SoundOf(*self).Unknown != nullptr ? std::format("{}: Esc and Start stay the game's", SoundText(*self))
+                                                                        : std::format("{}, {}", SoundText(*self), pauses);
+                    LEASI_INFO("movie #{} '{}' is a fullscreen movie {:.1f} s after its open (from a file, calling BinkWait, {}): {}", self->Serial, self->Name,
+                               static_cast<double>(Since(now, self->OpenedAt)) / 1000.0, HudText(now, hud), what);
                     LEASI_FLUSH();
                 }
             }
@@ -514,8 +609,9 @@ namespace MelePause::Bink
 
         /// Before each BinkWait, BinkDoFrame and BinkDoFrameAsync, on the thread that plays the movie: applies what Esc asked,
         /// a pause in BinkWait only, a resume in any of them. BinkPause is called outside the lock: the game thread may be
-        /// waiting for it (OwnsKeys, Toggle, RequestResume). The tick is read under the lock: RequestedAt may have been set by the
-        /// game thread while this one waited for it. Returns whether the movie is paused now.
+        /// waiting for it (OwnsKeys, Toggle, RequestResume). So is the movie's Wwise event, right after it, paused or resumed
+        /// once each way. The tick is read under the lock: RequestedAt may have been set by the game thread while this one waited
+        /// for it. Returns whether the movie is paused now.
         bool Apply(HBINK bink, Call call)
         {
             if (bink == nullptr) return false;
@@ -524,6 +620,7 @@ namespace MelePause::Bink
             unsigned serial = 0;
             std::string name;
             ULONGLONG requestedAt = 0;
+            unsigned sound = 0;
             {
                 std::scoped_lock lock{ Lock };
                 now = GetTickCount64();
@@ -546,13 +643,21 @@ namespace MelePause::Bink
                 serial = m->Serial;
                 name = m->Name;
                 requestedAt = m->RequestedAt;
+                if (pause ? m->SoundId != 0 && !m->SoundPaused : m->SoundPaused)
+                {
+                    sound = m->SoundId;
+                    m->SoundPaused = pause;
+                }
             }
 
             auto const result = BinkPause_fn.load(std::memory_order_acquire)(bink, pause ? 1 : 0);
+            // BinkPause doesn't stop a Wwise event: it goes right after, so the two stop and start as close together as can be.
+            auto const ak = sound != 0 ? MovieSound::Set(sound, pause) : 0;
+            auto const wwise = sound != 0 ? std::format("; Wwise {} {}: AKRESULT {}", pause ? "pause" : "resume", sound, ak) : std::string{};
             static char const* const Where[] = { "BinkWait", "BinkDoFrame", "BinkDoFrameAsync" };
-            LEASI_INFO("movie #{} '{}' {} in {} on thread {}, {} ms after the request: BinkPause returned {}, {}", serial, name,
+            LEASI_INFO("movie #{} '{}' {} in {} on thread {}, {} ms after the request: BinkPause returned {}, {}{}", serial, name,
                        pause ? "PAUSED" : "RESUMED", Where[static_cast<int>(call)], ThreadText(GetCurrentThreadId()), Since(now, requestedAt), result,
-                       FrameText(bink));
+                       FrameText(bink), wwise);
             LEASI_FLUSH();
             return pause;
         }
@@ -586,23 +691,40 @@ namespace MelePause::Bink
             if (Since(now, m->CountedSince) >= every) Report(*m, now, "report");
         }
 
+        /// A movie closed while its Wwise event is paused (a skip by the pad's X, its end) sends the resume nothing else would:
+        /// outside the lock, as Apply does.
         void Closed(HBINK bink)
         {
-            std::scoped_lock lock{ Lock };
-            auto const now = GetTickCount64();
-            auto const m = Find(bink);
-            if (m == nullptr)
+            unsigned sound = 0;
+            unsigned serial = 0;
+            std::string name;
             {
-                LEASI_INFO("BinkClose {} (not tracked), thread {}", bink, ThreadText(GetCurrentThreadId()));
-                return;
+                std::scoped_lock lock{ Lock };
+                auto const now = GetTickCount64();
+                auto const m = Find(bink);
+                if (m == nullptr)
+                {
+                    LEASI_INFO("BinkClose {} (not tracked), thread {}", bink, ThreadText(GetCurrentThreadId()));
+                    return;
+                }
+                Report(*m, now, "closing");
+                auto const fullscreen = m->Fullscreen ? std::string{ "it was a fullscreen movie" }
+                                                      : std::format("never a fullscreen movie ({})", m->NotFullscreenWhy != nullptr ? m->NotFullscreenWhy : "Esc never read in its BinkWait");
+                LEASI_INFO("movie #{} '{}' closed after {:.1f} s on thread {}, {}{}", m->Serial, m->Name, static_cast<double>(Since(now, m->OpenedAt)) / 1000.0,
+                           ThreadText(GetCurrentThreadId()), fullscreen, m->Want || m->Paused ? ": the movie pause ends with it" : "");
+                if (m->SoundPaused)
+                {
+                    sound = m->SoundId;
+                    serial = m->Serial;
+                    name = m->Name;
+                }
+                Movies.erase(Movies.begin() + (m - Movies.data()));
+                Recount();
+                LEASI_FLUSH();
             }
-            Report(*m, now, "closing");
-            auto const fullscreen = m->Fullscreen ? std::string{ "it was a fullscreen movie" }
-                                                  : std::format("never a fullscreen movie ({})", m->NotFullscreenWhy != nullptr ? m->NotFullscreenWhy : "Esc never read in its BinkWait");
-            LEASI_INFO("movie #{} '{}' closed after {:.1f} s on thread {}, {}{}", m->Serial, m->Name, static_cast<double>(Since(now, m->OpenedAt)) / 1000.0,
-                       ThreadText(GetCurrentThreadId()), fullscreen, m->Want || m->Paused ? ": the movie pause ends with it" : "");
-            Movies.erase(Movies.begin() + (m - Movies.data()));
-            Recount();
+            if (sound == 0) return;
+            auto const result = MovieSound::Set(sound, false);
+            LEASI_INFO("movie #{} '{}' closed paused: Wwise resume {} -> {}", serial, name, sound, result);
             LEASI_FLUSH();
         }
 
@@ -679,8 +801,16 @@ namespace MelePause::Bink
         }
     }
 
-    void Install(::LESDK::Initializer& Init)
+    void Install(::LESDK::Initializer& Init, MoviePolicy policy, std::span<char const* const> binkAudio,
+                 std::span<char const* const> languages)
     {
+        {
+            std::scoped_lock lock{ Lock };
+            Policy = policy;
+            for (auto const name : binkAudio) BinkAudio.push_back(BaseName(name));
+            for (auto const language : languages) Languages.push_back(BaseName(language));
+        }
+
         char const* moduleName = "bink2w64_original.dll";
         auto module = GetModuleHandleW(L"bink2w64_original.dll");
         if (module == nullptr)
@@ -692,6 +822,15 @@ namespace MelePause::Bink
         {
             LEASI_WARN("Bink: neither bink2w64_original.dll nor bink2w64.dll is loaded: movies can't be paused");
             return;
+        }
+
+        if (policy == MoviePolicy::BinkAndEvent)
+        {
+            MovieSound::Install();
+            std::string names;
+            for (auto const& name : BinkAudio) names += (names.empty() ? "" : ", ") + name;
+            LEASI_INFO("Bink: Esc and Start pause only a movie whose sound is known, a Wwise event latched for it or Bink audio ({}); any other stays the game's",
+                       names.empty() ? std::string{ "no movie" } : names);
         }
 
         BinkPause_fn.store(reinterpret_cast<t_BinkPause*>(GetProcAddress(module, "BinkPause")), std::memory_order_release);
@@ -725,7 +864,7 @@ namespace MelePause::Bink
         auto const now = GetTickCount64();
         DropStale(now);
         auto const hud = HudSeen();
-        return std::any_of(Movies.begin(), Movies.end(), [&](Movie const& m) { return m.Want || NotFullscreen(m, now, hud) == nullptr; });
+        return std::any_of(Movies.begin(), Movies.end(), [&](Movie const& m) { return m.Want || NotPausable(m, now, hud) == nullptr; });
     }
 
     bool Toggle(char const* what)

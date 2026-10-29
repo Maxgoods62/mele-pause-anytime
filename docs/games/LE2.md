@@ -1,9 +1,11 @@
 # MelePause in LE2
 
 Status: from v8, LE2 is in `RELEASED_GAMES` (`scripts/games.sh`), so a plain `./build.sh` or `./package.sh` covers it.
-`./build.sh --game LE2` builds `LE2MelePause.asi` from the same sources as LE1, against LE2's SDK, with photo mode and
-the movie pause off. On 2026-10-29 the v7 build passed the sheet below with keyboard and mouse and with a gamepad
-([testing.md](../testing.md#le2)).
+From v9 it has the movie pause.
+`./build.sh --game LE2` builds `LE2MelePause.asi` from the same sources as LE1, against LE2's SDK, with photo mode off
+and the movie pause limited to movies whose sound MelePause knows. On 2026-10-29 the v7 build
+passed the sheet below with keyboard and mouse and with a gamepad ([testing.md](../testing.md#le2)). On 2026-10-30 a test
+build of the movie pause passed S3 in the relay movie and the Citadel arrival ([testing.md](../testing.md#le2)).
 
 ## What the build has
 
@@ -11,15 +13,25 @@ the movie pause off. On 2026-10-29 the v7 build passed the sheet below with keyb
 |---|---|---|
 | Esc and Start pause a conversation or an in-engine cutscene; skip guard; Space and A resume | compiled in | on |
 | Pause screen, and the Canvas banner where it cannot draw | compiled in | on |
-| Movie pause (`MELEPAUSE_MOVIES`) | off: `Bink::Install` is not called, and Esc and Start in a movie stay the game's | on |
+| Movie pause (`MELEPAUSE_MOVIES`) | on for a movie whose sound MelePause knows (below); Esc and Start in any other movie stay the game's. Space and X skip a movie the game lets skip | on |
 | Photo mode under the pause (`MELEPAUSE_PHOTO`) | off: `PhotoOff.cpp`. Y and F7 stay the game's, and the pause screen offers no photo key | on |
-| File | `LE2MelePause.asi`, Windows version `8.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `8.0.4.0` |
+| File | `LE2MelePause.asi`, Windows version `9.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `9.0.4.0` |
 
-Why the two switches are off:
+Why the movie pause takes only some movies, and why photo mode is off:
 
 - Movie pause: 164 of the 166 movies in `BioGame\Movies` have no Bink audio track, and none of the DLC's 45 has one.
   Their sound is a Wwise event, which `BinkPause` does not stop: the picture would hold while the sound plays on. Only
-  `load_f01_a.bik` and `visionavi.bik` carry their own sound.
+  `load_f01_a.bik` and `visionavi.bik` carry their own sound. So a movie takes Esc and Start only when MelePause knows
+  its sound (`MoviePolicy::BinkAndEvent` in `src/game/LE2.hpp`): the Wwise event of the Kismet `BioSeqAct_MovieBink`
+  that plays it, paused with the exe's `AK::SoundEngine::ExecuteActionOnEvent` right after `BinkPause`, or Bink audio
+  (`visionavi`). Any other movie keeps vanilla Esc and Start: Esc skips a movie the game lets you skip.
+- A movie's sound is known when the Kismet action that plays it posts an event and runs nothing else beside the movie
+  that may make a sound (`MovieActionOf` in `src/game/LE2.hpp`): its `Out` and `HasStarted` outputs, the ops started at
+  the same moment, and the Matinee or conversation line whose event starts it. Of the 117 movie actions with an event,
+  71 pass, among them the relay jump and movies of the Citadel, Omega, Tuchanka and Illium hubs.
+- In LE2 the engine's movie input skips a skippable movie on Esc and Start, before MelePause sees the press, and Space
+  and X skip nothing ([Movie keys](#movie-keys)). `src/MovieInput.cpp` hooks that input: on a movie whose sound is
+  known, Esc and Start pause it, and Space and X skip a movie the game lets you skip, as Esc did.
 - Photo mode: `PhotoLE1.cpp` hooks five MassEffect1.exe natives by address and checks their first bytes against that
   executable. MassEffect2.exe's are not known. The file also uses names LE2's SDK does not have:
   `WorldInfo.GameTimeSeconds` (LE2's `WorldInfo` has `TimeSeconds` and `RealTimeSeconds`,
@@ -47,6 +59,27 @@ Where LE2's binds differ from what the shared code expects:
   `KEY_ESCAPE`; Start sends `BUTTON_START` (21, released 42) in both. The skip guard drops those four while a press
   MelePause took is down.
 
+### Movie keys
+
+From a read-only dump of the running MassEffect2.exe (its `.text` is encrypted on disk). RVAs are the exe's.
+
+| What | Where | What it does |
+|---|---|---|
+| `SFXGameModeMovie`'s binds | Escape and SpaceBar → `PC_MovieSkip`, pad X → `Console_MovieSkip` | Both run `SkipMovie`, which calls the static native `SFXEngine.SkipMovie`. |
+| `SFXEngine.SkipMovie` | `0xB3DCE0` | Calls slot 27 of the movie player (`GFullScreenMovie`, `0x1B652B0`), an empty function. In LE2, `SkipMovie` does nothing. |
+| The engine's movie input | `0x2334d0`, slot 5 of the Bink movie player's `FViewportClient` vtable (`0x101D3F8`) | Every key event reaches it before `Console.InputKey`. On a press (`IE_Pressed`) of Escape, Enter, LeftMouseButton, XboxTypeS_Back, XboxTypeS_A or XboxTypeS_Start (A and Start unless the movie's flags say not), it asks the player to stop the movie (slot 41 of its main vtable) and returns TRUE: `Console.InputKey` never sees that press. On any other key it returns FALSE and the key goes on. |
+| Which movies skip | `[FullScreenMovie] SkippableMovies` in Coalesced, 73 names | `GLO_01_Relay` is not among them. The movie input still takes its skip keys (the log shows Space-as-Enter taken), and the relay plays on: the list is checked after the input, where was not traced. |
+
+`src/MovieInput.cpp` hooks the movie input after checking its first 28 bytes (`Game::MovieInputRva`,
+`MovieInputStart`). On a press:
+
+- Esc or Start while the pause keys are the movies' (`Bink::OwnsKeys`): the original is not called and the hook returns
+  FALSE. The press goes on to `Console.InputKey`, where it pauses or resumes the movie. Before the hook, only Start's
+  repeats and release got there, and the movie's thread read Esc by itself.
+- Any key while MelePause's movie pause is on: the same, so no key skips a paused movie.
+- Space or X: the original is called with Enter in its place, so they skip what Esc skipped, and only that.
+- Anything else: the original, unchanged.
+
 Seen in the game:
 
 - The world pause holds the picture, voice, lips and music together, and they resume in sync. The pauser is the
@@ -68,24 +101,27 @@ The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` 
   photo key. Esc resumes at the same word, in sync. Then Start, with the A icon on the pause screen; A resumes.
 - S2, in-engine cutscene. The same. Esc and Space are the cutscene's skip keys in LE2: the Esc that pauses and the Space
   that resumes must not skip it. With nothing paused, Space and X skip a skippable cutscene as in the vanilla game.
-- S3, fullscreen movie. Esc and Start do what they do in the vanilla game (Esc skips a movie the game lets you skip),
-  and the world does not pause under the movie. In the Kasumi DLC's montage, note what Esc and Start do ([question
-  2](#open-questions)).
+- S3, fullscreen movie. In the relay jump and the Citadel arrival or departure, Esc pauses the picture and the sound
+  together and Esc resumes them in sync; the same with Start, and A resumes. Five pauses in one movie, and one held 15
+  s: no offset. Space and X skip the Citadel movie and do nothing in the relay jump. Under the pause, X, Enter and A
+  skip nothing. In a movie with no known sound ("no known sound" in its fullscreen line), Esc skips it as in the
+  vanilla game. The world never pauses under a movie. In the Kasumi DLC's montage, note what Esc and Start do
+  ([question 2](#open-questions)).
 - S4, gameplay. Esc and Start open the pause menu and close it.
 - S5, resume keys and the console. Pause with Esc and resume with Space, pause with Start and resume with A. With
   nothing paused, Space skips the line. Open the console during a pause: the pause screen hides, and Esc closes the
   console ("the console is open, vanilla" in the log).
 - S6, Y and F7 under the pause. They do what they do in the vanilla game, and the log has no line for them.
-- S7, the log. At start: "movie pause: not in the LE2 build" and no Bink line; "photo mode under the pause: not in the
-  LE2 build" and no input, GUI tick or GUI sound hook line; "overlay: swap chain hooks Present true ..."; a line that
+- S7, the log. At start: "Bink: ... hooked", "movie sound: the exe's AK::SoundEngine::ExecuteActionOnEvent at ...",
+  "movie input hooked"; "photo mode under the pause: not in the LE2 build" and no input, GUI tick or GUI sound hook line; "overlay: swap chain hooks Present true ..."; a line that
   ends in "LE2MelePause N ready" (N is `ASI_VERSION`). At the first frame, "first BioHUD.PostRender" with the same
   controller for the HUD owner and GEngine. Each press: "Esc pressed: mode 5 (Conversation)" and the like, with LE2's
   mode names.
 
 ## Open questions
 
-1. The HUD over a fullscreen movie. Does `BioHUD.PostRender` stop there? LE1's movie pause tells a fullscreen movie by
-   that silence.
+1. *Answered 2026-10-30: yes.* The HUD over a fullscreen movie. Does `BioHUD.PostRender` stop there? LE1's movie pause
+   tells a fullscreen movie by that silence. The relay and Citadel movies were fullscreen 0.2 s after their open.
 2. Movies in Matinee. The Kasumi DLC (`DLC_HEN_MT`: `Montage_1.bik` and others) and `DLC_METR_Patch01` play movies from
    a Matinee track, `SFXInterpTrackMovieBink` (`SFXGame_classes.hpp:15489`). Kismet's `BioSeqAct_MovieBink` turns Movie
    mode on, so Esc stays the game's there; whether this track does is unknown. If it does not, the mode stays Cinematic,

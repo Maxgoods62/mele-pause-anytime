@@ -30,6 +30,8 @@ asi_target (MelePause
     "Engine.hpp"
     "Entry.cpp"
     "MelePause.rc"
+    "MovieInput.cpp"
+    "MovieSound.cpp"
     "Overlay.cpp"
     "Pause.cpp"
     "Pause.hpp"
