@@ -48,7 +48,7 @@ namespace MelePause
         /// photo mode's key where it opens; or it goes at once, with no fade (photo mode, the console).
         void Publish(bool worldPause, bool offerPhoto, bool hideNow);
 
-        /// The keys named are a gamepad's (Start, Y) or the keyboard's (Esc, F7): whichever pressed one of ours last. Any thread.
+        /// The keys named are a gamepad's (A, Y) or the keyboard's (Space, F7): whichever pressed one of ours last. Any thread.
         void UsePadPrompts(bool pad);
 
         /// A movie's thread, after a BinkWait that kept the movie paused: a paused movie presents nothing, so the pause
