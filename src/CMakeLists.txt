@@ -26,6 +26,8 @@ asi_target (MelePause
     "Overlay.cpp"
     "Pause.cpp"
     "Pause.hpp"
+    "game/Game.hpp"
+    "game/LE1.hpp"
     "Resources.h"
     "Resources.rc"
     "SharedVersion.h"

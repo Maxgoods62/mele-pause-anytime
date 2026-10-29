@@ -1,4 +1,5 @@
 #include "MelePause/Pause.hpp"
+#include "MelePause/game/Game.hpp"
 #include "Common/Objects.hpp"
 
 #include <algorithm>
@@ -27,11 +28,9 @@ namespace MelePause
         // ! Game facts
         // ========================================
 
-        // SFXGameModeManager.EGameModes (SFXGame_classes.hpp).
-        constexpr unsigned char ModeConversation = 5;
-        constexpr unsigned char ModeCinematic = 6;
-        constexpr unsigned char ModeMovie = 8;
-        constexpr unsigned char ModePhoto = 11;
+        // The modes, the GuiKey events and the rest that differ per game: game/LE<n>.hpp.
+        using namespace Game;
+
         constexpr unsigned char NoMode = 0xFF;
 
         /// SFXGameModeBase.EModePriority.ModePriority_Menus: above Conversation (2) and Cinematic (Base, 0).
@@ -40,12 +39,6 @@ namespace MelePause
         // Engine.Interaction.EInputEvent. IE_Repeat (2) and the rest only matter as "not a press".
         constexpr unsigned char IE_Pressed = 0;
         constexpr unsigned char IE_Released = 1;
-
-        // BioGuiEvents the always-on Escape and Start binds send to Scaleform: Start and Escape, pressed and released.
-        constexpr unsigned char GuiStart = 21;
-        constexpr unsigned char GuiEscape = 24;
-        constexpr unsigned char GuiStartRelease = 43;
-        constexpr unsigned char GuiEscapeRelease = 46;
 
         /// The skips stay dropped this long after the release of a press we took (GuardMs before it): the OnRelease half of a
         /// bind may run after Console.InputKey has seen the release.
@@ -67,9 +60,7 @@ namespace MelePause
 
         char const* ModeName(unsigned char mode)
         {
-            static char const* const Names[] = { "Default", "Vehicle", "PowerWheel", "WeaponWheel", "Command", "Conversation",
-                                                 "Cinematic", "GUI", "Movie", "Galaxy", "Minigame", "Photo", "FlyCam" };
-            return static_cast<size_t>(mode) < std::size(Names) ? Names[mode] : "none";
+            return static_cast<size_t>(mode) < std::size(ModeNames) ? ModeNames[mode] : "none";
         }
 
         // ! State
@@ -263,7 +254,7 @@ namespace MelePause
 
         unsigned char ModeOf(ABioPlayerController* pc)
         {
-            auto const manager = pc != nullptr ? pc->GameModeManager : nullptr;
+            auto const manager = ModeManagerOf(pc);
             return manager != nullptr ? manager->CurrentMode : NoMode;
         }
 
@@ -271,7 +262,7 @@ namespace MelePause
         /// whether a movie is paused doesn't depend on it.
         USFXGameModeMovie* MovieMode(ABioPlayerController* pc)
         {
-            auto const manager = pc != nullptr ? pc->GameModeManager : nullptr;
+            auto const manager = ModeManagerOf(pc);
             if (manager == nullptr) return nullptr;
             auto const& modes = manager->GameModes;
             for (UINT i = 0; i < modes.Count(); i++)
@@ -699,7 +690,7 @@ namespace MelePause
         char const* EnterPhoto(ABioPlayerController* pc, unsigned char mode, bool gamepad)
         {
             auto const world = pc->WorldInfo;
-            auto const manager = pc->GameModeManager;
+            auto const manager = ModeManagerOf(pc);
             auto const camera = pc->PlayerCamera != nullptr && pc->PlayerCamera->IsA(ASFXPlayerCamera::StaticClass())
                                     ? static_cast<ASFXPlayerCamera*>(pc->PlayerCamera)
                                     : nullptr;
@@ -1712,7 +1703,7 @@ namespace MelePause
             static SFXName const SkipMovie{ L"SkipMovie", 0 };
             static SFXName const SkipCinematic{ L"SkipCinematic", 0 };
             static SFXName const GuiKey{ L"GuiKey", 0 };
-            static SFXName const ShowMenuGui{ L"ShowMenuGui", 0 };
+            static SFXName const PhotoMenu{ PhotoMenuFunction, 0 };
             static SFXName const PlayerTick{ L"PlayerTick", 0 };
 
             auto const& name = Function->Name;
@@ -1734,7 +1725,7 @@ namespace MelePause
             {
                 if (Context->IsA(USFXGameModeBase::StaticClass()) && DropSkip(Context, Function, Parms, name == GuiKey)) return;
             }
-            else if (name == ShowMenuGui)
+            else if (name == PhotoMenu)
             {
                 // Photo mode's Esc and Start binds: they would hide it and open the pause menu over the conversation. Ours
                 // take those keys first in Console.InputKey; this is for a bind that gets past it.
