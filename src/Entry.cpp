@@ -1,4 +1,5 @@
 #include "MelePause/Pause.hpp"
+#include "MelePause/game/Game.hpp"
 #include "MelePause/SharedVersion.h"
 #include "Common/DefaultLogger.hpp"
 
@@ -16,7 +17,9 @@ SPI_IMPLEMENT_ATTACH
 
     ::MelePause::InitializeGlobals(Init);
     ::MelePause::InstallHooks(Init);
-    ::MelePause::Bink::Install(Init);
+    // if constexpr, not #if: without game/Game.hpp the switch is a compile error, not a silent 0.
+    if constexpr (MELEPAUSE_MOVIES) ::MelePause::Bink::Install(Init);
+    else LEASI_INFO("movie pause: not in the {} build", SDK_TARGET_NAME_A);
     ::MelePause::Overlay::Install(Init);
 
     LEASI_INFO("MelePause {} ready", VERSION_STRING_A);

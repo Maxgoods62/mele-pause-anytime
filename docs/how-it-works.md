@@ -6,7 +6,9 @@ shared hook manager, which MeleBridge and other ASIs use too. The sources:
 | File | What it holds |
 |---|---|
 | `src/Entry.cpp` | The loader entry: the log, the SDK, then the hooks in `Pause.cpp`, `Bink.cpp` and `Overlay.cpp`. |
-| `src/Pause.cpp` | The keys, the world pause, photo mode, the skip guard and the fallback banner. Game thread only. |
+| `src/Pause.cpp` | The keys, the world pause, the skip guard and the fallback banner. Game thread only. |
+| `src/Photo.hpp`, `src/PhotoLE1.cpp` | Photo mode under the pause: the session, the camera, and the natives that let its input, panel and sounds past the pause. |
+| `src/PhotoOff.cpp` | The same calls for a game whose `game/LE<n>.hpp` turns photo mode off (`MELEPAUSE_PHOTO 0`): Y and F7 stay the game's. |
 | `src/Engine.cpp` | Helpers for calling into the game and reading its objects (`CallGame`, `PathOf`, `Alive`, ...). |
 | `src/game/` | What differs per game: `Game.hpp` picks `LE1.hpp` for the build's SDK target (modes, GuiKey events, ...). |
 | `src/Bink.cpp` | The movie pause, on the thread that plays the movie. |
@@ -24,8 +26,8 @@ shared hook manager, which MeleBridge and other ASIs use too. The sources:
 | `ProcessEvent`: every call on the game thread | Notes the time, for the movie reports only: does the game thread still run under a fullscreen movie? |
 | `ProcessEvent`: after `PlayerController.PlayerTick` on the player's controller | While photo mode is on: `SFXPlayerCamera.UpdateCamera`, so the camera follows the controller that `PlayerPhotoMode.PlayerMove` just moved. The engine does not update the camera under the world pause. |
 | `ProcessEvent`: `ShowMenuGui` on `SFXGameModePhoto` | Dropped while MelePause's photo mode is on: photo mode's own Esc and Start binds would hide it and open the pause menu over the conversation. |
-| Native: `BioPlayerInput::InputKey` (RVA 0xc6de70), `UPlayerInput::InputAxis` (RVA 0x68bc40), `UBioSFManager::Tick` (RVA 0x193bc0) | While photo mode is on, a call on the controller's `PlayerInput` or on the GUI manager runs with `WorldInfo.Pauser` cleared, and the `Pauser` is put back after. The engine drops input and stops the GUI under the world pause. |
-| Native: `UBioSFManager::PlayGuiSound` (RVA 0x191ee0), `UAudioDevice::CreateComponent` (RVA 0x2ff470) | While photo mode is on, the sound the GUI manager's `PlayGuiSound` makes is marked `bNonRealtime`: under the world pause the audio device starts only those. |
+| Native: `BioPlayerInput::InputKey` (RVA 0xc6de70), `UPlayerInput::InputAxis` (RVA 0x68bc40), `UBioSFManager::Tick` (RVA 0x193bc0) (`PhotoLE1.cpp`) | While photo mode is on, a call on the controller's `PlayerInput` or on the GUI manager runs with `WorldInfo.Pauser` cleared, and the `Pauser` is put back after. The engine drops input and stops the GUI under the world pause. |
+| Native: `UBioSFManager::PlayGuiSound` (RVA 0x191ee0), `UAudioDevice::CreateComponent` (RVA 0x2ff470) (`PhotoLE1.cpp`) | While photo mode is on, the sound the GUI manager's `PlayGuiSound` makes is marked `bNonRealtime`: under the world pause the audio device starts only those. |
 | `dxgi`: `IDXGISwapChain::Present`, `IDXGISwapChain1::Present1`, `IDXGISwapChain::ResizeBuffers` (`Overlay.cpp`) | Draws the pause screen into the back buffer before the frame is shown, once per frame, whichever of the two presents it. Releases its views of the back buffer before a resize. The methods' addresses come from a throwaway device and swap chain made at start. |
 | `bink2w64_original.dll`: `BinkOpen`, `BinkOpenWithOptions`, `BinkClose`, `BinkWait`, `BinkDoFrame`, `BinkDoFrameAsync` (`Bink.cpp`) | Tracks the open movies (from a file or from memory) and logs who plays them. `BinkWait` also reads Esc, toggles the movie pause on its press and applies a pause; reads Space, which only resumes; and, while the movie stays paused, presents the pause screen. `BinkDoFrame` and `BinkDoFrameAsync` count calls and apply a resume, never a pause. |
 
