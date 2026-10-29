@@ -38,8 +38,17 @@ asi_target (MelePause
     "LESDK"
   )
 
+# asi_target makes one target per game, MelePause-LE<n>; a game left out of GAMES, or turned off with LEASI_BUILD_LE<n>,
+# has none.
+foreach (game IN ITEMS LE1 LE2 LE3)
+  if (TARGET MelePause-${game})
+    # imgui_impl_dx11.cpp links d3dcompiler (a pragma) and calls D3DCompile: delay-loaded, so the ASI loads without the
+    # DLL and Overlay.cpp binds it to System32's copy first, never to a d3dcompiler_47.dll next to the game.
+    target_link_options (MelePause-${game} PRIVATE "/DELAYLOAD:d3dcompiler_47.dll")
+  endif ()
+endforeach ()
+
 # The one file the game-install rule lets this tool copy into the ASI folder is MelePause.asi.
-set_target_properties (MelePause-LE1 PROPERTIES OUTPUT_NAME "MelePause")
-# imgui_impl_dx11.cpp links d3dcompiler (a pragma) and calls D3DCompile: delay-loaded, so the ASI loads without the DLL and
-# Overlay.cpp binds it to System32's copy first, never to a d3dcompiler_47.dll next to the game.
-target_link_options (MelePause-LE1 PRIVATE "/DELAYLOAD:d3dcompiler_47.dll")
+if (TARGET MelePause-LE1)
+  set_target_properties (MelePause-LE1 PROPERTIES OUTPUT_NAME "MelePause")
+endif ()

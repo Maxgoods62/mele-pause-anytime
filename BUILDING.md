@@ -70,8 +70,10 @@ in "Legendary Edition"), then Steam's uninstall entry for app 1328670. The folde
    endif ()
    ```
 
-6. Configures with the tree's `VisualStudio` preset, LE1 only (`LEASI_BUILD_LE2`, `LEASI_BUILD_LE3` and
-   `LEASI_BUILD_LEL` off). It clears `LEASI_GAME1_WIN64` for that step, so no LExASIs build copies itself into the game.
+6. Configures with the tree's `VisualStudio` preset, LE1 only (`LEASI_BUILD_LE1` on, `LEASI_BUILD_LE2`,
+   `LEASI_BUILD_LE3` and `LEASI_BUILD_LEL` off). A `LEASI_GAME1_WIN64` variable would make the LE1 build copy itself
+   into the game. `build.sh` clears it for that step, and stops when the configure output says one is still set: one
+   set in the Windows environment reaches CMake all the same.
 7. Builds the `MelePause-LE1` target in the `RELEASE` configuration, with the tree's flags (`/W4 /WX`); Dear ImGui
    builds as a static library with its own defaults. On a failure it prints the error and warning lines.
 8. Copies `MelePause.asi` and `MelePause.pdb` into `MELE_STAGE`.
@@ -109,6 +111,7 @@ Edit the sources in this repo's `src/`, not in `LExASIs\MelePause`: each build r
 | `no CMake in ...` | Add the "C++ CMake tools for Windows" component to that Visual Studio, or set `MELE_VS` to one that has it. |
 | `no %LOCALAPPDATA% from PowerShell` | Set `MELE_LEXASIS` to a folder on the Windows disk. |
 | `cmake configure failed: run it by hand in ...` | `build.sh` hides the configure output. Run the same step in that folder to see it (command below). |
+| `a LEASI_GAME*_WIN64 variable is set in the Windows environment` | Remove that variable in System Properties, Environment Variables, then open a new terminal. |
 | `Legendary Edition not found in the registry` or `no Game\ME1 in ...` | Set `MELE_LE_DIR` to the Legendary Edition folder, as a Windows path. |
 | `MassEffect1.exe is running: close the game first` | Close the game and run the command again. |
 
@@ -117,8 +120,9 @@ path, and `<third_party folder>` is the `third_party` folder next to the checkou
 slashes:
 
 ```bash
-env -u LEASI_GAME1_WIN64 '<VS folder>/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' \
-    --preset VisualStudio -DLEASI_BUILD_LE2=OFF -DLEASI_BUILD_LE3=OFF -DLEASI_BUILD_LEL=OFF \
+env -u LEASI_GAME1_WIN64 -u LEASI_GAME2_WIN64 -u LEASI_GAME3_WIN64 -u LEASI_GAMEL_WIN64 \
+    '<VS folder>/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --preset VisualStudio \
+    -DLEASI_BUILD_LE1=ON -DLEASI_BUILD_LE2=OFF -DLEASI_BUILD_LE3=OFF -DLEASI_BUILD_LEL=OFF \
     '-DMELE_THIRD_PARTY=<third_party folder>'
 ```
 
