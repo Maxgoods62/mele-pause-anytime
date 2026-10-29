@@ -27,6 +27,10 @@ namespace MelePause::Game
     /// SFXGameModePhoto's Esc and Start bind, which opens the pause menu.
     inline constexpr wchar_t const* PhotoMenuFunction = L"ShowMenuGui";
 
+    /// The name an older version had in the ASI folder (here v6 and older), or null: Entry.cpp stays off while it is
+    /// loaded.
+    inline constexpr wchar_t const* LegacyModule = L"MelePause.asi";
+
     /// The controller's game modes (BioPlayerController.GameModeManager).
     inline USFXGameModeManager* ModeManagerOf(ABioPlayerController* pc)
     {

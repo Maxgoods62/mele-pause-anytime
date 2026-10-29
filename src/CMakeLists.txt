@@ -14,6 +14,10 @@ add_library (MelePauseImGui STATIC
 target_include_directories (MelePauseImGui PUBLIC "${MELE_THIRD_PARTY}/imgui")
 set_target_properties (MelePauseImGui PROPERTIES FOLDER "External")
 
+# One target per game from the same sources, MelePause-LE<n>, which builds LE<n>MelePause.asi and .pdb: LExASIs' default
+# names, so the games' files never collide in Build/<CONFIG>. List a game only once it has game/LE<n>.hpp (the names
+# LE1.hpp defines, LegacyModule included) and its branch in game/Game.hpp: the VisualStudio preset turns every
+# LEASI_BUILD_LE<n> on.
 asi_target (MelePause
   SHARED
   GAMES "LE1"
@@ -25,6 +29,7 @@ asi_target (MelePause
     "Engine.cpp"
     "Engine.hpp"
     "Entry.cpp"
+    "MelePause.rc"
     "Overlay.cpp"
     "Pause.cpp"
     "Pause.hpp"
@@ -34,7 +39,6 @@ asi_target (MelePause
     "game/Game.hpp"
     "game/LE1.hpp"
     "Resources.h"
-    "Resources.rc"
     "SharedVersion.h"
   LINKS
     "MelePauseImGui"
@@ -46,8 +50,7 @@ asi_target (MelePause
     "LESDK"
   )
 
-# asi_target makes one target per game, MelePause-LE<n>; a game left out of GAMES, or turned off with LEASI_BUILD_LE<n>,
-# has none.
+# A game left out of GAMES, or turned off with LEASI_BUILD_LE<n>, has no target.
 foreach (game IN ITEMS LE1 LE2 LE3)
   if (TARGET MelePause-${game})
     # imgui_impl_dx11.cpp links d3dcompiler (a pragma) and calls D3DCompile: delay-loaded, so the ASI loads without the
@@ -55,8 +58,3 @@ foreach (game IN ITEMS LE1 LE2 LE3)
     target_link_options (MelePause-${game} PRIVATE "/DELAYLOAD:d3dcompiler_47.dll")
   endif ()
 endforeach ()
-
-# The one file the game-install rule lets this tool copy into the ASI folder is MelePause.asi.
-if (TARGET MelePause-LE1)
-  set_target_properties (MelePause-LE1 PROPERTIES OUTPUT_NAME "MelePause")
-endif ()

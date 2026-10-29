@@ -23,7 +23,7 @@
 // world pause and our movie pause the frame is blurred and darkened (Blur.cpp), "PAUSE" stands in a bracketed frame at the
 // centre, and the keys are named at the bottom left (resume, and photo mode where it opens), for the gamepad or the keyboard,
 // whichever pressed our keys last. The game thread says what to show (Publish, UsePadPrompts); nothing here touches a game
-// object. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (Resources.rc), in the language the
+// object. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the language the
 // game's launcher passes. Without the hook or after a fault the Canvas banner of Pause.cpp is drawn instead (Drawing).
 namespace MelePause::Overlay
 {
@@ -179,7 +179,7 @@ namespace MelePause::Overlay
         // ! Fonts
         // ========================================
 
-        /// One of the fonts compiled into the ASI (Resources.rc), or null.
+        /// One of the fonts compiled into the ASI (MelePause.rc), or null.
         ImFont* AddEmbedded(int id)
         {
             static int const anchor = 0;

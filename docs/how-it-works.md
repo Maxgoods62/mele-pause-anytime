@@ -1,11 +1,12 @@
 # How MelePause works
 
-MelePause is an ASI plugin. The ASI loader, LEBinkProxy, loads it after the game's code is decrypted and gives it a
-shared hook manager, which MeleBridge and other ASIs use too. The sources:
+MelePause is an ASI plugin, `LE1MelePause.asi` for LE1. The ASI loader, LEBinkProxy, loads it after the game's code is
+decrypted and gives it a shared hook manager, which MeleBridge and other ASIs use too. The sources:
 
 | File | What it holds |
 |---|---|
-| `src/Entry.cpp` | The loader entry: the log, the SDK, then the hooks in `Pause.cpp`, `Bink.cpp` and `Overlay.cpp`. |
+| `src/Entry.cpp` | The loader entry: the log, the SDK, then the hooks in `Pause.cpp`, `Bink.cpp` and `Overlay.cpp`. The loader loads every file of the ASI folder before it attaches any, so a copy of version 6 or older (`Game::LegacyModule`, `MelePause.asi` for LE1) is already loaded then: if it is, the entry installs nothing and leaves the log to it (the loader would refuse its hooks anyway: same names), says so to a debugger (DebugView), and returns false, which the loader logs in `Logs\bink2w64_proxy.log`. |
+| `src/SharedVersion.h`, `src/MelePause.rc` | The name and version the loader logs, and the Windows version info (`N.0.<game id>.0`) and Exo 2 fonts compiled into `LE<n>MelePause.asi`. |
 | `src/Pause.cpp` | The keys, the world pause, the skip guard and the fallback banner. Game thread only. |
 | `src/Photo.hpp`, `src/PhotoLE1.cpp` | Photo mode under the pause: the session, the camera, and the natives that let its input, panel and sounds past the pause. |
 | `src/PhotoOff.cpp` | The same calls for a game whose `game/LE<n>.hpp` turns photo mode off (`MELEPAUSE_PHOTO 0`): Y and F7 stay the game's. |
@@ -30,6 +31,11 @@ shared hook manager, which MeleBridge and other ASIs use too. The sources:
 | Native: `UBioSFManager::PlayGuiSound` (RVA 0x191ee0), `UAudioDevice::CreateComponent` (RVA 0x2ff470) (`PhotoLE1.cpp`) | While photo mode is on, the sound the GUI manager's `PlayGuiSound` makes is marked `bNonRealtime`: under the world pause the audio device starts only those. |
 | `dxgi`: `IDXGISwapChain::Present`, `IDXGISwapChain1::Present1`, `IDXGISwapChain::ResizeBuffers` (`Overlay.cpp`) | Draws the pause screen into the back buffer before the frame is shown, once per frame, whichever of the two presents it. Releases its views of the back buffer before a resize. The methods' addresses come from a throwaway device and swap chain made at start. |
 | `bink2w64_original.dll`: `BinkOpen`, `BinkOpenWithOptions`, `BinkClose`, `BinkWait`, `BinkDoFrame`, `BinkDoFrameAsync` (`Bink.cpp`) | Tracks the open movies (from a file or from memory) and logs who plays them. `BinkWait` also reads Esc, toggles the movie pause on its press and applies a pause; reads Space, which only resumes; and, while the movie stays paused, presents the pause screen. `BinkDoFrame` and `BinkDoFrameAsync` count calls and apply a resume, never a pause. |
+
+The loader loads the ASI folder's files in name order and attaches them in that order, and a hook installed later runs
+before the ones installed earlier. The `ProcessEvent` and `Present` hooks of an ASI whose name sorts after
+`LE1MelePause.asi` (`LE1StreamingLevelsHUD`, `MeleBridge.asi`) therefore run before MelePause's: they see the keys
+MelePause then takes, and what they draw lies under the pause screen's blur.
 
 Each native hook first checks the function's first bytes against this build of the game. On another build it logs a
 warning and patches nothing: photo mode then opens, but what that hook covers does not answer (the camera, the panel or
@@ -135,9 +141,10 @@ nothing for 0.1 s, the movie's `BinkWait` hook puts that frame back and presents
 times a second at most. It does this only on the thread that presents the game's frames, which in LE1 is the movie's
 thread. A window resized while the movie is paused keeps its frame until the movie resumes.
 
-Exo 2 is compiled into `MelePause.asi` as resources, Latin and Cyrillic only, about 68 KB a weight. The shaders compile
-at the game's first frame with Windows' own `d3dcompiler_47.dll`. Dear ImGui's import of it is delay-loaded and bound to
-the copy in System32 first, so a copy placed next to the game is never used, and a Windows without it gets the banner.
+Exo 2 is compiled into `LE<n>MelePause.asi` as resources (`src/MelePause.rc`), Latin and Cyrillic only, about 68 KB a
+weight. The shaders compile at the game's first frame with Windows' own `d3dcompiler_47.dll`. Dear ImGui's import of it
+is delay-loaded and bound to the copy in System32 first, so a copy placed next to the game is never used, and a Windows
+without it gets the banner.
 
 If the swap chain cannot be hooked, the overlay cannot start, it faults, or it gets no view on the back buffer 10 frames
 in a row, the banner is drawn instead (the HUD's Canvas, GEngine's `MediumFont`, scaled). There is no banner during a
