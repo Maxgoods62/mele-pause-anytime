@@ -6,7 +6,7 @@ body:
     id: game
     attributes:
       label: Game
-      description: The game where it goes wrong. MelePause is built for LE1 only.
+      description: The game where it goes wrong. MelePause supports LE1 only.
       options:
         - LE1 (Mass Effect 1)
     validations:

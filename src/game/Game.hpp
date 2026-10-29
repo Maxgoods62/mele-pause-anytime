@@ -7,6 +7,8 @@
 // (the Bink movie pause).
 #if defined(SDK_TARGET_LE1)
     #include "MelePause/game/LE1.hpp"
+#elif defined(SDK_TARGET_LE2)
+    #include "MelePause/game/LE2.hpp"
 #else
     #error "MelePause: no game/LE<n>.hpp for this SDK target"
 #endif

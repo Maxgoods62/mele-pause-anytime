@@ -18,8 +18,9 @@ it from source and copy it into the game ([Install](#install)).
 | Photo mode on the paused shot (Y or F7) | since v4 | no | no |
 | Pause screen; Space and A resume | since v5 | no | no |
 
-LE2 and LE3 are not supported: MelePause is built for LE1 only, and `LE1MelePause.asi` belongs in ME1's ASI folder
-only.
+LE2 and LE3 are not supported, and `LE1MelePause.asi` belongs in ME1's ASI folder only. The sources also build
+`LE2MelePause.asi`, without the movie pause and photo mode, but it has never run in the game
+([docs/games/LE2.md](docs/games/LE2.md)).
 
 ## What Esc and Start do
 
@@ -77,7 +78,7 @@ happens when the swap chain cannot be hooked, when the overlay fails to start or
 
 ## Requirements
 
-- Mass Effect Legendary Edition. MelePause is built for ME1 (LE1) only ([Games](#games)).
+- Mass Effect Legendary Edition. MelePause supports ME1 (LE1) only ([Games](#games)).
 - An ASI loader: [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy), the `bink2w64.dll` proxy that loads every
   `.asi` file in `Game\ME1\Binaries\Win64\ASI`. ME3Tweaks Mod Manager installs it with any mod.
 - The [Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), 14.50 or newer, and no older

@@ -41,16 +41,22 @@ makes `LE<n>MelePause.asi` and `LE<n>MelePause.pdb`. One version number covers e
 
 A build covers the games named with `--game`, else those in `MELE_GAMES`, else the released ones (`RELEASED_GAMES` in
 `scripts/games.sh`: LE1). A name is `LE1`, `LE2`, `LE3` or `all`, in any case. `all` means the games that
-`src/CMakeLists.txt` lists on `asi_target`'s `GAMES` line, which is LE1 alone. A game that line does not list has no
-project, and the build stops after the configure step: "no MelePause-LE2 project: src/CMakeLists.txt does not build LE2
-yet (asi_target's GAMES)".
+`src/CMakeLists.txt` lists on `asi_target`'s `GAMES` line: LE1 and LE2. A game that line does not list has no project,
+and the build stops after the configure step: "no MelePause-LE3 project: src/CMakeLists.txt does not build LE3 yet
+(asi_target's GAMES)".
 
 What differs from one game to the next is in `src/game/LE<n>.hpp`, included by `src/game/Game.hpp` for the build's SDK
-target; today it has LE1's branch only and stops the build for any other target. A game goes on the `GAMES` line only
+target; today it has LE1's and LE2's branches and stops the build for LE3. A game goes on the `GAMES` line only
 once it has its `LE<n>.hpp`, defining the names `LE1.hpp` defines (`LegacyModule` included: null for a game with no old
 file name), and its branch in `Game.hpp`: the tree's `VisualStudio` preset turns every `LEASI_BUILD_LE<n>` on, so a
 listed game that does not compile breaks the whole tree's build in Visual Studio.
 `package.sh` packs a game only once `game_readme` in `scripts/games.sh` has its `README.txt` text.
+
+LE2 builds, with photo mode and the movie pause off, but has never run in the game, and it is not a released game: a
+plain `./build.sh` leaves it out. `all` includes it, so `--game all --install` copies it into ME2 too, or stops when ME2
+has no ASI loader: name `--game LE1` to install LE1 alone. `./package.sh --game all` (or `--game LE2`) refuses before it
+builds anything, since LE2 has no `README.txt` text: package LE1 with a plain `./package.sh`. See
+[docs/games/LE2.md](docs/games/LE2.md).
 
 ## Install checks
 

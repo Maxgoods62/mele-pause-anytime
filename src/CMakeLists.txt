@@ -17,10 +17,10 @@ set_target_properties (MelePauseImGui PROPERTIES FOLDER "External")
 # One target per game from the same sources, MelePause-LE<n>, which builds LE<n>MelePause.asi and .pdb: LExASIs' default
 # names, so the games' files never collide in Build/<CONFIG>. List a game only once it has game/LE<n>.hpp (the names
 # LE1.hpp defines, LegacyModule included) and its branch in game/Game.hpp: the VisualStudio preset turns every
-# LEASI_BUILD_LE<n> on.
+# LEASI_BUILD_LE<n> on. Listed is not released: a plain ../build.sh builds RELEASED_GAMES (../scripts/games.sh).
 asi_target (MelePause
   SHARED
-  GAMES "LE1"
+  GAMES "LE1" "LE2"
   SOURCES
     "Api.hpp"
     "Bink.cpp"
@@ -38,6 +38,7 @@ asi_target (MelePause
     "PhotoOff.cpp"
     "game/Game.hpp"
     "game/LE1.hpp"
+    "game/LE2.hpp"
     "Resources.h"
     "SharedVersion.h"
   LINKS
