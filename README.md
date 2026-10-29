@@ -103,7 +103,7 @@ you like.
 
 | With | Result |
 |---|---|
-| [MeleBridge](https://github.com/Maxgoods62/mele-toolkit/blob/main/tools/mele-bridge/README.md) | Runs side by side. Both hook `ProcessEvent` and the swap chain's `Present` through the ASI loader's shared hook manager. |
+| [MeleBridge](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/tools/mele-bridge/README.md) | Runs side by side. Both hook `ProcessEvent` and the swap chain's `Present` through the ASI loader's shared hook manager. |
 | The Steam overlay, ReShade, MeleBridge's editor | Each draws over the frame too. Whichever hook runs later draws on top. |
 | Any resolution or aspect ratio | Sizes follow the height of the back buffer, laid out for 1080 lines. |
 | Gamepads | Tested with an Xbox pad. A PlayStation pad would go through Steam Input or DS4Windows, which present it to the game as an Xbox pad; this is untested. |
