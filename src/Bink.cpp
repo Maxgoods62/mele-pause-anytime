@@ -1,4 +1,4 @@
-#include "MelePause/Pause.hpp"
+#include "MelePause/Api.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -60,8 +60,8 @@ namespace MelePause::Bink
         constexpr ULONGLONG DebounceMs = 150;
         /// Presses of Esc not acted on are logged at most this often.
         constexpr ULONGLONG RefusedLogMs = 2000;
-        /// A press acted on keeps Pause.cpp's skip guard armed while it is down, this long at most (as Pause.cpp's GuardMs).
-        constexpr ULONGLONG EscHeldMaxMs = 2000;
+        /// A press acted on keeps Pause.cpp's skip guard armed while it is down, this long at most.
+        constexpr ULONGLONG EscHeldMaxMs = GuardMs;
 
         enum class Call { Wait, DoFrame, DoFrameAsync };
 

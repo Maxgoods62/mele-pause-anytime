@@ -18,6 +18,7 @@ asi_target (MelePause
   SHARED
   GAMES "LE1"
   SOURCES
+    "Api.hpp"
     "Bink.cpp"
     "Blur.cpp"
     "Blur.hpp"

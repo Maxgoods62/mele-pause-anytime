@@ -47,10 +47,8 @@ namespace MelePause
         constexpr unsigned char GuiStartRelease = 43;
         constexpr unsigned char GuiEscapeRelease = 46;
 
-        /// After a press we took, the skips Esc is bound to are dropped until its release, for 2 s at most (a release lost to
-        /// a focus change must not keep Space's SkipMovie away)...
-        constexpr ULONGLONG GuardMs = 2000;
-        /// ...and a moment after it: the OnRelease half of a bind may run after Console.InputKey has seen the release.
+        /// The skips stay dropped this long after the release of a press we took (GuardMs before it): the OnRelease half of a
+        /// bind may run after Console.InputKey has seen the release.
         constexpr ULONGLONG ReleaseGraceMs = 250;
 
         /// A held gamepad button repeats after 0.2 s, then every 0.1 s: a press of Start with no event for this long is over,

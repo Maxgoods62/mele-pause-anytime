@@ -1,4 +1,4 @@
-#include "MelePause/Pause.hpp"
+#include "MelePause/Api.hpp"
 #include "MelePause/Blur.hpp"
 #include "MelePause/Resources.h"
 
