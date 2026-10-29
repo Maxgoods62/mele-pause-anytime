@@ -83,25 +83,29 @@ namespace MelePause::Overlay
         constexpr Texts Polish{ "PAUZA", "Wznów", "Tryb fotograficzny", "Spacja", "Polish" };
         constexpr Texts Russian{ "ПАУЗА", "Продолжить", "Фоторежим", "Пробел", "Russian" };
 
-        /// The text language the LE launcher gives the game (-OVERRIDELANGUAGE=FR; FE is French text over English voices, and
-        /// so are GE, IE, RA and PL to DE, IT, RU and PLPC). English without it (a start past the launcher) and for Japanese:
-        /// Exo 2 has no kana.
+        /// The text language the LE launcher gives the game: -OVERRIDELANGUAGE=<code> to LE1 and LE2, -language=<code> to LE3.
+        /// LE1's codes: FR, DE, IT, RA and PLPC with their voices, FE, GE, IE, RU and PL over English voices, ES and JA. LE2's
+        /// and LE3's: FRA, DEU, ITA and POL with their voices, FRE, DEE, ITE and POE (LE2) over English voices, ESN, RUS and
+        /// JPN. English for INT, without a switch (a start past the launcher), and for Japanese: Exo 2 has no kana.
         Texts const& LanguageTexts()
         {
-            constexpr std::wstring_view Switch = L"-OVERRIDELANGUAGE=";
             std::wstring_view const line = GetCommandLineW();
-            auto const at = std::search(line.begin(), line.end(), Switch.begin(), Switch.end(),
-                                        [](wchar_t a, wchar_t b) { return std::towupper(a) == std::towupper(b); });
-            if (at == line.end()) return English;
             std::wstring code;
-            for (auto c = at + Switch.size(); c != line.end() && *c != L' ' && *c != L'\t' && *c != L'"'; ++c)
-                code += static_cast<wchar_t>(std::towupper(*c));
-            if (code == L"FR" || code == L"FE") return French;
-            if (code == L"DE" || code == L"GE") return German;
-            if (code == L"IT" || code == L"IE") return Italian;
-            if (code == L"ES") return Spanish;
-            if (code == L"PL" || code == L"PLPC") return Polish;
-            if (code == L"RU" || code == L"RA") return Russian;
+            for (std::wstring_view const option : { std::wstring_view{ L"-OVERRIDELANGUAGE=" }, std::wstring_view{ L"-LANGUAGE=" } })
+            {
+                auto const at = std::search(line.begin(), line.end(), option.begin(), option.end(),
+                                            [](wchar_t a, wchar_t b) { return std::towupper(a) == std::towupper(b); });
+                if (at == line.end()) continue;
+                for (auto c = at + option.size(); c != line.end() && *c != L' ' && *c != L'\t' && *c != L'"'; ++c)
+                    code += static_cast<wchar_t>(std::towupper(*c));
+                break;
+            }
+            if (code == L"FR" || code == L"FE" || code == L"FRA" || code == L"FRE") return French;
+            if (code == L"DE" || code == L"GE" || code == L"DEU" || code == L"DEE") return German;
+            if (code == L"IT" || code == L"IE" || code == L"ITA" || code == L"ITE") return Italian;
+            if (code == L"ES" || code == L"ESN") return Spanish;
+            if (code == L"PL" || code == L"PLPC" || code == L"POL" || code == L"POE") return Polish;
+            if (code == L"RU" || code == L"RA" || code == L"RUS") return Russian;
             return English;
         }
 
