@@ -22,6 +22,8 @@ asi_target (MelePause
     "Bink.cpp"
     "Blur.cpp"
     "Blur.hpp"
+    "Engine.cpp"
+    "Engine.hpp"
     "Entry.cpp"
     "Overlay.cpp"
     "Pause.cpp"

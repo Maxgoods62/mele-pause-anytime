@@ -7,8 +7,11 @@ shared hook manager, which MeleBridge and other ASIs use too. The sources:
 |---|---|
 | `src/Entry.cpp` | The loader entry: the log, the SDK, then the hooks in `Pause.cpp`, `Bink.cpp` and `Overlay.cpp`. |
 | `src/Pause.cpp` | The keys, the world pause, photo mode, the skip guard and the fallback banner. Game thread only. |
+| `src/Engine.cpp` | Helpers for calling into the game and reading its objects (`CallGame`, `PathOf`, `Alive`, ...). |
+| `src/game/` | What differs per game: `Game.hpp` picks `LE1.hpp` for the build's SDK target (modes, GuiKey events, ...). |
 | `src/Bink.cpp` | The movie pause, on the thread that plays the movie. |
 | `src/Overlay.cpp`, `src/Blur.cpp` | The pause screen, on the render thread. |
+| `src/Api.hpp` | What `Pause.cpp`, `Bink.cpp` and `Overlay.cpp` call of each other. No game class: the last two include only it. |
 
 ## Hooks
 

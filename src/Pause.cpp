@@ -1,4 +1,5 @@
 #include "MelePause/Pause.hpp"
+#include "MelePause/Engine.hpp"
 #include "MelePause/game/Game.hpp"
 #include "Common/Objects.hpp"
 
@@ -31,8 +32,6 @@ namespace MelePause
         // The modes, the GuiKey events and the rest that differ per game: game/LE<n>.hpp.
         using namespace Game;
 
-        constexpr unsigned char NoMode = 0xFF;
-
         /// SFXGameModeBase.EModePriority.ModePriority_Menus: above Conversation (2) and Cinematic (Base, 0).
         constexpr unsigned char PriorityMenus = 3;
 
@@ -57,11 +56,6 @@ namespace MelePause
         /// Frames the pause screen stays hidden after photo mode ends: the render thread presents a frame or two behind this
         /// one, and photo mode's last frames must not show it.
         constexpr unsigned PhotoHideGrace = 3;
-
-        char const* ModeName(unsigned char mode)
-        {
-            return static_cast<size_t>(mode) < std::size(ModeNames) ? ModeNames[mode] : "none";
-        }
 
         // ! State
         // ========================================
@@ -129,110 +123,6 @@ namespace MelePause
         /// The end of the latest BioHUD.PostRender: Bink.cpp's movie threads read it.
         std::atomic<ULONGLONG> HudTick{ 0 };
 
-        /// Set while we call into the game (Pause, Canvas): those calls only pass through our hook.
-        thread_local bool InOwnCall = false;
-
-        // ! Helpers
-        // ========================================
-
-        std::string ToUtf8(std::wstring_view text)
-        {
-            if (text.empty()) return {};
-            auto const size = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-            std::string out(static_cast<size_t>(size), '\0');
-            WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), size, nullptr, nullptr);
-            return out;
-        }
-
-        std::string PathOf(UObject const* object)
-        {
-            if (object == nullptr) return "None";
-            auto const path = object->GetFullPath();
-            return ToUtf8(std::wstring_view(path.Chars(), path.Length()));
-        }
-
-        /// Still the object the index pointed at: not destroyed, not replaced by a map change.
-        bool Alive(UObject* object, int index)
-        {
-            auto& objects = *UObject::GObjObjects;
-            return object != nullptr && index >= 0 && static_cast<UINT>(index) < objects.Count() && objects.GetData()[index] == object
-                && !Common::IsDestroyed(object);
-        }
-
-        /// The most derived function of that name: what a console command would run.
-        UFunction* FindFunction(UClass* cls, SFXName const& name)
-        {
-            for (UStruct* s = cls; s != nullptr; s = static_cast<UStruct*>(s->SuperField))
-            {
-                for (UField* f = s->Children; f != nullptr; f = f->Next)
-                {
-                    if (f->Name == name && f->IsA(UFunction::StaticClass())) return static_cast<UFunction*>(f);
-                }
-            }
-            return nullptr;
-        }
-
-        /// A function of an object's class, looked up again when the class changes.
-        struct CachedFunction
-        {
-            UClass* Class = nullptr;
-            UFunction* Function = nullptr;
-        };
-
-        UFunction* FunctionOf(UObject* object, wchar_t const* name, CachedFunction& cache)
-        {
-            if (object->Class != cache.Class)
-            {
-                cache.Class = object->Class;
-                cache.Function = FindFunction(object->Class, SFXName{ name, 0 });
-                if (cache.Function == nullptr) LEASI_ERROR("no {} function in {}", ToUtf8(name), PathOf(object->Class));
-            }
-            return cache.Function;
-        }
-
-        std::string NameText(SFXName const& name)
-        {
-            auto const text = name.Instanced();
-            return ToUtf8(std::wstring_view(text.Chars(), text.Length()));
-        }
-
-        /// ProcessEvent refuses a function with an opcode number (iNative): zeroed for the call, it runs the native like any
-        /// other function, as LEX Interop and the bridge do. Opcode and flags are put back as they were; the SDK's generated
-        /// wrappers instead leave every flag bit set. No C++ object may live in this frame.
-        void CallGame(UObject* object, UFunction* function, void* parms)
-        {
-            auto const native = function->iNative;
-            auto const flags = function->FunctionFlags;
-            auto const outer = InOwnCall;
-            function->iNative = 0;
-            InOwnCall = true;
-            __try
-            {
-                object->ProcessEvent(function, parms, nullptr);
-            }
-            __finally
-            {
-                InOwnCall = outer;
-                function->iNative = native;
-                function->FunctionFlags = flags;
-            }
-        }
-
-        /// An access violation in our code (a pointer the checks missed) fails that call, not the game. No C++ object may
-        /// live in this frame: __try cannot unwind one.
-        bool Guarded(void (*work)(void*), void* context)
-        {
-            __try
-            {
-                work(context);
-                return true;
-            }
-            __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
-            {
-                return false;
-            }
-        }
-
         // ! The player
         // ========================================
 
@@ -250,12 +140,6 @@ namespace MelePause
                 pc = engine->GamePlayers.GetData()[0]->Actor;
             if (pc == nullptr && console != nullptr && console->ConsoleTargetPlayer != nullptr) pc = console->ConsoleTargetPlayer->Actor;
             return AsBio(pc);
-        }
-
-        unsigned char ModeOf(ABioPlayerController* pc)
-        {
-            auto const manager = ModeManagerOf(pc);
-            return manager != nullptr ? manager->CurrentMode : NoMode;
         }
 
         /// The movie mode: GameModes[8] is SFXGameModeMovie, and the array is searched in case it isn't. For the logs only:
@@ -314,8 +198,6 @@ namespace MelePause
             G.ControllerIndex = -1;
             G.PausedMode = NoMode;
         }
-
-        double HeldFor(ULONGLONG since) { return static_cast<double>(GetTickCount64() - since) / 1000.0; }
 
         bool PauseWorld(ABioPlayerController* pc, unsigned char mode)
         {
@@ -381,22 +263,6 @@ namespace MelePause
         // end: photo mode's priority (below Conversation's), the conversation panel (it eats the sticks, and shows the wheel
         // and the subtitle), the ignore counters, the controller's timers, a cutscene's director camera. The exit is the
         // game's own (HidePhotoMode), then ours.
-
-        /// A game object we changed, with its object index: checked again before each write back.
-        template <class T>
-        struct Kept
-        {
-            T* Object = nullptr;
-            int Index = -1;
-
-            void Set(T* object)
-            {
-                Object = object;
-                Index = object != nullptr ? object->ObjectInternalInteger : -1;
-            }
-
-            T* Live() const { return Alive(Object, Index) ? Object : nullptr; }
-        };
 
         /// What the session changed, one bit per step: the exit gives back only those, and clears each bit once done.
         enum : unsigned
@@ -504,16 +370,6 @@ namespace MelePause
         bool GuiTickHooked = false;
         /// The GUI sound hooks are in (see PlayGuiSound_hook): without them photo mode's sounds wait for the pause's end.
         bool SoundHooked = false;
-
-        /// Calls that function of the object, when its class has one (logged once per class when not).
-        template <class Parms>
-        bool Call(UObject* object, wchar_t const* name, CachedFunction& cache, Parms& parms)
-        {
-            auto const function = FunctionOf(object, name, cache);
-            if (function == nullptr) return false;
-            CallGame(object, function, &parms);
-            return true;
-        }
 
         USFXGameModePhoto* PhotoMode(USFXGameModeManager* manager)
         {
