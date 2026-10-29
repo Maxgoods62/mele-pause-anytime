@@ -2,6 +2,15 @@ name: Bug report
 description: Something goes wrong in the game with MelePause installed.
 labels: ["bug"]
 body:
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      description: The game where it goes wrong. MelePause is built for LE1 only.
+      options:
+        - LE1 (Mass Effect 1)
+    validations:
+      required: true
   - type: textarea
     id: what
     attributes:
@@ -24,7 +33,8 @@ body:
     id: version
     attributes:
       label: MelePause version
-      description: The number in the log line that ends in "MelePause N ready".
+      description: >-
+        The number in the log line that ends in "LE<n>MelePause N ready" ("MelePause N ready" for version 6 and older).
     validations:
       required: true
   - type: textarea
@@ -32,8 +42,8 @@ body:
     attributes:
       label: Game, other ASIs and mods
       description: >-
-        Steam or EA app, and the game version if you know it. The other files in
-        `Game\ME1\Binaries\Win64\ASI`, your other mods, and keyboard or which gamepad.
+        Steam or EA app, and the game version if you know it. The files in `Game\ME<n>\Binaries\Win64\ASI`
+        (`LE<n>MelePause.asi` and the others; ME1 for LE1), your other mods, and keyboard or which gamepad.
     validations:
       required: true
   - type: textarea
@@ -41,5 +51,5 @@ body:
     attributes:
       label: Log file
       description: >-
-        Attach `Logs\MelePause.log` from `<LE folder>\Game\ME1\Binaries\Win64` (drag it here).
+        Attach `Logs\MelePause.log` from `<LE folder>\Game\ME<n>\Binaries\Win64` (drag it here).
         MelePause rewrites it each time the game starts, so copy it before you start the game again.

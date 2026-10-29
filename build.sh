@@ -1,25 +1,31 @@
 #!/usr/bin/env bash
-# Build MelePause.asi with the Visual Studio Build Tools, inside this repo's own checkout of ME3Tweaks/LExASIs on the
-# Windows disk (it provides the SDK, the ASI loader interface and the CMake helpers), then stage it in MELE_STAGE.
-#   ./build.sh              build and stage
-#   ./build.sh --install    also copy it to the game's ASI folder (the game must be closed)
-#   ./build.sh --uninstall  remove it from the ASI folder (the game must be closed)
+# Build LE<n>MelePause.asi for each game picked with the Visual Studio Build Tools, inside this repo's own checkout of
+# ME3Tweaks/LExASIs on the Windows disk (it provides the SDK, the ASI loader interface and the CMake helpers), then
+# stage it in MELE_STAGE.
+#   ./build.sh                  build and stage the games in MELE_GAMES, else the released ones (scripts/games.sh)
+#   ./build.sh --game LE2 ...   build and stage these games instead: LE1, LE2, LE3 or all (the ones src/CMakeLists.txt
+#                               lists in GAMES), one --game for each
+#   ./build.sh ... --install    also copy each into its game's ASI folder (the games must be closed)
+#   ./build.sh ... --uninstall  remove each from its game's ASI folder (the games must be closed)
 # Runs in WSL. Settings come from the environment or from build.env (not in git, see build.env.example); a variable the
 # caller set wins over build.env. All are optional:
+#   MELE_GAMES    the games to build when no --game is given, separated by spaces, e.g. 'LE1 LE2' or all
+#                 (default: RELEASED_GAMES)
 #   MELE_LE_DIR   the Legendary Edition folder, as a Windows path; only --install and --uninstall use it
 #                 (default: the install folder in the registry)
 #   MELE_VS       the Visual Studio or Build Tools folder with the C++ tools and CMake (default: found with vswhere)
 #   MELE_LEXASIS  the LExASIs checkout, cloned on the first build; Dear ImGui goes next to it in third_party. Keep it on
 #                 the Windows disk: CMake and MSBuild do not work well on \\wsl.localhost paths
 #                 (default: %LOCALAPPDATA%\mele-asi-build\MelePause\LExASIs)
-#   MELE_STAGE    where MelePause.asi and its .pdb are copied (default: dist/ next to this script)
-# MelePause.asi in Game\ME1\Binaries\Win64\ASI is the only file this tool writes inside the game install.
+#   MELE_STAGE    where LE<n>MelePause.asi and its .pdb are copied (default: dist/ next to this script)
+# Inside the game install, this tool writes only LE<n>MelePause.asi in Game\ME<n>\Binaries\Win64\ASI, and deletes the
+# MelePause.asi of v6 and older from ME1's ASI folder. It never writes the ASI loader.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The caller's values are put back after build.env, so a test can override one of them.
 if [[ -f "$HERE/build.env" ]]; then
-    saved="$(declare -p MELE_LE_DIR MELE_VS MELE_LEXASIS MELE_STAGE 2>/dev/null || true)"
+    saved="$(declare -p MELE_GAMES MELE_LE_DIR MELE_VS MELE_LEXASIS MELE_STAGE 2>/dev/null || true)"
     . "$HERE/build.env"
     eval "$saved"
 fi
@@ -28,6 +34,25 @@ LEXASIS_COMMIT=aaad03a
 IMGUI_COMMIT=c1aaac65e896a45f81f47a4d68f9959e0f86c859      # v1.93.0
 
 die() { echo "build.sh: $*" >&2; exit 1; }
+. "$HERE/scripts/games.sh"
+
+USAGE="usage: ./build.sh [--game LE1|LE2|LE3|all]... [--install | --uninstall]"
+names=()
+action=build
+while (( $# > 0 )); do
+    case "$1" in
+        --game)
+            (( $# > 1 )) || die "--game needs LE1, LE2, LE3 or all ($USAGE)"
+            names+=("$2")
+            shift 2 ;;
+        --install|--uninstall)
+            [[ "$action" == build ]] || die "--install or --uninstall, not both ($USAGE)"
+            action="${1#--}"
+            shift ;;
+        *) die "unknown argument '$1' ($USAGE)" ;;
+    esac
+done
+pick_games "${names[@]}"
 
 # A Windows environment variable as a WSL path; empty if it is not set. PowerShell prints it in UTF-8 (cmd.exe would use
 # the OEM code page and break a non-ASCII user name).
@@ -54,22 +79,55 @@ le_dir() {
     [[ -n "$win" ]] || die "Legendary Edition not found in the registry: set MELE_LE_DIR to its folder, as a Windows path"
     win="${win%\\}"
     dir="$(wslpath -u "$win" 2>/dev/null || true)"
-    [[ -n "$dir" && -d "$dir/Game/ME1" ]] || die "no Game\\ME1 in '$win': set MELE_LE_DIR to the Legendary Edition folder"
+    [[ -n "$dir" && -d "$dir/Game" ]] || die "no Game folder in '$win': set MELE_LE_DIR to the Legendary Edition folder"
     echo "$dir"
 }
 
-# Closed only when tasklist answers and lists no MassEffect1.exe: a failed tasklist counts as running.
+# Closed only when tasklist answers and does not list the executable $1: a failed tasklist counts as running.
 game_closed() {
     local out
-    out="$(tasklist.exe /FO CSV /NH /FI "IMAGENAME eq MassEffect1.exe" 2>/dev/null)" || return 1
-    ! grep -qi 'MassEffect1.exe' <<< "$out"
+    out="$(tasklist.exe /FO CSV /NH /FI "IMAGENAME eq $1" 2>/dev/null)" || return 1
+    ! grep -qiF "$1" <<< "$out"
 }
 
-if [[ "${1:-}" == "--uninstall" ]]; then
-    ASI_DIR="$(le_dir)/Game/ME1/Binaries/Win64/ASI"
-    game_closed || { echo "MassEffect1.exe is running: close the game first." >&2; exit 1; }
-    rm -f "$ASI_DIR/MelePause.asi"
-    echo "removed $ASI_DIR/MelePause.asi"
+# Every check for every game picked, before anything in the game install changes: the ASI loader and the ASI folder
+# (--install only: this tool never writes the loader, and --uninstall has nothing to remove without the folder), and the
+# game closed. $1 ends a refusal.
+check_games() {
+    local g win64
+    for g in "${GAMES[@]}"; do
+        game_info "$g"
+        win64="$LE_DIR/Game/$GAME_ME/Binaries/Win64"
+        [[ "$action" != install || -f "$win64/bink2w64_original.dll" ]] \
+            || die "no ASI loader in Game\\$GAME_ME: install one with ME3Tweaks Mod Manager first$1"
+        [[ "$action" != install || -d "$win64/ASI" ]] || die "no ASI folder in Game\\$GAME_ME\\Binaries\\Win64$1"
+        game_closed "$GAME_EXE" || die "$GAME_EXE is running: close the game first$1"
+    done
+}
+
+# Deletes the file $1 if it is there, and says so.
+remove() {
+    if [[ -f "$1" ]]; then
+        rm -f "$1"
+        echo "removed $1"
+    fi
+}
+
+# The checks come before the build too, so a missing loader or a running game costs no build.
+if [[ "$action" != build ]]; then
+    LE_DIR="$(le_dir)"
+    check_games ""
+fi
+
+if [[ "$action" == uninstall ]]; then
+    for g in "${GAMES[@]}"; do
+        game_info "$g"
+        ASI_DIR="$LE_DIR/Game/$GAME_ME/Binaries/Win64/ASI"
+        if [[ ! -d "$ASI_DIR" ]]; then echo "no ASI folder in Game\\$GAME_ME\\Binaries\\Win64: nothing to remove"; continue; fi
+        [[ -f "$ASI_DIR/$GAME_ASI" ]] || echo "no $GAME_ASI in $ASI_DIR"
+        remove "$ASI_DIR/$GAME_ASI"
+        if [[ -n "$GAME_LEGACY" ]]; then remove "$ASI_DIR/$GAME_LEGACY"; fi
+    done
     exit 0
 fi
 
@@ -148,33 +206,67 @@ fetch_pinned https://github.com/ocornut/imgui.git "$THIRD_PARTY/imgui" "$IMGUI_C
 
 # Our sources become one more ASI project of that tree. The project line is guarded, so the tree still configures if
 # LExASIs/MelePause is ever deleted; an unguarded line from an earlier build is replaced.
+# By content, not by time: a changed file gets the current time, so MSBuild never keeps an object compiled from another
+# checkout's newer copy.
 mkdir -p "$LEXASIS/MelePause"
-rsync -a --delete "$HERE/src/" "$LEXASIS/MelePause/"
+rsync -rlc --delete "$HERE/src/" "$LEXASIS/MelePause/"
 CML="$LEXASIS/CMakeLists.txt"
 if grep -qx 'add_subdirectory ("MelePause")' "$CML"; then sed -i '/^add_subdirectory ("MelePause")$/d' "$CML"; fi
 grep -qF 'EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/MelePause"' "$CML" \
     || printf '%s\n' 'if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/MelePause")' '  add_subdirectory ("MelePause")' 'endif ()' >> "$CML"
 
 cd "$LEXASIS"
-# LEASI_GAME1_WIN64 would make every ASI build copy itself into the game: keep it unset.
-env -u LEASI_GAME1_WIN64 "$CMAKE" --preset VisualStudio -DLEASI_BUILD_LE2=OFF -DLEASI_BUILD_LE3=OFF -DLEASI_BUILD_LEL=OFF \
-    "-DMELE_THIRD_PARTY=$(wslpath -m "$THIRD_PARTY")" > /dev/null 2>&1 \
-    || { echo "cmake configure failed: run it by hand in $LEXASIS" >&2; exit 1; }
+# A LEASI_GAME<n>_WIN64 variable makes the ASI builds of every game turned on copy themselves into that game. env -u
+# removes one WSLENV would forward to cmake.exe; one set on the Windows side still reaches it, so the configure output
+# is checked too. Every game flag is passed, so a value cached by an earlier configure never sticks.
+flags=()
+for g in LE1 LE2 LE3; do
+    if [[ " ${GAMES[*]} " == *" $g "* ]]; then flags+=("-DLEASI_BUILD_$g=ON"); else flags+=("-DLEASI_BUILD_$g=OFF"); fi
+done
 log="$(mktemp)"
-if ! "$CMAKE" --build Build --config RELEASE --target MelePause-LE1 -- /m /v:minimal /nologo > "$log" 2>&1; then
-    tr -d '\r' < "$log" | grep -E 'error|warning' | sed -E 's|^.*LExASIs\\||; s| \[[^]]*vcxproj\]||' | sort -u
+if ! env -u LEASI_GAME1_WIN64 -u LEASI_GAME2_WIN64 -u LEASI_GAME3_WIN64 -u LEASI_GAMEL_WIN64 "$CMAKE" \
+    --preset VisualStudio "${flags[@]}" -DLEASI_BUILD_LEL=OFF \
+    "-DMELE_THIRD_PARTY=$(wslpath -m "$THIRD_PARTY")" > "$log" 2>&1; then
     rm -f "$log"
-    exit 1
+    die "cmake configure failed: run it by hand in $LEXASIS"
 fi
+if grep -q 'User-provided Mass Effect' "$log"; then
+    rm -f "$log"
+    die "a LEASI_GAME*_WIN64 variable is set in the Windows environment, and it makes the build copy itself into the game: remove it (System Properties, Environment Variables), then open a new terminal and build again"
+fi
+# A game gets a project only once src/CMakeLists.txt lists it in GAMES. The solution is checked too: a project of a game
+# listed before stays in Build.
+for g in "${GAMES[@]}"; do
+    if [[ ! -f "Build/MelePause/MelePause-$g.vcxproj" ]] || ! grep -q "MelePause-$g\.vcxproj" Build/LExASIs.slnx; then
+        rm -f "$log"
+        die "no MelePause-$g project: src/CMakeLists.txt does not build $g yet (asi_target's GAMES)"
+    fi
+done
+for g in "${GAMES[@]}"; do
+    if ! "$CMAKE" --build Build --config RELEASE --target "MelePause-$g" -- /m /v:minimal /nologo > "$log" 2>&1; then
+        # The project's path ends each line: it goes first, so the source path's prefix can be cut up to its LExASIs\.
+        tr -d '\r' < "$log" | grep -E 'error|warning' | sed -E 's| \[[^]]*vcxproj\]||; s|^.*LExASIs\\||' | sort -u
+        rm -f "$log"
+        die "MelePause-$g did not build"
+    fi
+done
 rm -f "$log"
 
 mkdir -p "$STAGE"
-cp Build/RELEASE/MelePause.asi Build/RELEASE/MelePause.pdb "$STAGE/"
-echo "built $STAGE/MelePause.asi"
+for g in "${GAMES[@]}"; do
+    game_info "$g"
+    cp "Build/RELEASE/$GAME_ASI" "Build/RELEASE/${GAME_ASI%.asi}.pdb" "$STAGE/"
+    echo "built $STAGE/$GAME_ASI"
+done
 
-if [[ "${1:-}" == "--install" ]]; then
-    ASI_DIR="$(le_dir)/Game/ME1/Binaries/Win64/ASI"
-    game_closed || { echo "MassEffect1.exe is running: close the game first (built, not installed)." >&2; exit 1; }
-    cp "$STAGE/MelePause.asi" "$ASI_DIR/MelePause.asi"
-    echo "installed $ASI_DIR/MelePause.asi"
+if [[ "$action" == install ]]; then
+    check_games " (built, not installed)"
+    for g in "${GAMES[@]}"; do
+        game_info "$g"
+        ASI_DIR="$LE_DIR/Game/$GAME_ME/Binaries/Win64/ASI"
+        cp "$STAGE/$GAME_ASI" "$ASI_DIR/$GAME_ASI"
+        echo "installed $ASI_DIR/$GAME_ASI"
+        # Two copies would each toggle the pause on one key press (the new one stays off while the old one is loaded).
+        if [[ -n "$GAME_LEGACY" ]]; then remove "$ASI_DIR/$GAME_LEGACY"; fi
+    done
 fi

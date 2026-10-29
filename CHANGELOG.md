@@ -1,9 +1,42 @@
 # Changelog
 
-Versions are `ASI_VERSION` in `src/SharedVersion.h`. The git tags `v2` to `v5` mark them; none is a published release
-yet. Every version needs LE1 and an ASI loader.
+Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
+published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
+
+## v7 (unreleased)
+
+Games: LE1
+
+The file is renamed and the build makes one file per game. In LE1 the ASI does the same as v6, except for its place
+among other ASIs' hooks (below).
+
+- The file is now `LE1MelePause.asi`: the CMake target `MelePause-LE<n>` builds `LE<n>MelePause.asi` for each game.
+  Delete the old `MelePause.asi` from the ASI folder; `./build.sh --install` and `--uninstall` do. While it is loaded,
+  `LE1MelePause.asi` stays off and leaves the log to it (the loader refuses the second copy's hooks anyway, but both
+  would rewrite the log). It says so to a debugger (DebugView), and the loader logs an attach error in
+  `Logs\bink2w64_proxy.log`. The log stays `Logs\MelePause.log`.
+- The loader loads the ASI folder in file-name order, and a hook installed later runs before the earlier ones. The new
+  name sorts before files such as `LE1StreamingLevelsHUD-v5.asi` or `MeleBridge.asi` that `MelePause.asi` sorted after,
+  so their `ProcessEvent` and `Present` hooks now run before MelePause's: what such an ASI draws now lies under the
+  pause screen's blur.
+- The log's ready line reads `LE1MelePause 7 ready`.
+- The file has Windows version info: version `7.0.4.0`, a description, and its original file name.
+- `build.sh` and `package.sh` take `--game LE1|LE2|LE3|all`, once per game, or the setting `MELE_GAMES`; by default
+  they build the released games, LE1. `src/CMakeLists.txt` builds LE1 only. See [BUILDING.md](BUILDING.md#games).
+- `--install` checks every game before the build: the ASI loader, the ASI folder, and the game closed. It checks again
+  before it copies.
+- `package.sh` writes one zip per game, `dist/LE<n>MelePause-v<N>.zip`.
+- `build.sh` stops when a `LEASI_GAME*_WIN64` variable reaches the configure step (one set in the Windows environment
+  would make the build copy itself into the game), refuses an argument it does not know, and copies `src/` into the
+  LExASIs tree by content, so a file changed there is always recompiled.
+- The pause screen also reads the language codes the LE2 and LE3 launchers pass (`-OVERRIDELANGUAGE=` for LE2,
+  `-language=` for LE3). LE1's are unchanged.
+- The code is split for more games. What differs per game is in `src/game/LE<n>.hpp`, with two switches that turn photo
+  mode and the movie pause off for a game without them; LE1 keeps both on. Photo mode moved to `src/PhotoLE1.cpp`.
 
 ## v6 (unreleased)
+
+Games: LE1
 
 Build changes only. The ASI does the same as v5 in the game.
 
@@ -16,6 +49,8 @@ Build changes only. The ASI does the same as v5 in the game.
 - Each build checks the LExASIs checkout against its pin and repairs it, keeping your own edits there.
 
 ## v5 (2026-10-28)
+
+Games: LE1
 
 - A pause screen replaces the "PAUSE" banner. The frame is blurred (a dual filter blur), darkened and a little
   desaturated. "PAUSE" stands in a bracketed frame at the centre. At the bottom left are the keys: Resume, and Photo
@@ -32,6 +67,8 @@ Build changes only. The ASI does the same as v5 in the game.
 
 ## v4 (2026-10-28)
 
+Games: LE1
+
 - Photo mode over a paused conversation or in-engine cutscene: a gamepad's Y or F7 opens the game's photo mode on the
   shot on screen, at its field of view. Y, F7, Esc or Start leave it, and the scene is still paused.
 - Under the pause, photo mode's camera, panel and sounds work: native hooks let its input, its GUI ticks and its GUI
@@ -44,6 +81,8 @@ Build changes only. The ASI does the same as v5 in the game.
 
 ## v3 (2026-10-28)
 
+Games: LE1
+
 - A gamepad's Start (`XboxTypeS_Start`) pauses and resumes conversations, in-engine cutscenes and the galaxy map's
   travel movie, as Esc does. The two keys can be mixed. Everywhere else Start keeps its vanilla job, such as the pause
   menu in gameplay.
@@ -53,6 +92,8 @@ Build changes only. The ASI does the same as v5 in the game.
 - Tested with an Xbox pad.
 
 ## v2 (2026-10-28)
+
+Games: LE1
 
 The first version in git.
 
