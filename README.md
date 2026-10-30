@@ -1,26 +1,28 @@
 # MelePause
 
-MelePause is an ASI plugin for Mass Effect 1 and Mass Effect 2 in the Legendary Edition (LE1 and LE2), installed as
-`LE1MelePause.asi` and `LE2MelePause.asi`. Esc, or Start on a gamepad, pauses a conversation or an in-engine cutscene,
-and a fullscreen movie such as LE1's galaxy map travel movie or LE2's mass relay jump, and the same key resumes it. While the game is
-paused, the picture is blurred and darkened under a pause screen. In a paused conversation or cutscene, a gamepad's Y
-or F7 opens the game's photo mode on the paused shot. Everywhere else these keys do what they always did.
+MelePause is an ASI plugin for Mass Effect 1, 2 and 3 in the Legendary Edition (LE1, LE2 and LE3), installed as
+`LE1MelePause.asi`, `LE2MelePause.asi` and `LE3MelePause.asi`. Esc, or Start on a gamepad, pauses a conversation or an
+in-engine cutscene, and a fullscreen movie such as LE1's galaxy map travel movie or LE2's mass relay jump, and the same
+key resumes it. While the game is paused, the picture is blurred and darkened under a pause screen. In a paused
+conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot. Everywhere else these keys
+do what they always did.
 
-Version 10 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
+Version 11 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
 it from source and copy it into the game ([Install](#install)).
 
 ## Games
 
 | Feature | LE1 | LE2 | LE3 |
 |---|---|---|---|
-| Esc pauses a conversation or an in-engine cutscene | since v2 | since v8 | no |
+| Esc pauses a conversation or an in-engine cutscene | since v2 | since v8 | since v11 |
 | Esc pauses a fullscreen movie | since v2 | since v9, a movie whose sound MelePause knows | no |
-| Start on a gamepad pauses what Esc pauses | since v3 | since v8 | no |
+| Start on a gamepad pauses what Esc pauses | since v3 | since v8 | since v11 |
 | Photo mode on the paused shot (Y or F7) | since v4 | since v10 | no |
-| Pause screen; Space and A resume | since v5 | since v8 | no |
+| Pause screen; Space and A resume | since v5 | since v8 | since v11 |
 
-LE3 is not supported. Each game has its own file, for its own ASI folder: `LE1MelePause.asi` for ME1,
-`LE2MelePause.asi` for ME2. The sections below describe LE1; [In LE2](#in-le2) says what differs there.
+Each game has its own file, for its own ASI folder: `LE1MelePause.asi` for ME1, `LE2MelePause.asi` for ME2,
+`LE3MelePause.asi` for ME3. The sections below describe LE1; [In LE2](#in-le2) and [In LE3](#in-le3) say what differs
+there.
 
 ## What Esc and Start do
 
@@ -64,6 +66,18 @@ lighter pause, under which a conversation's clock and the music keep running.
 
 The details, and the open questions: [docs/games/LE2.md](docs/games/LE2.md).
 
+## In LE3
+
+- Esc or Start pauses a conversation or an in-engine cutscene, with the same world pause and pause screen as in LE1.
+  Esc, Start, Space or A resumes it.
+- LE3 lets Esc skip a skippable cutscene. With MelePause, Esc pauses it instead; Space, or a gamepad's X, still skips it
+  when nothing is paused.
+- Fullscreen movies keep vanilla Esc and Start: LE3's movies play their sound through Wwise, and MelePause does not
+  pause it.
+- Y and F7 keep their vanilla jobs: photo mode under the pause is not in LE3.
+
+The details, and the open questions: [docs/games/LE3.md](docs/games/LE3.md).
+
 ## Photo mode
 
 | Key, in a conversation or cutscene that MelePause paused | What it does |
@@ -97,7 +111,7 @@ happens when the swap chain cannot be hooked, when the overlay fails to start or
 
 ## Requirements
 
-- Mass Effect Legendary Edition. MelePause supports LE1 and LE2 ([Games](#games)).
+- Mass Effect Legendary Edition. MelePause supports LE1, LE2 and LE3 ([Games](#games)).
 - An ASI loader: [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy), the `bink2w64.dll` proxy that loads every
   `.asi` file in `Game\ME<n>\Binaries\Win64\ASI`, one per game. ME3Tweaks Mod Manager installs it with any mod.
 - The [Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), 14.50 or newer, and no older
@@ -114,11 +128,12 @@ Until then, build it yourself: [BUILDING.md](BUILDING.md).
 
 Close the game, then install it one of two ways:
 
-- `./build.sh --install` builds `LE1MelePause.asi` and `LE2MelePause.asi` and copies each into its game's ASI folder.
+- `./build.sh --install` builds `LE1MelePause.asi`, `LE2MelePause.asi` and `LE3MelePause.asi` and copies each into its
+  game's ASI folder.
   It checks first, for each game, that the ASI loader is there and that the game is not running, and builds nothing
   when a check fails. To install one game alone, name it: `./build.sh --game LE1 --install`.
 - A copy by hand does the same: put `LE<n>MelePause.asi` from `dist/` (or your `MELE_STAGE`) into
-  `<LE folder>\Game\ME<n>\Binaries\Win64\ASI\`, LE1's into ME1's and LE2's into ME2's.
+  `<LE folder>\Game\ME<n>\Binaries\Win64\ASI\`, LE1's into ME1's, LE2's into ME2's and LE3's into ME3's.
 
 `<LE folder>` is the Legendary Edition folder, the one that holds `Game`. To update, build again and install again: the
 file name carries no version, so the new copy replaces the old one.
@@ -129,7 +144,7 @@ copy by hand, delete it yourself: while it is there, the ASI loader loads both f
 `LE1MelePause.asi` stays off.
 
 To check that it loaded, start the game and open `<LE folder>\Game\ME<n>\Binaries\Win64\Logs\MelePause.log`. It has a
-line that ends in `LE<n>MelePause 9 ready`. In LE1, a line that ends in `MelePause 6 ready`, or an older number, means
+line that ends in `LE<n>MelePause 11 ready`. In LE1, a line that ends in `MelePause 6 ready`, or an older number, means
 that the old `MelePause.asi` is still in the ASI folder.
 
 ## Uninstall
@@ -153,7 +168,8 @@ With the game closed, run `./build.sh --uninstall` (or `--game LE1 --uninstall` 
 
 - Loading-screen movies do not pause.
 - In LE1, Esc skips a fullscreen movie that the engine lets the player skip, and MelePause cannot pause such a movie.
-  In LE2, a movie whose sound MelePause does not know keeps vanilla Esc and Start.
+  In LE2, a movie whose sound MelePause does not know keeps vanilla Esc and Start. In LE3, every fullscreen movie
+  does.
 - Esc in the open console closes the console, as in the vanilla game.
 - During a movie, Esc is read from the keyboard. A press while another program's window is in front is ignored. Any Esc
   pressed while one of the game's windows is in front toggles the movie pause, also one meant to close the console or

@@ -6,10 +6,11 @@ body:
     id: game
     attributes:
       label: Game
-      description: The game where it goes wrong. MelePause supports LE1 and LE2.
+      description: The game where it goes wrong. MelePause supports LE1, LE2 and LE3.
       options:
         - LE1 (Mass Effect 1)
         - LE2 (Mass Effect 2)
+        - LE3 (Mass Effect 3)
     validations:
       required: true
   - type: textarea

@@ -1,8 +1,8 @@
 # How MelePause works
 
-MelePause is an ASI plugin, one file per game: `LE1MelePause.asi` for LE1 and `LE2MelePause.asi` for LE2. The ASI
-loader, LEBinkProxy, loads it after the game's code is decrypted and gives it a shared hook manager, which MeleBridge
-and other ASIs use too. The sources:
+MelePause is an ASI plugin, one file per game: `LE1MelePause.asi` for LE1, `LE2MelePause.asi` for LE2 and
+`LE3MelePause.asi` for LE3. The ASI loader, LEBinkProxy, loads it after the game's code is decrypted and gives it a
+shared hook manager, which MeleBridge and other ASIs use too. The sources:
 
 | File | What it holds |
 |---|---|

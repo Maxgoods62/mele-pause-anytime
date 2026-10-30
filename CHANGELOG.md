@@ -3,13 +3,21 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
-## After v10 (unreleased)
+## v11 (unreleased)
 
-Games: LE1, LE2. The ASI does the same as v10 in both.
+Games: LE1, LE2, LE3
 
-- `src/CMakeLists.txt` also builds `LE3MelePause.asi`, with photo mode and the movie pause off. It is not released and
-  has never run in the game ([docs/games/LE3.md](docs/games/LE3.md)). `--game all` now covers LE3, so `./build.sh
-  --game all --install` also copies into ME3.
+LE3 gets its own file, `LE3MelePause.asi`. In LE1 and LE2 the ASI does the same as v10.
+
+- In LE3, Esc or Start pauses a conversation or an in-engine cutscene with the game's world pause, and Esc, Start, Space
+  or A resumes it, under the same pause screen as in LE1 and LE2. Everywhere else Esc and Start keep their vanilla jobs.
+- LE3 lets Esc skip a skippable cutscene. With MelePause, Esc pauses it instead; Space, or a gamepad's X, still skips it
+  when nothing is paused.
+- Not in LE3: the movie pause (125 of LE3's 126 movies play their sound through Wwise) and photo mode under the pause.
+  Fullscreen movies, Y and F7 keep their vanilla jobs ([docs/games/LE3.md](docs/games/LE3.md)).
+- `./build.sh` and `./package.sh` cover LE1, LE2 and LE3 by default, so `./build.sh --install` also copies into ME3, and
+  stops before building when ME3 has no ASI loader.
+- `package.sh` writes `dist/LE1MelePause-v11.zip`, `dist/LE2MelePause-v11.zip` and `dist/LE3MelePause-v11.zip`.
 
 ## v10 (unreleased)
 

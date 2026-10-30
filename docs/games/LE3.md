@@ -1,10 +1,9 @@
 # MelePause in LE3
 
-Status: runs, not released. `./build.sh --game LE3` builds `LE3MelePause.asi` from the same sources as LE1 and LE2,
-against LE3's SDK, with photo mode and the movie pause off. On 2026-10-30 the first build passed the pause part of the
-sheet below with keyboard and mouse and with a gamepad ([testing.md](../testing.md#le3)). LE3 is not a
-released game (`RELEASED_GAMES` in `scripts/games.sh`): a plain `./build.sh` or `./package.sh` leaves it out, and
-`package.sh` has no `README.txt` text for it. `--game all` builds it, and with `--install` copies it into ME3.
+Status: from v11, LE3 is in `RELEASED_GAMES` (`scripts/games.sh`), so a plain `./build.sh` or `./package.sh` covers it.
+`./build.sh --game LE3` builds `LE3MelePause.asi` from the same sources as LE1 and LE2, against LE3's SDK, with photo
+mode and the movie pause off. On 2026-10-30 the first build passed the pause part of the sheet below with keyboard and
+mouse and with a gamepad ([testing.md](../testing.md#le3)).
 
 ## What the build has
 
@@ -14,7 +13,7 @@ released game (`RELEASED_GAMES` in `scripts/games.sh`): a plain `./build.sh` or 
 | Pause screen, and the Canvas banner where it cannot draw | compiled in | on |
 | Movie pause (`MELEPAUSE_MOVIES`) | off: neither `Bink::Install` nor `MovieInput::Install` is called, and Esc and Start in a movie stay the game's | on |
 | Photo mode under the pause (`MELEPAUSE_PHOTO`) | off: `PhotoOff.cpp`. Y and F7 stay the game's, and the pause screen offers no photo key | on |
-| File | `LE3MelePause.asi`, Windows version `10.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `10.0.4.0` |
+| File | `LE3MelePause.asi`, Windows version `11.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `11.0.4.0` |
 
 Why the two switches are off:
 

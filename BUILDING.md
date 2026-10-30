@@ -1,6 +1,7 @@
 # Building MelePause
 
-`build.sh` builds `LE1MelePause.asi` and `LE2MelePause.asi`, MelePause for LE1 and LE2 ([Games](#games)), from a clone
+`build.sh` builds `LE1MelePause.asi`, `LE2MelePause.asi` and `LE3MelePause.asi`, MelePause for LE1, LE2 and LE3
+([Games](#games)), from a clone
 of this repo, and fetches the rest of the sources it needs (LExASIs and Dear ImGui) itself. It runs in WSL and drives
 the Windows build tools through interop.
 
@@ -42,7 +43,7 @@ Each game gets its own ASI from the same sources, built against that game's SDK:
 makes `LE<n>MelePause.asi` and `LE<n>MelePause.pdb`. One version number covers every game.
 
 A build covers the games named with `--game`, else those in `MELE_GAMES`, else the released ones (`RELEASED_GAMES` in
-`scripts/games.sh`: LE1 and LE2). A name is `LE1`, `LE2`, `LE3` or `all`, in any case. `all` means the games that
+`scripts/games.sh`: LE1, LE2 and LE3). A name is `LE1`, `LE2`, `LE3` or `all`, in any case. `all` means the games that
 `src/CMakeLists.txt` lists on `asi_target`'s `GAMES` line: LE1, LE2 and LE3. A game that line does not list has no
 project, and the build stops after the configure step: "no MelePause-LE<n> project: src/CMakeLists.txt does not build
 LE<n> yet (asi_target's GAMES)".
@@ -54,10 +55,10 @@ file name), and its branch in `Game.hpp`: the tree's `VisualStudio` preset turns
 listed game that does not compile breaks the whole tree's build in Visual Studio.
 `package.sh` packs a game only once `game_readme` in `scripts/games.sh` has its `README.txt` text.
 
-LE1 and LE2 are the released games, so a plain `./build.sh --install` copies into ME1 and ME2, and stops before it
-builds anything when either game has no ASI loader or is running: name `--game LE1` (or `--game LE2`), or set
-`MELE_GAMES`, to install one game alone. LE3 is built but not released: `--game all` builds it, and with `--install`
-copies it into ME3. Its build has photo mode and the movie pause off ([docs/games/LE3.md](docs/games/LE3.md)).
+LE1, LE2 and LE3 are the released games, so a plain `./build.sh --install` copies into ME1, ME2 and ME3, and stops
+before it builds anything when any of them has no ASI loader or is running: name `--game LE1` (or `LE2`, `LE3`), or set
+`MELE_GAMES`, to install one game alone. LE3's build has photo mode and the movie pause off
+([docs/games/LE3.md](docs/games/LE3.md)).
 
 ## Install checks
 
@@ -86,7 +87,7 @@ same settings, but sets `MELE_STAGE` itself.
 
 | Variable | Default | What it is |
 |---|---|---|
-| `MELE_GAMES` | the released games (`LE1 LE2`) | The games to build when no `--game` is given, separated by spaces: `LE1`, `LE2`, `LE3` or `all`. |
+| `MELE_GAMES` | the released games (`LE1 LE2 LE3`) | The games to build when no `--game` is given, separated by spaces: `LE1`, `LE2`, `LE3` or `all`. |
 | `MELE_LE_DIR` | the install folder from the registry | The Legendary Edition folder, as a Windows path. Only `--install` and `--uninstall` use it. |
 | `MELE_VS` | found with `vswhere.exe` | The Visual Studio or Build Tools folder, as a WSL path. |
 | `MELE_LEXASIS` | `%LOCALAPPDATA%\mele-asi-build\MelePause\LExASIs` | The LExASIs checkout, as a WSL path. Keep it on the Windows disk: CMake and MSBuild do not work well on `\\wsl.localhost` paths. |
