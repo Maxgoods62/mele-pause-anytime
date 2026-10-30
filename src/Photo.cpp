@@ -51,6 +51,7 @@ namespace MelePause::PhotoMode
             DoneViewTarget = 1u << 5, // a cutscene's CameraActor swapped for the controller
             DoneTether = 1u << 6,
             DoneCamEnabled = 1u << 7, // the camera's bDisabled cleared
+            DoneBlend = 1u << 8,      // a view target blend held
         };
 
         struct SavedBind
@@ -78,6 +79,10 @@ namespace MelePause::PhotoMode
             Kept<UMassEffectGuiManager> Gui;
             Kept<UBioSFPanel> Panel;
             Kept<AActor> OldTarget;
+            /// A blend to another view target (a cutscene's first second), held for the session.
+            Kept<AActor> OldPending;
+            FTViewTarget OldPendingView{};
+            float OldBlendTimeToGo = 0.0f;
             Kept<AWorldInfo> World;
             Kept<UBioSubtitles> Subtitles;
             unsigned char OldPriority = 0;
@@ -415,6 +420,19 @@ namespace MelePause::PhotoMode
                 camera->ViewTarget.Target = pc;
                 s.Done |= DoneViewTarget;
             }
+            //    A blend to a new view target, such as a cutscene's first second blending to the director's camera, is held:
+            //    Camera.UpdateCamera mixes the photo view with that target's, and at its end makes that target current (in LE1
+            //    a CameraActor there also clears CurrentCameraMode at every update), so photo mode would stop answering.
+            if (auto const pending = camera->PendingViewTarget.Target; pending != nullptr)
+            {
+                s.OldPending.Set(pending);
+                s.OldPendingView = camera->PendingViewTarget;
+                s.OldBlendTimeToGo = camera->BlendTimeToGo;
+                camera->PendingViewTarget.Target = nullptr;
+                camera->PendingViewTarget.Controller = nullptr;
+                s.Done |= DoneBlend;
+                LEASI_INFO("photo mode: the blend to {} held, {:.2f} s to go", PathOf(pending), s.OldBlendTimeToGo);
+            }
             // A frozen camera (BioConversation.DisableCamera) answers CameraCache and never runs the photo camera.
             if (camera->bDisabled)
             {
@@ -555,6 +573,16 @@ namespace MelePause::PhotoMode
             camera->m_bLastConstrainAspect = s.OldConstrainAspect ? 1 : 0;
         }
 
+        /// The view target blend on again where it stood, and the paused shot on screen until the world resumes: the camera
+        /// update without the blend showed the outgoing view alone.
+        void RestoreBlend(PhotoSession const& s, ASFXPlayerCamera* camera)
+        {
+            if (s.OldPending.Live() == nullptr) return;
+            camera->PendingViewTarget = s.OldPendingView;
+            camera->BlendTimeToGo = s.OldBlendTimeToGo;
+            camera->CameraCache.POV = s.EnterPov;
+        }
+
         /// Field writes on what is still alive; with calls, the controller's place too. Each step clears its bit once done.
         void RestoreFields(PhotoSession& s, bool calls)
         {
@@ -582,6 +610,8 @@ namespace MelePause::PhotoMode
             s.Done &= ~DonePanel;
             if ((s.Done & DoneViewTarget) && camera != nullptr) camera->ViewTarget.Target = s.OldTarget.Live() != nullptr ? s.OldTarget.Object : pc;
             s.Done &= ~DoneViewTarget;
+            if ((s.Done & DoneBlend) && camera != nullptr) RestoreBlend(s, camera);
+            s.Done &= ~DoneBlend;
             if ((s.Done & DoneCamEnabled) && camera != nullptr) RefreezeCamera(s, camera);
             s.Done &= ~DoneCamEnabled;
             if ((s.Done & DoneTether) && pc != nullptr)
@@ -640,6 +670,9 @@ namespace MelePause::PhotoMode
             //    again only after step 3: frozen, it would skip PickCameraMode and keep the photo camera.
             auto const refreeze = (s.Done & DoneCamEnabled) != 0;
             s.Done &= ~DoneCamEnabled;
+            // A held blend too: on again during step 3, its end would make its target current under the pause.
+            auto const reblend = (s.Done & DoneBlend) != 0;
+            s.Done &= ~DoneBlend;
             RestoreFields(s, true);
             RestoreSubtitle(s);
             if (manager != nullptr && manager->CurrentMode == ModePhoto) UpdateCurrentMode(manager);
@@ -653,6 +686,7 @@ namespace MelePause::PhotoMode
                 EndTransition(camera);
             }
             if (refreeze && camera != nullptr) RefreezeCamera(s, camera);
+            if (reblend && camera != nullptr) RestoreBlend(s, camera);
             LEASI_INFO("photo mode left ({}) after {:.1f} s: mode {} ({}), camera mode {}, {} static bind(s) set back, {} PlayerTick and {} HUD camera "
                        "steps, let past the pause: {} key and {} axis event(s), {} GUI tick(s) ({} changed the Pauser: put back), {} GUI sound(s)",
                        why, HeldFor(s.EnteredAt), manager != nullptr ? manager->CurrentMode : NoMode,

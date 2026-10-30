@@ -16,6 +16,9 @@ LE2 gets photo mode under the pause. In LE1 the camera's entry and exit change; 
   mode left behind; MelePause now puts it back on the paused shot. In LE2 the first entry of a pause in a director's
   shot looked away. On exit, the switch back now ends at once on the paused shot; in LE2 the view came back about half
   a second after the resume.
+- Photo mode opened in a cutscene's first second, while the camera still blends into the director's camera, holds that
+  blend until it ends: the blend took the view away from photo mode, which then did not answer. At the exit the blend
+  goes on from where it stood.
 - `src/PhotoLE1.cpp` is now `src/Photo.cpp`, for every game; the per-game natives and names are in
   `src/game/LE<n>.hpp`.
 - `package.sh` writes `dist/LE1MelePause-v10.zip` and `dist/LE2MelePause-v10.zip`.

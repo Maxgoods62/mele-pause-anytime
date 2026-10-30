@@ -89,7 +89,10 @@ before it makes it, so a stop midway gives back what it got to.
    is hidden (`IsVisible`).
 3. `SFXGameModePhoto.Priority` is raised to 3 (`ModePriority_Menus`), above Conversation (2), so `ShowPhotoMode` makes
    it the current mode. In a cutscene, the director's `CameraActor` view target is swapped for the controller, and the
-   photo tether (`PhotoModeTetherDistance`, 1000) is widened when the shot is far from the pawn.
+   photo tether (`PhotoModeTetherDistance`, 1000) is widened when the shot is far from the pawn. A blend to a new view
+   target (`PendingViewTarget`, such as a cutscene's first second, blending to the director's camera) is held for the
+   session: `Camera.UpdateCamera` would mix the photo view with that target's and, at the blend's end, make it the view
+   target (in LE1 a `CameraActor` there also clears `CurrentCameraMode` at each update).
 4. `ShowPhotoMode`, the game's own entry, places the controller on the shot; in LE1 it also clears the subtitle. The
    subtitle line is put back at once in the hidden conversation panel. The GUI ticks let past the pause (step 5) run
    the panel's handler, whose `Update` would hide the line, and nothing would show it again before the world resumes.
@@ -134,7 +137,8 @@ gives back:
 - the subtitle line, when the entry could not put it back (`BioSubtitles.DisplaySubtitle`);
 - the controller's place, then one `UpdateCamera`, and one of 0.001 s that ends the instant transition back to the
   conversation's or the director's camera (entering, step 7). A camera the conversation had frozen is frozen again
-  after that, on the saved shot.
+  after that, on the saved shot. A held blend is put back with its time to go, and the saved shot is on screen until
+  the world resumes.
 
 Each frame and each key also check the session: if the world pause ends without MelePause, the world goes, or the mode
 leaves Photo, the photo session ends.

@@ -137,5 +137,7 @@ and with a gamepad, over three runs. The two camera faults the first runs showed
 
 Not covered yet: LE2 photo mode in an in-engine cutscene. The same build passed S6 in LE1, in a conversation and in an
 in-engine cutscene, with Y and F7. One entry pressed in the first second of a cutscene, while the camera still blended
-from the player to the director's camera, opened 51 units and 8 degrees off the shot (the log's "pending" view
-target).
+from the player to the director's camera (the log's "pending" view target), opened 51 units and 8 degrees off the shot,
+with "camera mode None" for the whole session: the camera did not answer. MelePause now holds that blend for the
+session ("photo mode: the blend to ... held" in the log). Not seen in the game yet: 46 later entries in an STA00
+cutscene had no blend pending, and all opened on the shot.
