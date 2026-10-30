@@ -246,6 +246,45 @@ namespace MelePause::Bink
             }
         }
 
+        /// The movie player's fields as Install's MoviePlayerFields names them, for the logs only.
+        struct PlayerRead
+        {
+            void const* Player;
+            unsigned Flags;
+            unsigned Skippable;
+        };
+
+        MoviePlayerFields PlayerFields;
+
+        /// No C++ object may live in this frame. Reads only: the game thread may change the player meanwhile.
+        bool ReadPlayer(PlayerRead* out)
+        {
+            __try
+            {
+                auto const exe = reinterpret_cast<unsigned char const*>(GetModuleHandleW(nullptr));
+                auto const player = *reinterpret_cast<unsigned char const* const*>(exe + PlayerFields.Rva);
+                out->Player = player;
+                if (player == nullptr) return true;
+                out->Flags = *reinterpret_cast<unsigned const*>(player + PlayerFields.Flags);
+                out->Skippable = *reinterpret_cast<unsigned const*>(player + PlayerFields.Skippable);
+                return true;
+            }
+            __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+            {
+                return false;
+            }
+        }
+
+        /// The movie player's fields, for a movie line: empty when the game names none.
+        std::string PlayerText()
+        {
+            if (PlayerFields.Rva == 0) return {};
+            PlayerRead r{};
+            if (!ReadPlayer(&r)) return "; player unreadable";
+            if (r.Player == nullptr) return "; no player";
+            return std::format("; player {}: flags 0x{:X}, skippable {}", r.Player, r.Flags, r.Skippable);
+        }
+
         std::string NameText(char const* name, unsigned int flags)
         {
             if (name == nullptr) return "(null)";
@@ -409,10 +448,10 @@ namespace MelePause::Bink
         {
             auto const seconds = static_cast<double>(Since(now, m.CountedSince)) / 1000.0;
             auto const game = GameThreadSeen();
-            LEASI_INFO("movie #{} '{}' {}: {:.1f} s open, {}, paused {} (asked {}); over {:.1f} s: BinkWait {}, BinkDoFrame {}, BinkDoFrameAsync {}; {}, game thread's last ProcessEvent {}",
+            LEASI_INFO("movie #{} '{}' {}: {:.1f} s open, {}, paused {} (asked {}); over {:.1f} s: BinkWait {}, BinkDoFrame {}, BinkDoFrameAsync {}; {}, game thread's last ProcessEvent {}{}",
                        m.Serial, m.Name, why, static_cast<double>(Since(now, m.OpenedAt)) / 1000.0, FrameText(m.Handle), m.Paused, m.Want, seconds,
                        Describe(m.Waits, seconds), Describe(m.Frames, seconds), Describe(m.AsyncFrames, seconds), HudText(now, HudSeen()),
-                       game == 0 ? std::string{ "not seen yet" } : std::format("{} ms ago", Since(now, game)));
+                       game == 0 ? std::string{ "not seen yet" } : std::format("{} ms ago", Since(now, game)), PlayerText());
             m.Waits = {};
             m.Frames = {};
             m.AsyncFrames = {};
@@ -802,11 +841,12 @@ namespace MelePause::Bink
     }
 
     void Install(::LESDK::Initializer& Init, MoviePolicy policy, std::span<char const* const> binkAudio,
-                 std::span<char const* const> languages)
+                 std::span<char const* const> languages, MoviePlayerFields player)
     {
         {
             std::scoped_lock lock{ Lock };
             Policy = policy;
+            PlayerFields = player;
             for (auto const name : binkAudio) BinkAudio.push_back(BaseName(name));
             for (auto const language : languages) Languages.push_back(BaseName(language));
         }

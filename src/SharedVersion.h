@@ -12,9 +12,9 @@
 
 // One version for every game. The log and the loader print it as a plain number, and package.sh checks that the two
 // strings are ASI_VERSION.
-#define ASI_VERSION 12
-#define VERSION_STRING_A "12"
-#define VERSION_STRING_W L"12"
+#define ASI_VERSION 13
+#define VERSION_STRING_A "13"
+#define VERSION_STRING_W L"13"
 
 // The game this build is for: its file name prefix, and the game and group ids of ME3Tweaks' tooling. Group 0 until
 // ME3Tweaks assigns one.
@@ -29,14 +29,14 @@
 #define GAME_PREFIX_RC "LE2"
 #define ASI_GAME_ID_RC 5
 #define ASI_GROUP_ID_RC 0
-#define ASI_DESCRIPTION "Pauses conversations and cutscenes in Mass Effect 2 (LE2)"
+#define ASI_DESCRIPTION "Pauses conversations, cutscenes and movies in Mass Effect 2 (LE2)"
 #endif
 
 #if defined(SDK_TARGET_LE3)
 #define GAME_PREFIX_RC "LE3"
 #define ASI_GAME_ID_RC 6
 #define ASI_GROUP_ID_RC 0
-#define ASI_DESCRIPTION "Pauses conversations and cutscenes in Mass Effect 3 (LE3)"
+#define ASI_DESCRIPTION "Pauses conversations, cutscenes and movies in Mass Effect 3 (LE3)"
 #endif
 
 // The four-part version of the LExASIs scheme, version.0.game id.group id, for MelePause.rc only.

@@ -49,8 +49,10 @@ SPI_IMPLEMENT_ATTACH
     // if constexpr, not #if: without game/Game.hpp the switch is a compile error, not a silent 0.
     if constexpr (MELEPAUSE_MOVIES)
     {
-        ::MelePause::Bink::Install(Init, ::MelePause::Game::Movies, ::MelePause::Game::BinkAudioMovies, ::MelePause::Game::MovieLanguages);
-        ::MelePause::MovieInput::Install(Init, ::MelePause::Game::MovieInputRva, ::MelePause::Game::MovieInputStart);
+        ::MelePause::Bink::Install(Init, ::MelePause::Game::Movies, ::MelePause::Game::BinkAudioMovies, ::MelePause::Game::MovieLanguages,
+                                   ::MelePause::Game::MoviePlayer);
+        ::MelePause::MovieInput::Install(Init, ::MelePause::Game::MovieInputRva, ::MelePause::Game::MovieInputStart,
+                                         ::MelePause::Game::MovieSkipKeyAs);
     }
     else LEASI_INFO("movie pause: not in the {} build", SDK_TARGET_NAME_A);
     ::MelePause::Overlay::Install(Init);

@@ -2,11 +2,6 @@
 
 // LE2's facts. Include game/Game.hpp, not this file.
 
-#include <algorithm>
-#include <iterator>
-#include <string_view>
-#include <vector>
-
 /// Photo mode under the pause: three MassEffect2.exe natives get past it.
 #define MELEPAUSE_PHOTO 1
 /// Photo mode's GUI sounds under the pause: no hook. They are Wwise events, and AudioComponent has no bNonRealtime.
@@ -110,188 +105,18 @@ namespace MelePause::Game
     inline constexpr std::array<unsigned char, 28> MovieInputStart{ 0x48, 0x8B, 0xC4, 0x4C, 0x89, 0x48, 0x20, 0x57, 0x41, 0x54,
                                                                     0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xEC, 0x60,
                                                                     0x48, 0xC7, 0x40, 0x98, 0xFE, 0xFF, 0xFF, 0xFF };
+    /// Space and X reach it as Enter, one of its keys: they skip what Esc skipped.
+    inline constexpr wchar_t const* MovieSkipKeyAs = L"Enter";
+    /// The movie player's fields in the logs: none read in LE2.
+    inline constexpr MoviePlayerFields MoviePlayer{};
 
-    /// An op that may make a sound when it runs: a voice line, a conversation, a vocalization, a remote event (the levels'
-    /// music cues are remote events), a sound, music or FaceFX cue, a Wwise trigger, state, switch or audio object, music
-    /// turned up, a Matinee, a nested sequence, and a Wwise event that does not silence something (Mute_, Stop_,
-    /// VO_Kill_: Mute_All_World_Sounds and its _2secs fade, Mute_amb_..., Stop_amb_...) or bring the world's ambience
-    /// back (UnMute: Illium's arrival posts UnMute_All_World_Sounds on Out and Mute_All_World_Sounds on HasStarted, and
-    /// the hubs' other movies leave the world unmuted). Every other op is taken as silent, and the ops it starts are
-    /// walked in turn (FirstSound).
-    inline bool MaySound(USequenceOp* op)
-    {
-        if (op->IsA(USeqAct_WwisePostEvent::StaticClass()))
-        {
-            auto const event = static_cast<USeqAct_WwisePostEvent*>(op)->WwiseObject;
-            if (event == nullptr) return false;
-            std::string_view const name{ event->Name.GetName() };
-            return !name.starts_with("Mute_") && !name.starts_with("UnMute") && !name.starts_with("Stop_") && !name.starts_with("VO_Kill_");
-        }
-        UClass* const sounding[]{ UBioSeqAct_FaceOnlyVO::StaticClass(), UBioSeqAct_StartConversation::StaticClass(),
-                                  USFXSeqAct_GenerateVocEvent::StaticClass(), USeqAct_ActivateRemoteEvent::StaticClass(),
-                                  USeqAct_PlaySound::StaticClass(), USeqAct_PlayMusicTrack::StaticClass(),
-                                  USeqAct_PlayFaceFXAnim::StaticClass(), USeqAct_ApplySoundNode::StaticClass(),
-                                  USeqAct_WwisePostTrigger::StaticClass(), USeqAct_WwiseSetState::StaticClass(),
-                                  USeqAct_WwiseSetSwitch::StaticClass(), USeqAct_WwiseStartAudioObjects::StaticClass(),
-                                  USeqAct_WwiseMusicVolumeEnable::StaticClass(), USeqAct_Interp::StaticClass(),
-                                  USequence::StaticClass() };
-        return std::any_of(std::begin(sounding), std::end(sounding), [op](UClass* cls) { return op->IsA(cls); });
-    }
+    /// The op that starts a conversation, for KismetMovie.hpp's MaySound and SameMoment.
+    inline UClass* ConversationActionClass() { return UBioSeqAct_StartConversation::StaticClass(); }
 
-    /// A Delay or a Matinee this short starts what follows it at about the moment it was started.
-    inline constexpr float SameMomentSeconds = 5.0f;
-
-    /// The op fires its outputs at about the moment it is started: an instant op, or a Delay or Matinee of
-    /// SameMomentSeconds or less. Not an event, a movie, a nested sequence, a conversation or a choice: they wait on
-    /// something else.
-    inline bool SameMoment(USequenceOp* op)
-    {
-        if (op->IsA(USequenceEvent::StaticClass()) || op->IsA(UBioSeqAct_MovieBink::StaticClass()) || op->IsA(USequence::StaticClass())
-            || op->IsA(UBioSeqAct_StartConversation::StaticClass()) || op->IsA(UBioSeqAct_ShowChoiceGUI::StaticClass()))
-            return false;
-        if (op->IsA(USeqAct_Delay::StaticClass())) return static_cast<USeqAct_Delay*>(op)->Duration <= SameMomentSeconds;
-        if (op->IsA(USeqAct_Interp::StaticClass()))
-        {
-            auto const data = static_cast<USeqAct_Interp*>(op)->InterpData;
-            return data != nullptr && data->InterpLength <= SameMomentSeconds;
-        }
-        return true;
-    }
-
-    /// A Matinee's outputs that fire once it has ended (Default__SeqAct_Interp in LE2's Engine.pcc); its other outputs
-    /// are event tracks, which fire while it plays.
-    inline bool MatineeEnded(std::wstring_view output)
-    {
-        return output == L"Completed" || output == L"Reversed" || output == L"Cancelled" || output == L"Stopped";
-    }
-
-    inline std::wstring_view LinkName(FSeqOpOutputLink const& output)
-    {
-        return { output.LinkDesc.Chars(), static_cast<size_t>(output.LinkDesc.Length()) };
-    }
-
-    inline bool Holds(std::vector<USequenceOp*> const& ops, USequenceOp* op)
-    {
-        return std::find(ops.begin(), ops.end(), op) != ops.end();
-    }
-
-    /// Walks <paramref name="next"/> and, while each op is silent (not MaySound), the ops its outputs that are not
-    /// disabled start: the first op that may make a sound, or the 33rd op walked; null when all are silent.
-    /// <paramref name="walked"/> carries the silent ops over from one call to the next. The movie action is not walked.
-    inline USequenceOp* FirstSound(std::vector<USequenceOp*> next, USequenceOp* action, std::vector<USequenceOp*>& walked)
-    {
-        constexpr size_t MaxWalk = 32;
-        while (!next.empty())
-        {
-            auto const op = next.back();
-            next.pop_back();
-            if (op == action || Holds(walked, op)) continue;
-            if (walked.size() == MaxWalk || MaySound(op)) return op;
-            walked.push_back(op);
-            for (auto const& output : op->OutputLinks)
-            {
-                if (output.bDisabled) continue;
-                for (auto const& link : output.Links)
-                {
-                    if (link.LinkedOp != nullptr) next.push_back(link.LinkedOp);
-                }
-            }
-        }
-        return nullptr;
-    }
-
-    /// A Kismet BioSeqAct_MovieBink: its m_sMovieName and m_wwiseEvent (SFXGame_classes.hpp:19319), and that event's Id
-    /// (UWwiseEvent, WwiseAudio_classes.hpp:518). Beside is the first op that may make a sound while the movie plays
-    /// (MaySound), and Via says how it was found:
-    /// - "Out" or "HasStarted": that output of the movie starts it (both fire as the movie starts; Complete and Failed
-    ///   at its end), or a silent op after it does.
-    /// - "Beside": an output that starts the movie starts it too, or an output that starts the op that starts the movie,
-    ///   when that op fires at about the moment it is started (SameMoment): two levels up, in the movie's sequence.
-    /// - "Matinee": a Matinee's event track starts the movie, or the op that starts it, with the Matinee's clock running.
-    /// - "Conversation": a conversation's event (a line starting) starts it, and the line plays on.
-    /// Of LE2's 117 movie actions with a Wwise event, 71 have none (ai-docs/15): the relay, the hubs' arrivals and
-    /// departures. Voice lines, conversations, music cues, Matinees and Play_ events run beside the others: in the
-    /// Prologue (BioD_ProNor ProNorEscape, Opening_End_Seq, ProNor_Pod2), the suicide mission (EndGm1), Tali's and
-    /// Grunt's arrivals; and visionavi's Matinee posts Play_cineanim_N7Spdr1_flashback_exit with it. False for any
-    /// other object.
-    inline bool MovieActionOf(UObject* object, MovieAction& out)
-    {
-        if (object == nullptr || !object->IsA(UBioSeqAct_MovieBink::StaticClass())) return false;
-        auto const action = static_cast<UBioSeqAct_MovieBink*>(object);
-        auto const event = action->m_wwiseEvent;
-        out.Movie = &action->m_sMovieName;
-        out.Event = event;
-        out.EventId = event != nullptr ? static_cast<unsigned>(event->Id) : 0;
-
-        std::vector<USequenceOp*> walked;
-        for (auto const& output : action->OutputLinks)
-        {
-            auto const name = LinkName(output);
-            if (output.bDisabled || name == L"Complete" || name == L"Failed") continue;
-            std::vector<USequenceOp*> next;
-            for (auto const& link : output.Links)
-            {
-                if (link.LinkedOp != nullptr) next.push_back(link.LinkedOp);
-            }
-            if (auto const op = FirstSound(std::move(next), action, walked); op != nullptr)
-            {
-                out.Beside = op;
-                out.Via = name;
-                return true;
-            }
-        }
-
-        auto const parent = action->ParentSequence;
-        if (parent == nullptr) return true;
-        constexpr int Levels = 2;
-        std::vector<USequenceOp*> started{ action };
-        std::vector<USequenceOp*> climbed{ action };
-        for (auto level = 0; level < Levels && !started.empty(); ++level)
-        {
-            std::vector<USequenceOp*> starters;
-            for (auto const member : parent->SequenceObjects)
-            {
-                if (member == nullptr || !member->IsA(USequenceOp::StaticClass())) continue;
-                auto const source = static_cast<USequenceOp*>(member);
-                for (auto const& output : source->OutputLinks)
-                {
-                    if (output.bDisabled) continue;
-                    auto starts = false;
-                    std::vector<USequenceOp*> next;
-                    for (auto const& link : output.Links)
-                    {
-                        if (link.LinkedOp == nullptr) continue;
-                        if (Holds(started, link.LinkedOp)) starts = true;
-                        else next.push_back(link.LinkedOp);
-                    }
-                    if (!starts) continue;
-                    if (source->IsA(USeqAct_Interp::StaticClass()) && !MatineeEnded(LinkName(output)))
-                    {
-                        out.Beside = source;
-                        out.Via = L"Matinee";
-                        return true;
-                    }
-                    if (source->IsA(UBioSeqEvt_Conversation::StaticClass()) || source->IsA(UBioSeqEvt_ConvNode::StaticClass()))
-                    {
-                        out.Beside = source;
-                        out.Via = L"Conversation";
-                        return true;
-                    }
-                    if (auto const op = FirstSound(std::move(next), action, walked); op != nullptr)
-                    {
-                        out.Beside = op;
-                        out.Via = L"Beside";
-                        return true;
-                    }
-                    if (!Holds(climbed, source) && SameMoment(source))
-                    {
-                        climbed.push_back(source);
-                        starters.push_back(source);
-                    }
-                }
-            }
-            started = std::move(starters);
-        }
-        return true;
-    }
+    // Of LE2's 117 movie actions with a Wwise event, 71 pass KismetMovie.hpp's MovieActionOf (docs/games/LE2.md): the relay, the
+    // hubs' arrivals and departures. Voice lines, conversations, music cues, Matinees and Play_ events run beside the
+    // others: in the Prologue (BioD_ProNor ProNorEscape, Opening_End_Seq, ProNor_Pod2), the suicide mission (EndGm1), Tali's
+    // and Grunt's arrivals; and visionavi's Matinee posts Play_cineanim_N7Spdr1_flashback_exit with it.
 }
+
+#include "MelePause/game/KismetMovie.hpp"

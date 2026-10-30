@@ -16,7 +16,7 @@ Citadel arrival, and a test build of photo mode passed S6 in conversations ([tes
 | Movie pause (`MELEPAUSE_MOVIES`) | on for a movie whose sound MelePause knows (below); Esc and Start in any other movie stay the game's. Space and X skip a movie the game lets skip | on |
 | Photo mode under the pause (`MELEPAUSE_PHOTO`) | on, with three MassEffect2.exe natives ([Photo mode](#photo-mode)) | on |
 | Photo mode's GUI sounds made realtime (`MELEPAUSE_PHOTO_GUI_SOUNDS`) | off: they are Wwise events and play under the world pause as they are | on |
-| File | `LE2MelePause.asi`, Windows version `12.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `12.0.4.0` |
+| File | `LE2MelePause.asi`, Windows version `13.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `13.0.4.0` |
 
 Why the movie pause takes only some movies:
 
@@ -27,7 +27,7 @@ Why the movie pause takes only some movies:
   that plays it, paused with the exe's `AK::SoundEngine::ExecuteActionOnEvent` right after `BinkPause`, or Bink audio
   (`visionavi`). Any other movie keeps vanilla Esc and Start: Esc skips a movie the game lets you skip.
 - A movie's sound is known when the Kismet action that plays it posts an event and runs nothing else beside the movie
-  that may make a sound (`MovieActionOf` in `src/game/LE2.hpp`): its `Out` and `HasStarted` outputs, the ops started at
+  that may make a sound (`MovieActionOf` in `src/game/KismetMovie.hpp`, shared with LE3): its `Out` and `HasStarted` outputs, the ops started at
   the same moment, and the Matinee or conversation line whose event starts it. Of the 117 movie actions with an event,
   71 pass, among them the relay jump and movies of the Citadel, Omega, Tuchanka and Illium hubs.
 - In LE2 the engine's movie input skips a skippable movie on Esc and Start, before MelePause sees the press, and Space

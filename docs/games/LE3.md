@@ -1,9 +1,11 @@
 # MelePause in LE3
 
 Status: from v11, LE3 is in `RELEASED_GAMES` (`scripts/games.sh`), so a plain `./build.sh` or `./package.sh` covers it.
-`./build.sh --game LE3` builds `LE3MelePause.asi` from the same sources as LE1 and LE2, against LE3's SDK, with the
-movie pause off. On 2026-10-30 the first build passed the pause part of the sheet below with keyboard and mouse and with
-a gamepad, and from v12 photo mode under the pause passed in conversations ([testing.md](../testing.md#le3)).
+`./build.sh --game LE3` builds `LE3MelePause.asi` from the same sources as LE1 and LE2, against LE3's SDK. From v13 it has
+the movie pause, limited as in LE2 to movies whose sound MelePause knows. On 2026-10-30 the first build passed the pause
+part of the sheet below with keyboard and mouse and with a gamepad, from v12 photo mode under the pause passed in
+conversations and in an in-engine cutscene, and a test build of the movie pause passed S3 in the relay jump
+([testing.md](../testing.md#le3)).
 
 ## What the build has
 
@@ -11,14 +13,47 @@ a gamepad, and from v12 photo mode under the pause passed in conversations ([tes
 |---|---|---|
 | Esc and Start pause a conversation or an in-engine cutscene; skip guard; Space and A resume | compiled in | on |
 | Pause screen, and the Canvas banner where it cannot draw | compiled in | on |
-| Movie pause (`MELEPAUSE_MOVIES`) | off: neither `Bink::Install` nor `MovieInput::Install` is called, and Esc and Start in a movie stay the game's | on |
+| Movie pause (`MELEPAUSE_MOVIES`) | on from v13 for a movie a level starts whose sound MelePause knows ([Movies](#movies)); Esc and Start in any other movie stay the game's | on |
 | Photo mode under the pause (`MELEPAUSE_PHOTO`) | on from v12, its GUI side in `PhotoGuiGFx.cpp` (`MELEPAUSE_PHOTO_GFX`); its GUI sounds get no hook | on, `PhotoGuiSF.cpp` |
-| File | `LE3MelePause.asi`, Windows version `12.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `12.0.4.0` |
+| File | `LE3MelePause.asi`, Windows version `13.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `13.0.4.0` |
 
-Why the movie pause is off: 125 of the 126 movies in `BioGame\Movies` have no Bink audio track. As in LE2, their sound
-is a Wwise event, which `BinkPause` does not stop: the picture would hold while the sound plays on. LE2's way, pausing
-the event of the Kismet action that plays the movie, needs LE3's movie actions and the engine's movie input checked
-first.
+## Movies
+
+Of the 334 movies in `BioGame\Movies` and the DLC, only `StartupLoop_a` (the startup movie) carries a Bink audio track.
+Every other movie's sound is a Wwise event, which `BinkPause` does not stop. One movie player (`GFullScreenMovie`) plays
+every fullscreen movie, and starts that event itself once the movie starts, for three callers:
+
+| Caller | Live in the game files | Esc and Start |
+|---|---|---|
+| Kismet `BioSeqAct_MovieBink` (and `SFXSeqAct_PlatformMovieBink`) | 188 actions, 71 movies; 122 actions name an event | Paused when the sound is known, as in LE2 (below) |
+| Matinee track `SFXInterpTrackMovieBink`, inside an in-engine cutscene or a conversation | 442 tracks, 240 movies: the end of the Prologue, the Mars arrival, the summit videos, most of the ending | The game's: nothing latches them |
+| Loading screens (`SFXLoadMovieManager`) | 45 movies: the Normandy and shuttle rides, the Citadel's transit | The game's: opened by file handle or from memory, nothing latches them |
+
+A movie takes Esc and Start when MelePause knows its sound (`MoviePolicy::BinkAndEvent`): the Wwise event of the Kismet
+action that plays it, paused with `ExecuteActionOnEvent` right after `BinkPause`, when the action runs nothing else
+beside the movie that may make a sound (`MovieActionOf`, `src/game/KismetMovie.hpp`, shared with LE2). LE3 has no
+`BioSeqAct_StartConversation`: its conversation op is `SFXSeqAct_StartAmbientConv` (`ConversationActionClass`). LE3's
+movie action can preload its file (input `Prime`, output `Primed`): neither counts as starting the movie. 114 of the 122
+actions with an event pass, 38 movies: the relay jump `GLO_01_Relay` (`Play_cineanim_massrelay`), the first Citadel
+arrival, Omega's `OmgIntro_001`-`010`, the Leviathan arrivals, End01's Hammer movies and the 93 memorial flashbacks of the
+ending. A Matinee, music, a conversation, a sound loop or a nested sequence runs beside the 8 others (the Mars arrival,
+the Citadel DLC's two Normandy movies, `Device_Reveal`, the Kro001 animatic, Hackett's speech intro,
+`Lev002_Asteroid_Depart`, `Lev004_WW_ArrivalCrash4`). Only Genesis2Title has localized files (`MovieLanguages`).
+
+### Movie keys
+
+From a read-only dump of the running MassEffect3.exe. RVAs are the exe's.
+
+| What | Where | What it does |
+|---|---|---|
+| `SFXGameModeMovie`'s binds | Escape and SpaceBar → `PC_MovieSkip`, pad X → `Console_MovieSkip`; Start, A, B and Enter unbound | Both run `SkipMovie`, a script: during a loading movie nothing; else, with the cutscene mode (8) on and its skip allowed, the cutscene skip. LE3 has no native `SkipMovie`. |
+| The engine's movie input | `0x24afc0`, slot 5 of the Bink movie player's `FViewportClient` vtable (`0x10DED78`); LE2's first 28 bytes | On a press of Escape, SpaceBar, XboxTypeS_Back, XboxTypeS_X or XboxTypeS_Start (X and Start unless the movie's flags say not), it asks the player to stop the movie and returns TRUE. Enter, A and the left mouse button are not its keys. A movie with flag 0x400 (the relay jump, played under the cutscene mode; the Matinee tracks) or 0x80 ignores every key, which goes on to `SkipMovie`. |
+| Which movies skip | `[FullScreenMovie] SkippableMovies` (`BioEngine`): `Device_Reveal`, `ProCit_100_Arrival`, the Cat002 and Cat003 arrivals | Checked when the movie starts (the player's +0x84). `GLO_01_Relay` is not among them. |
+
+`src/MovieInput.cpp` hooks the movie input as in LE2: Esc and Start while the pause keys are the movies', and any key
+under MelePause's movie pause, go on to `Console.InputKey` instead. Space and X reach it as they are
+(`MovieSkipKeyAs` is null): they are its keys already. The movie lines in the log add the player's flags and skippable
+flag (`Game::MoviePlayer`).
 
 ## Photo mode
 
@@ -76,7 +111,10 @@ The procedure is in [testing.md](../testing.md), with `--game LE3`. `--install` 
   Photo mode". Esc resumes at the same word, in sync. Then Start, with the A icon on the pause screen; A resumes.
 - S2, in-engine cutscene. The same. Note what Esc, Space and X do in a skippable cutscene with nothing paused (the log
   names each `SkipCinematic` it passes): the Esc that pauses and the Space that resumes must not skip it.
-- S3, fullscreen movie. Esc and Start do what they do in the vanilla game, and the world does not pause under the movie.
+- S3, fullscreen movie. The relay jump (galaxy map, another cluster): Esc and Start pause picture and whoosh together
+  under the pause screen, and Esc, Start, Space or A resumes them in sync; 5 cycles and a 15 s hold. Space and X with
+  nothing paused skip nothing (the relay is not skippable). A loading screen and a movie inside a cutscene: Esc and Start
+  do what they do in the vanilla game, and the world does not pause under the movie.
 - S4, gameplay. Esc and Start open the pause menu and close it.
 - S5, resume keys and the console. Pause with Esc and resume with Space, pause with Start and resume with A. With
   nothing paused, Space skips the line. Open the console during a pause: the pause screen hides, and Esc closes the
@@ -85,7 +123,8 @@ The procedure is in [testing.md](../testing.md), with `--game LE3`. `--install` 
   opens it on the paused shot: its panel shows its tabs and options (no "TEST STRING"), the wheel is gone, the camera
   answers the mouse, the keys and both sticks. Y, F7, Esc or Start leaves it: the paused shot, the wheel and the pause
   screen come back.
-- S7, the log. At start: "movie pause: not in the LE3 build" and no Bink line; "input hooked: ..." and "GUI tick
+- S7, the log. At start: "movie sound: the exe's AK::SoundEngine::ExecuteActionOnEvent at ...", "Bink:
+  bink2w64_original.dll hooked (...), BinkPause true", "movie input hooked: ..."; "input hooked: ..." and "GUI tick
   hooked: ..."; "overlay: swap chain hooks Present true ..."; a line that ends in "LE3MelePause N ready" (N is
   `ASI_VERSION`). At the first frame, "first BioHUD.PostRender" with the same controller for the HUD owner and GEngine.
   Each press: "Esc pressed: mode 7 (Conversation)" and the like, with LE3's mode names.
@@ -98,9 +137,14 @@ The procedure is in [testing.md](../testing.md), with `--game LE3`. `--install` 
    `ProcessEvent` every frame in conversations and cutscenes? The per-frame checks and the pause screen rest on it.
 3. *Answered 2026-10-30.* Esc in a skippable cutscene. Escape, SpaceBar and X are LE3's skip keys there (Facts). Esc
    pauses, as in LE2, and the press that paused or resumed did not skip.
-4. The console. Does the `Typing`/`Open` check through `Console.StateFrame` hold for LE3's `SFXConsole`
-   (`SFXGame_classes.hpp:20022`)?
-5. Photo mode in a cutscene. The first photo build opened it on a cutscene's shot (camera and keys answered, the panel
-   did not load yet); v12's panel fix was tested in conversations only.
+4. *Answered 2026-10-30: yes (v12, user report).* The console. Does the `Typing`/`Open` check through
+   `Console.StateFrame` hold for LE3's `SFXConsole` (`SFXGame_classes.hpp:20022`)?
+5. *Answered 2026-10-30: yes.* Photo mode in a cutscene. The first photo build opened it on a cutscene's shot (camera
+   and keys answered, the panel did not load yet). v12 loads the panel there too: 4 sessions in an in-engine cutscene on
+   Omega (mode 7, a `CameraActor`'s shot), the panel's GUI ticks as many as the frames.
 6. Photo mode's GUI sounds under the pause (click, tabs, options): LE3's movies play them through `SFXGUIInteraction`,
    with no hook. Not checked on purpose yet.
+7. Movies inside a cutscene or a conversation (the Matinee tracks, most of LE3's movies): which game modes and flags they
+   play under, and what Esc does there in the vanilla game. Pausing them would need the world pause (the Matinee and its
+   voice) with `BinkPause` (the picture).
+8. The movie pause untested so far: a hold of 15 s or more, Start and A on a gamepad.

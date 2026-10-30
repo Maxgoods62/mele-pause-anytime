@@ -162,6 +162,18 @@ Photo mode under the pause, on the Normandy and the Citadel (2026-10-30), with k
 | First photo build (input hooks, no GUI tick hook) | Y and F7 open and leave photo mode in a conversation and in a cutscene; the camera answers the mouse, the keys and the sticks. The panel never loads: its labels read "TEST STRING", and the reply wheel and the subtitle stay on screen. The log counts 0 GUI ticks. |
 | `GfxClock` on the GFx movies' `Tick` | The panel loads and answers (tabs, options). The conversation movie is set aside each time ("set aside" line). With the reply wheel up at the entry, the wheel came back now and then while photo mode ran. |
 | v12, `PhotoGui::Hold` each frame | 35 photo sessions, the wheel up or not: the wheel stays hidden. The game showed the movie again in 20 of them, on 25 to 170303 frames (a long session); each time it was hidden again. No warning or error in the log. |
+| v12, in-engine cutscene (Omega) | 4 photo sessions on a `CameraActor`'s shot, in game mode 7: the panel loads and answers. 435 to 18877 GUI ticks, one per frame; the conversation movie set aside, never shown again. Left with F7 and Esc. |
 
-Not covered yet: the console under the pause, the photo panel in a cutscene since the `GfxClock` fix, photo mode's GUI
-sounds, a fullscreen movie, and the skips with nothing paused.
+The console under the pause works in v12 (user report, 2026-10-30).
+
+The movie pause, a test build of v13's code (2026-10-30), with the keyboard: user "works well".
+
+| Area | Result |
+|---|---|
+| Relay jump (`GLO_01_Relay`), 2 jumps | The latch named its event ("id 2556726104 (hash of Play_cineanim_massrelay 2556726104)"), the movie opened from a file and was fullscreen 0.2 s after its open. 8 Esc cycles: each "PAUSED in BinkWait ... AKRESULT 1" and "RESUMED ... AKRESULT 1", the frame held, the pause screen over the paused frame ("presented from its BinkWait"), no skip. Longest hold 2.3 s. |
+| Space with nothing paused | 3 presses "given to the engine's movie input: not taken": the relay played to its end. |
+| Modes | "modes on 0 8 9 10 11" during the relay: the cutscene and movie modes on top of the galaxy map's. The player's flags 0x400 (keys ignored by the movie input), skippable 0. |
+| Loading screens, Citadel arrival | Movies opened by file handle (player flags 0x81): "no known sound", Esc stayed the game's. A movie opened from memory during the arrival conversation: refused, and Esc paused the world as in v12. |
+
+Not covered yet: photo mode's GUI sounds, a movie inside a cutscene or a conversation, a 15 s movie hold, Start and A in
+a movie, and the skips with nothing paused.

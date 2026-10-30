@@ -12,8 +12,18 @@ namespace MelePause
 {
     /// Where a game's fullscreen movies keep their sound (game/LE<n>.hpp's Game::Movies). Bink: in the .bik, which BinkPause
     /// stops (LE1). BinkAndEvent: mostly in a Wwise event that a Kismet BioSeqAct_MovieBink posts beside the picture, which
-    /// MovieSound pauses beside BinkPause; only a few movies carry Bink audio (LE2).
+    /// MovieSound pauses beside BinkPause; only a few movies carry Bink audio (LE2, LE3).
     enum class MoviePolicy : unsigned char { Bink, BinkAndEvent };
+
+    /// Where a game's fullscreen movie player keeps what Bink.cpp's movie lines show of it (game/LE<n>.hpp's MoviePlayer),
+    /// read raw, for the logs only: the exe's RVA of the pointer to the player (GFullScreenMovie), and the offsets in the
+    /// player of its flags and of its skippable flag. Rva 0: nothing read.
+    struct MoviePlayerFields
+    {
+        unsigned long long Rva = 0;
+        unsigned Flags = 0;
+        unsigned Skippable = 0;
+    };
 
     // ! Pause.cpp
     // ========================================
@@ -71,9 +81,10 @@ namespace MelePause
         /// without it. Under BinkAndEvent a fullscreen movie takes the pause keys only if we know its sound: the Wwise event
         /// of the Kismet movie action latched for it (MovieSound), or its own Bink audio (<paramref name="binkAudio"/>: base
         /// names, no folder or .bik). Any other keeps vanilla Esc and Start. A localized movie's file adds one of
-        /// <paramref name="languages"/> to the action's name (Opening_SunMid_INT.bik for Opening_SunMid).
+        /// <paramref name="languages"/> to the action's name (Opening_SunMid_INT.bik for Opening_SunMid). The movie lines add
+        /// the movie player's fields that <paramref name="player"/> names.
         void Install(::LESDK::Initializer& Init, MoviePolicy policy, std::span<char const* const> binkAudio,
-                     std::span<char const* const> languages);
+                     std::span<char const* const> languages, MoviePlayerFields player);
 
         /// Movies opened (or first seen) since Install and not closed yet.
         int OpenMovies();
@@ -119,9 +130,10 @@ namespace MelePause
         /// Hooks the engine's movie input (the movie player's native InputKey, at <paramref name="rva"/> of the game's exe,
         /// once its first bytes are <paramref name="start"/>), which takes a press ahead of Console.InputKey and skips a
         /// movie the game lets skip on it. Esc and Start then reach Console.InputKey while the pause keys are the movies'
-        /// (Bink::OwnsKeys), no press skips a movie under our pause, and Space and X skip as Enter does. Nothing for an rva
-        /// of 0; another build of the game gets a warning, not a patch.
-        void Install(::LESDK::Initializer& Init, unsigned long long rva, std::span<unsigned char const> start);
+        /// (Bink::OwnsKeys), and no press skips a movie under our pause. Space and X reach it as the key named
+        /// <paramref name="skipKeyAs"/> (LE2: Enter, so they skip what Esc skipped), or as they are when it is null (LE3,
+        /// where they are its keys already). Nothing for an rva of 0; another build of the game gets a warning, not a patch.
+        void Install(::LESDK::Initializer& Init, unsigned long long rva, std::span<unsigned char const> start, wchar_t const* skipKeyAs);
     }
 
     // ! MovieSound.cpp

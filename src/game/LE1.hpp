@@ -86,6 +86,8 @@ namespace MelePause::Game
     /// without.
     inline constexpr unsigned long long MovieInputRva = 0;
     inline constexpr std::array<unsigned char, 0> MovieInputStart{};
+    inline constexpr wchar_t const* MovieSkipKeyAs = nullptr;
+    inline constexpr MoviePlayerFields MoviePlayer{};
 
     /// Under MoviePolicy::Bink no Kismet movie action is read: none (LE1's BioSeqAct_MovieBink has no Wwise event).
     inline bool MovieActionOf(UObject*, MovieAction&) { return false; }

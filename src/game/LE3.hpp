@@ -8,9 +8,9 @@
 #define MELEPAUSE_PHOTO_GUI_SOUNDS 0
 /// Photo mode's panel is a GFx movie of SFXGUIInteraction (PhotoGuiGFx.cpp).
 #define MELEPAUSE_PHOTO_GFX 1
-/// The Bink movie pause: off. 125 of the 126 movies in BioGame\Movies have no Bink audio track: their sound is a Wwise
-/// event that BinkPause does not stop.
-#define MELEPAUSE_MOVIES 0
+/// The Bink movie pause: on, for a Kismet movie whose sound we know (Game::Movies). Of the 334 .bik in BioGame\Movies and
+/// the DLC, only StartupLoop_a carries a Bink audio track: every other movie's sound is a Wwise event.
+#define MELEPAUSE_MOVIES 1
 
 namespace MelePause::Game
 {
@@ -93,12 +93,48 @@ namespace MelePause::Game
         camera->LastTransitionTime = world->TimeSeconds - camera->TransitionTimeout - 1.0f;
     }
 
-    // No movie pause (MELEPAUSE_MOVIES 0): Entry.cpp installs neither Bink nor MovieInput, and no Kismet movie action is
-    // read. The names stay for the shared code that still compiles them.
-    inline constexpr MoviePolicy Movies = MoviePolicy::Bink;
+    /// A movie's sound is the Wwise event its Kismet BioSeqAct_MovieBink names (the movie player posts it once the movie
+    /// starts), paused with ExecuteActionOnEvent beside BinkPause, as in LE2. Kismet plays only some of LE3's movies: most
+    /// are Matinee tracks (SFXInterpTrackMovieBink, inside cutscenes and conversations) or loading movies, which nothing
+    /// latches, so Esc and Start stay the game's there (docs/games/LE3.md). StartupLoop_a, the one movie with Bink audio, is the
+    /// startup movie, not listed: the game's own screens play over it.
+    inline constexpr MoviePolicy Movies = MoviePolicy::BinkAndEvent;
     inline constexpr std::array<char const*, 0> BinkAudioMovies{};
-    inline constexpr std::array<char const*, 0> MovieLanguages{};
-    inline constexpr unsigned long long MovieInputRva = 0;
-    inline constexpr std::array<unsigned char, 0> MovieInputStart{};
-    inline bool MovieActionOf(UObject*, MovieAction&) { return false; }
+
+    /// The suffixes of LE3's localized movie files: only Genesis2Title has them (DLC_CON_DH1: _INT, _DEU, _ESN, _FRA, _ITA,
+    /// _JPN, _POL, _RUS; DLC_METR_Patch01: _DEE, _FRE, _ITE).
+    inline constexpr std::array<char const*, 11> MovieLanguages{ "int", "deu", "esn", "fra", "ita", "jpn",
+                                                                 "pol", "rus", "dee", "fre", "ite" };
+
+    /// The engine's movie input: the Bink movie player's InputKey (MassEffect3.exe, its FViewportClient part's vtable slot
+    /// 5), found in a memory dump of the running game, with LE2's first bytes. On a press of Escape, SpaceBar,
+    /// XboxTypeS_Back, XboxTypeS_X or XboxTypeS_Start (X and Start unless the movie's flags say not) it asks the player to
+    /// stop the movie and says it handled the key; Enter, A and the left mouse button are not its keys in LE3. The movie
+    /// stops only if FullScreenMovie.SkippableMovies lists it (four movies). A movie played with flag 0x400 (a Matinee
+    /// track's, and Kismet's while a cutscene runs) ignores every key: they go on to SFXGameModeMovie.SkipMovie, a script
+    /// that skips the cutscene and nothing else (LE3 has no native SkipMovie). MovieInput.cpp hooks it.
+    inline constexpr unsigned long long MovieInputRva = 0x24afc0;
+    inline constexpr std::array<unsigned char, 28> MovieInputStart{ 0x48, 0x8B, 0xC4, 0x4C, 0x89, 0x48, 0x20, 0x57, 0x41, 0x54,
+                                                                    0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xEC, 0x60,
+                                                                    0x48, 0xC7, 0x40, 0x98, 0xFE, 0xFF, 0xFF, 0xFF };
+    /// Space and X are its keys already: they reach it as they are.
+    inline constexpr wchar_t const* MovieSkipKeyAs = nullptr;
+
+    /// The movie player's fields that the movie lines show (Bink.cpp), found in the dump: GFullScreenMovie, its flags (+0x58:
+    /// 0x400, keys ignored, for the relay jump and the Matinee tracks; 0x80, the movie input off, for the movies opened by
+    /// file handle) and its skippable flag (+0x84, from SkippableMovies). For the logs only.
+    inline constexpr MoviePlayerFields MoviePlayer{ 0x1cb9cd0, 0x58, 0x84 };
+
+    /// The op that starts a conversation, for KismetMovie.hpp's MaySound and SameMoment: LE3 has no
+    /// BioSeqAct_StartConversation; SFXSeqAct_StartConversation is an SFXSeqAct_StartAmbientConv, and ambient lines speak
+    /// too.
+    inline UClass* ConversationActionClass() { return USFXSeqAct_StartAmbientConv::StaticClass(); }
+
+    // Of LE3's 188 live movie actions (71 movies), 122 post a Wwise event and 114 of those pass KismetMovie.hpp's
+    // MovieActionOf (docs/games/LE3.md): the relay jump, the first Citadel arrival, Omega's intros, the Leviathan arrivals, the
+    // ending's memorial flashbacks. A Matinee, music, a conversation, a sound loop or a nested sequence runs beside the 8 others: the Mars
+    // arrival, the Citadel DLC's two Normandy movies, Device_Reveal, the Kro001 animatic, Hackett's speech intro,
+    // Lev002_Asteroid_Depart and Lev004_WW_ArrivalCrash4.
 }
+
+#include "MelePause/game/KismetMovie.hpp"

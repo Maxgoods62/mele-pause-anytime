@@ -175,6 +175,22 @@ namespace MelePause
             return movie == nullptr ? "missing" : !MovieOn(movie) ? "off" : LoadingMovie(movie) ? "on (loading movie)" : "on";
         }
 
+        /// Every game mode that is on, by index (a movie runs on top of a conversation or a cutscene): for the logs.
+        std::string ActiveModesText(ABioPlayerController* pc)
+        {
+            auto const manager = ModeManagerOf(pc);
+            if (manager == nullptr) return "unknown";
+            std::string text;
+            auto const& modes = manager->GameModes;
+            for (UINT i = 0; i < modes.Count(); i++)
+            {
+                auto const mode = modes.GetData()[i];
+                if (mode == nullptr || mode->bIsActive == 0) continue;
+                text += std::format("{}{}", text.empty() ? "" : " ", i);
+            }
+            return text.empty() ? "none" : text;
+        }
+
         // ! World pause
         // ========================================
 
@@ -314,9 +330,9 @@ namespace MelePause
             auto const key = p->Key.Instanced();
             auto const pc = LocalController(console);
             auto const mode = ModeOf(pc);
-            LEASI_INFO("Console.InputKey runs while movie #{} is open: key {} event {}, mode {} ({}), movie mode {}, pause keys {}, thread {}", serial,
-                       ToUtf8(std::wstring_view(key.Chars(), key.Length())), p->Event, mode, ModeName(mode), MovieModeText(MovieMode(pc)),
-                       Bink::OwnsKeys() ? "the movie's" : "vanilla", GetCurrentThreadId());
+            LEASI_INFO("Console.InputKey runs while movie #{} is open: key {} event {}, mode {} ({}), movie mode {}, modes on {}, pause keys {}, thread {}",
+                       serial, ToUtf8(std::wstring_view(key.Chars(), key.Length())), p->Event, mode, ModeName(mode), MovieModeText(MovieMode(pc)),
+                       ActiveModesText(pc), Bink::OwnsKeys() ? "the movie's" : "vanilla", GetCurrentThreadId());
         }
 
         enum class Key { Esc, Start, Y, F7, Space, A };
@@ -375,8 +391,8 @@ namespace MelePause
                 }
             }
 
-            LEASI_INFO("{} pressed: mode {} ({}), movie mode {}, Pauser {} ({}), {} open movie(s), {}: {} (function {}, thread {})", KeyName(key), mode,
-                       ModeName(mode), MovieModeText(movie), PathOf(pauser), static_cast<void const*>(pauser), movies, PathOf(pc),
+            LEASI_INFO("{} pressed: mode {} ({}), movie mode {}, modes on {}, Pauser {} ({}), {} open movie(s), {}: {} (function {}, thread {})",
+                       KeyName(key), mode, ModeName(mode), MovieModeText(movie), ActiveModesText(pc), PathOf(pauser), static_cast<void const*>(pauser), movies, PathOf(pc),
                        action != nullptr ? action : "vanilla", PathOf(function), GetCurrentThreadId());
             LEASI_FLUSH();
             return action;

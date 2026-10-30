@@ -2,12 +2,12 @@
 
 MelePause is an ASI plugin for Mass Effect 1, 2 and 3 in the Legendary Edition (LE1, LE2 and LE3), installed as
 `LE1MelePause.asi`, `LE2MelePause.asi` and `LE3MelePause.asi`. Esc, or Start on a gamepad, pauses a conversation or an
-in-engine cutscene, and a fullscreen movie such as LE1's galaxy map travel movie or LE2's mass relay jump, and the same
+in-engine cutscene, and a fullscreen movie such as LE1's galaxy map travel movie or LE2's and LE3's mass relay jump, and the same
 key resumes it. While the game is paused, the picture is blurred and darkened under a pause screen. In a paused
 conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot. Everywhere else these keys
 do what they always did.
 
-Version 12 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
+Version 13 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
 it from source and copy it into the game ([Install](#install)).
 
 ## Games
@@ -15,7 +15,7 @@ it from source and copy it into the game ([Install](#install)).
 | Feature | LE1 | LE2 | LE3 |
 |---|---|---|---|
 | Esc pauses a conversation or an in-engine cutscene | since v2 | since v8 | since v11 |
-| Esc pauses a fullscreen movie | since v2 | since v9, a movie whose sound MelePause knows | no |
+| Esc pauses a fullscreen movie | since v2 | since v9, a movie whose sound MelePause knows | since v13, a movie a level starts whose sound MelePause knows |
 | Start on a gamepad pauses what Esc pauses | since v3 | since v8 | since v11 |
 | Photo mode on the paused shot (Y or F7) | since v4 | since v10 | since v12 |
 | Pause screen; Space and A resume | since v5 | since v8 | since v11 |
@@ -72,8 +72,14 @@ The details, and the open questions: [docs/games/LE2.md](docs/games/LE2.md).
   Esc, Start, Space or A resumes it.
 - LE3 lets Esc skip a skippable cutscene. With MelePause, Esc pauses it instead; Space, or a gamepad's X, still skips it
   when nothing is paused.
-- Fullscreen movies keep vanilla Esc and Start: LE3's movies play their sound through Wwise, and MelePause does not
-  pause it.
+- A fullscreen movie that a level starts pauses when MelePause knows its sound, as in LE2: MelePause pauses the Wwise
+  event the movie plays with the picture. It knows the sound of 38 of the 71 movies the levels start, among them the
+  mass relay jump, the first arrival at the Citadel, Omega's intro and the Leviathan arrivals. Esc or Start pauses such
+  a movie, and Esc, Start, Space or A resumes it.
+- Most of LE3's movies play inside an in-engine cutscene or a conversation instead, and the loading screens play movies
+  too: those keep vanilla Esc and Start.
+- In LE3, Space and a gamepad's X are the engine's own keys in a movie: they skip a movie the game lets you skip, as in
+  the vanilla game.
 - Photo mode under the pause works as in LE1. LE3's GUI movies run on the game's clock, which the pause stops: while
   photo mode is on, MelePause lets them see the real time go by, so its panel loads and answers.
 
@@ -163,14 +169,14 @@ With the game closed, run `./build.sh --uninstall` (or `--game LE1 --uninstall` 
 | The Steam overlay, ReShade, MeleBridge's editor | Each draws over the frame too. Whichever hook runs later draws on top. |
 | Any resolution or aspect ratio | Sizes follow the height of the back buffer, laid out for 1080 lines. |
 | Gamepads | Tested with an Xbox pad. A PlayStation pad would go through Steam Input or DS4Windows, which present it to the game as an Xbox pad; this is untested. |
-| Another build of the game | The native hooks for photo mode check the game's code before they patch it. If it differs, the log has a warning, photo mode still opens, and its camera, its panel or its sounds may not answer. If the camera's or the panel's hook is missing, the pause screen leaves out the photo mode key. LE2's movie input hook checks it too: if it differs, Esc and Start skip a skippable movie as in the vanilla game, and Space and X skip nothing. |
+| Another build of the game | The native hooks for photo mode check the game's code before they patch it. If it differs, the log has a warning, photo mode still opens, and its camera, its panel or its sounds may not answer. If the camera's or the panel's hook is missing, the pause screen leaves out the photo mode key. LE2's and LE3's movie input hooks check it too: if it differs, Esc and Start skip a skippable movie as in the vanilla game (and in LE2, Space and X skip nothing). |
 
 ## Known issues
 
 - Loading-screen movies do not pause.
 - In LE1, Esc skips a fullscreen movie that the engine lets the player skip, and MelePause cannot pause such a movie.
-  In LE2, a movie whose sound MelePause does not know keeps vanilla Esc and Start. In LE3, every fullscreen movie
-  does.
+  In LE2 and LE3, a movie whose sound MelePause does not know keeps vanilla Esc and Start. In LE3 that includes every
+  movie played inside a cutscene or a conversation.
 - Esc in the open console closes the console, as in the vanilla game.
 - During a movie, Esc is read from the keyboard. A press while another program's window is in front is ignored. Any Esc
   pressed while one of the game's windows is in front toggles the movie pause, also one meant to close the console or

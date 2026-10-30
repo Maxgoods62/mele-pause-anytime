@@ -3,6 +3,26 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## v13 (unreleased)
+
+Games: LE1, LE2, LE3
+
+LE3 gets the movie pause, as LE2 has it. In LE1 and LE2 the ASI does the same as v12, apart from the log.
+
+- In LE3, Esc or Start pauses a fullscreen movie that a level starts when MelePause knows its sound: the Wwise event the
+  Kismet movie action names is paused with the picture, as in LE2. 38 of the 71 movies the levels start qualify, among
+  them the mass relay jump, the first arrival at the Citadel, Omega's intro and the Leviathan arrivals. Esc, Start,
+  Space or A resumes, under the pause screen.
+- LE3's engine movie input is hooked as LE2's (its first bytes are LE2's). Space and X reach it as they are: in LE3 they
+  are its skip keys, and Enter is not.
+- Most of LE3's movies play inside a cutscene or a conversation (Matinee tracks), and the loading screens play movies
+  too: they keep vanilla Esc and Start.
+- LE2's Kismet movie rule moves to `src/game/KismetMovie.hpp`, shared by LE2 and LE3. In LE3 a movie action's `Prime`
+  input and `Primed` output (a preload) don't count as starting the movie.
+- The movie lines in LE3's log show the movie player's flags and skippable flag. In every game, the Esc lines show every
+  game mode that is on.
+- `package.sh` writes `dist/LE1MelePause-v13.zip`, `dist/LE2MelePause-v13.zip` and `dist/LE3MelePause-v13.zip`.
+
 ## v12 (unreleased)
 
 Games: LE1, LE2, LE3

@@ -42,6 +42,7 @@ asi_target (MelePause
     "PhotoGuiSF.cpp"
     "PhotoOff.cpp"
     "game/Game.hpp"
+    "game/KismetMovie.hpp"
     "game/LE1.hpp"
     "game/LE2.hpp"
     "game/LE3.hpp"

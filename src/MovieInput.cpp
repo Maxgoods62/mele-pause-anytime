@@ -4,18 +4,21 @@
 #include <atomic>
 #include <cstring>
 #include <span>
+#include <string>
 
 // The engine's movie input: the Bink movie player's InputKey (native, an FViewportClient's), which a key event reaches before
 // Console.InputKey while a fullscreen movie plays. On a press of one of its keys (in LE2 Escape, Enter, the left mouse
-// button, and the pad's Start, Back and A) it asks the player to stop the movie and says it handled the key: Console.InputKey
-// never sees that press. The movie stops only if the game lets it skip (the relay jump took the key and played on). Space
-// and the pad's X aren't among those keys: SFXGameModeMovie binds them to SkipMovie, which does nothing in LE2. So on a
-// movie we can pause, Esc and Start skipped it before our pause could hold. The hook:
+// button, and the pad's Start, Back and A; in LE3 Escape, SpaceBar, and the pad's Start, Back and X) it asks the player to
+// stop the movie and says it handled the key: Console.InputKey never sees that press. The movie stops only if the game lets
+// it skip (the relay jump took the key and played on). In LE2 Space and the pad's X aren't among those keys:
+// SFXGameModeMovie binds them to SkipMovie, which does nothing there. So on a movie we can pause, Esc and Start skipped it
+// before our pause could hold. The hook:
 // - Esc and Start while the pause keys are the movies' (Bink::OwnsKeys): not given to it. Their press goes on to
 //   Console.InputKey: the movie's thread toggles the pause on Esc, Pause.cpp on Start (only Start's repeats and release got
 //   there before).
 // - Every press while our movie pause is on: not given to it, so no key skips a paused movie. Space and A resume it instead.
-// - Space and X, the movie playing: given to it as Enter, so they skip what Esc skipped, and only that.
+// - Space and X, the movie playing: given to it as the game's skipKeyAs (LE2: Enter), so they skip what Esc skipped, and
+//   only that; as they are where they are its keys already (LE3).
 // Any other event goes to it as it came. Game thread only; it reads no game object.
 namespace MelePause::MovieInput
 {
@@ -26,6 +29,16 @@ namespace MelePause::MovieInput
         using t_InputKey = unsigned long(void* self, void* viewport, int controllerId, SFXName key, int event, float amount, unsigned long gamepad);
 
         std::atomic<t_InputKey*> InputKey_orig{ nullptr };
+        /// The key Space and X reach the movie input as (Install's skipKeyAs), or null: as they are. Set before the hook.
+        wchar_t const* SkipKeyAs = nullptr;
+
+        /// A key name for the log: key names are ASCII.
+        std::string KeyText(wchar_t const* name)
+        {
+            std::string text;
+            for (; *name != L'\0'; ++name) text.push_back(static_cast<char>(*name));
+            return text;
+        }
 
         /// EInputEvent's IE_Pressed: the only event the movie input acts on.
         constexpr int Pressed = 0;
@@ -51,7 +64,6 @@ namespace MelePause::MovieInput
             static SFXName const Start{ L"XboxTypeS_Start", 0 };
             static SFXName const Space{ L"SpaceBar", 0 };
             static SFXName const PadX{ L"XboxTypeS_X", 0 };
-            static SFXName const Enter{ L"Enter", 0 };
             auto const pauseKey = key == Escape || key == Start;
             auto const skipKey = key == Space || key == PadX;
             if (!pauseKey && !skipKey && !Bink::PauseWanted()) return orig(self, viewport, controllerId, key, event, amount, gamepad);
@@ -71,16 +83,25 @@ namespace MelePause::MovieInput
             }
             // With no movie open there is nothing to skip, and nothing to log.
             if (!skipKey || Bink::OpenMovies() == 0) return orig(self, viewport, controllerId, key, event, amount, gamepad);
-            auto const handled = orig(self, viewport, controllerId, Enter, event, amount, gamepad);
-            LEASI_INFO("{} pressed during a movie: given to the engine's movie input as Enter: {}", name,
+            if (SkipKeyAs == nullptr)
+            {
+                auto const handled = orig(self, viewport, controllerId, key, event, amount, gamepad);
+                LEASI_INFO("{} pressed during a movie: given to the engine's movie input: {}", name,
+                           handled != 0 ? "taken, the movie stops if the game lets it skip" : "not taken");
+                return handled;
+            }
+            static SFXName const As{ SkipKeyAs, 0 };
+            auto const handled = orig(self, viewport, controllerId, As, event, amount, gamepad);
+            LEASI_INFO("{} pressed during a movie: given to the engine's movie input as {}: {}", name, KeyText(SkipKeyAs),
                        handled != 0 ? "taken, the movie stops if the game lets it skip" : "not taken");
             return handled;
         }
     }
 
-    void Install(::LESDK::Initializer& Init, unsigned long long rva, std::span<unsigned char const> start)
+    void Install(::LESDK::Initializer& Init, unsigned long long rva, std::span<unsigned char const> start, wchar_t const* skipKeyAs)
     {
         if (rva == 0) return;
+        SkipKeyAs = skipKeyAs;
         auto const target = Init.ResolveTyped<t_InputKey>(::LESDK::Address::FromOffset(rva));
         if (target == nullptr || std::memcmp(reinterpret_cast<void const*>(target), start.data(), start.size()) != 0)
         {
@@ -96,6 +117,7 @@ namespace MelePause::MovieInput
             LEASI_WARN("hooking the engine's movie input failed: Esc and Start skip a movie the game lets skip, Space and X don't");
             return;
         }
-        LEASI_INFO("movie input hooked: on a movie we can pause, Esc and Start pause it; Space and X skip a movie the game lets skip");
+        LEASI_INFO("movie input hooked: on a movie we can pause, Esc and Start pause it; Space and X skip a movie the game lets skip{}",
+                   skipKeyAs != nullptr ? ", given as " + KeyText(skipKeyAs) : std::string{});
     }
 }
