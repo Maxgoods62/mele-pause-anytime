@@ -43,12 +43,12 @@ makes `LE<n>MelePause.asi` and `LE<n>MelePause.pdb`. One version number covers e
 
 A build covers the games named with `--game`, else those in `MELE_GAMES`, else the released ones (`RELEASED_GAMES` in
 `scripts/games.sh`: LE1 and LE2). A name is `LE1`, `LE2`, `LE3` or `all`, in any case. `all` means the games that
-`src/CMakeLists.txt` lists on `asi_target`'s `GAMES` line: LE1 and LE2. A game that line does not list has no project,
-and the build stops after the configure step: "no MelePause-LE3 project: src/CMakeLists.txt does not build LE3 yet
-(asi_target's GAMES)".
+`src/CMakeLists.txt` lists on `asi_target`'s `GAMES` line: LE1, LE2 and LE3. A game that line does not list has no
+project, and the build stops after the configure step: "no MelePause-LE<n> project: src/CMakeLists.txt does not build
+LE<n> yet (asi_target's GAMES)".
 
 What differs from one game to the next is in `src/game/LE<n>.hpp`, included by `src/game/Game.hpp` for the build's SDK
-target; today it has LE1's and LE2's branches and stops the build for LE3. A game goes on the `GAMES` line only
+target; it has LE1's, LE2's and LE3's branches and stops the build for any other. A game goes on the `GAMES` line only
 once it has its `LE<n>.hpp`, defining the names `LE1.hpp` defines (`LegacyModule` included: null for a game with no old
 file name), and its branch in `Game.hpp`: the tree's `VisualStudio` preset turns every `LEASI_BUILD_LE<n>` on, so a
 listed game that does not compile breaks the whole tree's build in Visual Studio.
@@ -56,8 +56,8 @@ listed game that does not compile breaks the whole tree's build in Visual Studio
 
 LE1 and LE2 are the released games, so a plain `./build.sh --install` copies into ME1 and ME2, and stops before it
 builds anything when either game has no ASI loader or is running: name `--game LE1` (or `--game LE2`), or set
-`MELE_GAMES`, to install one game alone. LE2's build has photo mode and the movie pause off
-([docs/games/LE2.md](docs/games/LE2.md)).
+`MELE_GAMES`, to install one game alone. LE3 is built but not released: `--game all` builds it, and with `--install`
+copies it into ME3. Its build has photo mode and the movie pause off ([docs/games/LE3.md](docs/games/LE3.md)).
 
 ## Install checks
 

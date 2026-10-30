@@ -8,9 +8,9 @@ starts. Keep the game's window in front for the whole test: in the background, L
 and a pause tested then proves nothing.
 
 The steps name LE1's scenes. In another game, use a conversation, an in-engine cutscene and a fullscreen movie of that
-game; [games/LE2.md](games/LE2.md) has LE2's sheet. A feature that the game's `src/game/LE<n>.hpp` turns off
-(`MELEPAUSE_MOVIES` or `MELEPAUSE_PHOTO` at 0) has a "not in the LE<n> build" line in the log instead of its hooks, and
-its step checks that its keys keep their vanilla job.
+game; [games/LE2.md](games/LE2.md) and [games/LE3.md](games/LE3.md) have LE2's and LE3's sheets. A feature that the
+game's `src/game/LE<n>.hpp` turns off (`MELEPAUSE_MOVIES` or `MELEPAUSE_PHOTO` at 0) has a "not in the LE<n> build" line
+in the log instead of its hooks, and its step checks that its keys keep their vanilla job.
 
 ## Release gate
 
@@ -141,3 +141,19 @@ from the player to the director's camera (the log's "pending" view target), open
 with "camera mode None" for the whole session: the camera did not answer. MelePause now holds that blend for the
 session ("photo mode: the blend to ... held" in the log). Not seen in the game yet: 46 later entries in an STA00
 cutscene had no blend pending, and all opened on the shot.
+
+### LE3
+
+On 2026-10-30 the first LE3 build (v10's code, with photo mode and the movie pause off) passed part of the
+[LE3 sheet](games/LE3.md#sheet-for-a-first-run), on the Normandy and the Citadel, with keyboard and mouse and with a
+gamepad.
+
+| Area | Result |
+|---|---|
+| Esc and Start in a conversation and in an in-engine cutscene | 23 pauses (19 in conversations, 4 in cutscenes), with picture, voice, lips and music in sync. Esc and Space resume; Start pauses with gamepad prompts and A resumes. |
+| Skips | LE3's cutscene mode binds Esc and Space to the skip (`PC_CineSkip`), and X (`Console_CineSkip`). The Esc that paused or resumed a cutscene did not skip it. |
+| Esc and Start elsewhere | Vanilla in gameplay (the pause menu), in menus, on the galaxy map, and in the game's own photo mode. |
+| Log | The start lines as the sheet says, "LE3MelePause 10 ready", the first `BioHUD.PostRender` with the same controller, and the text in French. |
+
+Not covered yet: the console under the pause, Y and F7 under the pause, a fullscreen movie, and the skips with nothing
+paused.

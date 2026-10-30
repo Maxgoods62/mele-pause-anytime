@@ -31,6 +31,8 @@ namespace MelePause::Game
     #include "MelePause/game/LE1.hpp"
 #elif defined(SDK_TARGET_LE2)
     #include "MelePause/game/LE2.hpp"
+#elif defined(SDK_TARGET_LE3)
+    #include "MelePause/game/LE3.hpp"
 #else
     #error "MelePause: no game/LE<n>.hpp for this SDK target"
 #endif

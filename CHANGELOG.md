@@ -3,6 +3,14 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## After v10 (unreleased)
+
+Games: LE1, LE2. The ASI does the same as v10 in both.
+
+- `src/CMakeLists.txt` also builds `LE3MelePause.asi`, with photo mode and the movie pause off. It is not released and
+  has never run in the game ([docs/games/LE3.md](docs/games/LE3.md)). `--game all` now covers LE3, so `./build.sh
+  --game all --install` also copies into ME3.
+
 ## v10 (unreleased)
 
 Games: LE1, LE2

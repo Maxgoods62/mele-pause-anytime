@@ -20,7 +20,7 @@ set_target_properties (MelePauseImGui PROPERTIES FOLDER "External")
 # LEASI_BUILD_LE<n> on. Listed is not released: a plain ../build.sh builds RELEASED_GAMES (../scripts/games.sh).
 asi_target (MelePause
   SHARED
-  GAMES "LE1" "LE2"
+  GAMES "LE1" "LE2" "LE3"
   SOURCES
     "Api.hpp"
     "Bink.cpp"
@@ -41,6 +41,7 @@ asi_target (MelePause
     "game/Game.hpp"
     "game/LE1.hpp"
     "game/LE2.hpp"
+    "game/LE3.hpp"
     "Resources.h"
     "SharedVersion.h"
   LINKS

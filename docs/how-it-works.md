@@ -12,7 +12,7 @@ and other ASIs use too. The sources:
 | `src/Photo.hpp`, `src/Photo.cpp` | Photo mode under the pause: the session, the camera, and the natives that let its input, panel and (in LE1) sounds past the pause. The natives' RVAs, the conversation panel and the camera switch gate come from `game/LE<n>.hpp`. |
 | `src/PhotoOff.cpp` | The same calls for a game whose `game/LE<n>.hpp` turns photo mode off (`MELEPAUSE_PHOTO 0`): Y and F7 stay the game's. |
 | `src/Engine.cpp` | Helpers for calling into the game and reading its objects (`CallGame`, `PathOf`, `Alive`, ...). |
-| `src/game/` | What differs per game: `Game.hpp` picks `LE1.hpp` or `LE2.hpp` for the build's SDK target (modes, GuiKey events, the photo mode and movie pause switches, ...). `LE2.hpp` leaves photo mode's GUI sounds unhooked and gives the movie pause only the movies whose sound it knows ([games/LE2.md](games/LE2.md)). |
+| `src/game/` | What differs per game: `Game.hpp` picks `LE1.hpp`, `LE2.hpp` or `LE3.hpp` for the build's SDK target (modes, GuiKey events, the photo mode and movie pause switches, ...). `LE2.hpp` leaves photo mode's GUI sounds unhooked and gives the movie pause only the movies whose sound it knows ([games/LE2.md](games/LE2.md)); `LE3.hpp` turns photo mode and the movie pause off ([games/LE3.md](games/LE3.md)). |
 | `src/Bink.cpp` | The movie pause, on the thread that plays the movie. |
 | `src/MovieSound.cpp` | LE2: the Wwise event a Kismet movie action posts beside the picture, latched on the game thread and paused beside `BinkPause` with the exe's `AK::SoundEngine::ExecuteActionOnEvent`. Inert in LE1. |
 | `src/MovieInput.cpp` | LE2: the hook on the engine's movie input, which would skip a movie on Esc's and Start's press. Nothing in LE1. |
