@@ -57,7 +57,7 @@ listed game that does not compile breaks the whole tree's build in Visual Studio
 
 LE1, LE2 and LE3 are the released games, so a plain `./build.sh --install` copies into ME1, ME2 and ME3, and stops
 before it builds anything when any of them has no ASI loader or is running: name `--game LE1` (or `LE2`, `LE3`), or set
-`MELE_GAMES`, to install one game alone. LE3's build has photo mode and the movie pause off
+`MELE_GAMES`, to install one game alone. LE3's build has the movie pause off
 ([docs/games/LE3.md](docs/games/LE3.md)).
 
 ## Install checks

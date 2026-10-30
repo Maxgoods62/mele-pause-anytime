@@ -2,10 +2,12 @@
 
 // LE3's facts. Include game/Game.hpp, not this file.
 
-/// Photo mode under the pause: off. LE3's photo panel is a GFx movie (SFXSFHandler_PhotoMode), and the
-/// MassEffect3.exe natives that would get it past the pause are not known yet.
-#define MELEPAUSE_PHOTO 0
+/// Photo mode under the pause: on.
+#define MELEPAUSE_PHOTO 1
+/// Its GUI sounds: the game's, not hooked (LE3's GFx movies play them through SFXGUIInteraction).
 #define MELEPAUSE_PHOTO_GUI_SOUNDS 0
+/// Photo mode's panel is a GFx movie of SFXGUIInteraction (PhotoGuiGFx.cpp).
+#define MELEPAUSE_PHOTO_GFX 1
 /// The Bink movie pause: off. 125 of the 126 movies in BioGame\Movies have no Bink audio track: their sound is a Wwise
 /// event that BinkPause does not stop.
 #define MELEPAUSE_MOVIES 0
@@ -41,6 +43,54 @@ namespace MelePause::Game
     inline USFXGameModeManager* ModeManagerOf(ABioPlayerController* pc)
     {
         return pc != nullptr ? pc->GameModeManager2 : nullptr;
+    }
+
+    // Photo.cpp's spellings of what the SDKs name differently.
+    inline FVector const& LocationOf(AActor const* actor) { return actor->location; }
+    inline FVector const& LocationOf(FTPOV const& pov) { return pov.location; }
+    /// PlayerPhotoMode's tether in a vehicle, beside PhotoModeTetherDistance on foot: none in LE3.
+    inline float* VehicleTetherOf(ABioPlayerController*) { return nullptr; }
+    inline USFXGameModeManager_eventDisableMode_Parms DisableModeParms(unsigned char mode)
+    {
+        USFXGameModeManager_eventDisableMode_Parms p;
+        p.mode = mode;
+        return p;
+    }
+
+    // Photo mode's natives (Photo.cpp) in this build of MassEffect3.exe, with their first bytes, found through the classes'
+    // vtables in a memory dump of the running game. BioPlayerInput::InputKey is slot 88 of BioPlayerInput's vtable (LE2: 89):
+    // it hands the key to SFXGUIInteraction first (0xbc9be0), then to UPlayerInput::InputKey (0x54b710), which ends in
+    // UInput::InputKey (0x54b2f0, Pauser at +0x670). UPlayerInput::InputAxis is slot 89, not overridden (it checks the
+    // Pauser at 0x54ad9e). The GUI tick is the GFx movies' Tick (slot 18 of vtable 0x12c7e48, called by the viewport
+    // client's tick at 0xc25695): it checks no Pauser, but advances each movie by the time since its last advance on the
+    // movie's clock, and most movies run on the world's TimeSeconds (0x8c2570), which stands still under the pause.
+    inline constexpr unsigned long long PhotoInputKeyRva = 0xa5a040;
+    inline constexpr std::array<unsigned char, 24> PhotoInputKeyStart{ 0x48, 0x89, 0x5C, 0x24, 0x18, 0x55, 0x56, 0x41, 0x56, 0x48, 0x83, 0xEC,
+                                                                       0x40, 0x48, 0x8B, 0xF1, 0x41, 0x8B, 0xE9, 0x48, 0x8D, 0x4C, 0x24, 0x60 };
+    inline constexpr unsigned long long PhotoInputAxisRva = 0x54ac90;
+    inline constexpr std::array<unsigned char, 16> PhotoInputAxisStart{ 0x48, 0x8B, 0xC4, 0x56, 0x57, 0x41, 0x56, 0x48,
+                                                                        0x83, 0xEC, 0x70, 0x48, 0xC7, 0x40, 0xA8, 0xFE };
+    inline constexpr unsigned long long PhotoGuiTickRva = 0x92d7a0;
+    inline constexpr std::array<unsigned char, 16> PhotoGuiTickStart{ 0x48, 0x89, 0x5C, 0x24, 0x18, 0x57, 0x48, 0x83,
+                                                                      0xEC, 0x40, 0x48, 0x8B, 0xD9, 0x48, 0x8B, 0x49 };
+
+    /// What the GFx movies' Tick walks (Photo.cpp GfxClock): two arrays (data pointer, count) at these offsets of its this,
+    /// of pointers to the movies' entries, and in each entry the clock's time of the movie's last advance (+0x44; +0x58 is
+    /// 1 for a movie on real time, +0x5c the movie).
+    struct GfxMovieList
+    {
+        unsigned Data;
+        unsigned Count;
+    };
+    inline constexpr std::array<GfxMovieList, 2> GfxMovieLists{ { { 0x4c, 0x54 }, { 0xbc, 0xc4 } } };
+    inline constexpr unsigned GfxMovieStamp = 0x44;
+
+    /// SFXPlayerCamera.UpdateViewTarget only calls PickCameraMode when TimeSeconds - LastTransitionTime > TransitionTimeout,
+    /// as in LE2, and TimeSeconds stands still under the pause: a switch just before it would keep the photo camera from
+    /// being picked, or the conversation's from coming back until after the world resumes.
+    inline void AllowCameraSwitch(ASFXPlayerCamera* camera, AWorldInfo* world)
+    {
+        camera->LastTransitionTime = world->TimeSeconds - camera->TransitionTimeout - 1.0f;
     }
 
     // No movie pause (MELEPAUSE_MOVIES 0): Entry.cpp installs neither Bink nor MovieInput, and no Kismet movie action is

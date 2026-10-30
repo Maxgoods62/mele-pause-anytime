@@ -68,8 +68,9 @@ EOF
 LE3MelePause.asi is an ASI plugin for Mass Effect 3 in the Legendary Edition (LE3). Esc, or
 Start on a gamepad, pauses a conversation or an in-engine cutscene, and Esc, Start, Space or A
 resumes it. While the game is paused, the picture is blurred and darkened under a pause screen.
-In a skippable cutscene, Esc pauses instead of skipping it: Space, or X on a gamepad, skips.
-Fullscreen movies, Y and F7 keep their vanilla jobs.
+In a paused conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the
+paused shot. In a skippable cutscene, Esc pauses instead of skipping it: Space, or X on a gamepad,
+skips. Fullscreen movies keep their vanilla Esc and Start.
 EOF
             ;;
         *) return 1 ;;

@@ -7,7 +7,7 @@ key resumes it. While the game is paused, the picture is blurred and darkened un
 conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot. Everywhere else these keys
 do what they always did.
 
-Version 11 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
+Version 12 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
 it from source and copy it into the game ([Install](#install)).
 
 ## Games
@@ -17,7 +17,7 @@ it from source and copy it into the game ([Install](#install)).
 | Esc pauses a conversation or an in-engine cutscene | since v2 | since v8 | since v11 |
 | Esc pauses a fullscreen movie | since v2 | since v9, a movie whose sound MelePause knows | no |
 | Start on a gamepad pauses what Esc pauses | since v3 | since v8 | since v11 |
-| Photo mode on the paused shot (Y or F7) | since v4 | since v10 | no |
+| Photo mode on the paused shot (Y or F7) | since v4 | since v10 | since v12 |
 | Pause screen; Space and A resume | since v5 | since v8 | since v11 |
 
 Each game has its own file, for its own ASI folder: `LE1MelePause.asi` for ME1, `LE2MelePause.asi` for ME2,
@@ -74,7 +74,8 @@ The details, and the open questions: [docs/games/LE2.md](docs/games/LE2.md).
   when nothing is paused.
 - Fullscreen movies keep vanilla Esc and Start: LE3's movies play their sound through Wwise, and MelePause does not
   pause it.
-- Y and F7 keep their vanilla jobs: photo mode under the pause is not in LE3.
+- Photo mode under the pause works as in LE1. LE3's GUI movies run on the game's clock, which the pause stops: while
+  photo mode is on, MelePause lets them see the real time go by, so its panel loads and answers.
 
 The details, and the open questions: [docs/games/LE3.md](docs/games/LE3.md).
 
@@ -144,7 +145,7 @@ copy by hand, delete it yourself: while it is there, the ASI loader loads both f
 `LE1MelePause.asi` stays off.
 
 To check that it loaded, start the game and open `<LE folder>\Game\ME<n>\Binaries\Win64\Logs\MelePause.log`. It has a
-line that ends in `LE<n>MelePause 11 ready`. In LE1, a line that ends in `MelePause 6 ready`, or an older number, means
+line that ends in `LE<n>MelePause 12 ready`. In LE1, a line that ends in `MelePause 6 ready`, or an older number, means
 that the old `MelePause.asi` is still in the ASI folder.
 
 ## Uninstall

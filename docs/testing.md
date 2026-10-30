@@ -155,5 +155,13 @@ gamepad.
 | Esc and Start elsewhere | Vanilla in gameplay (the pause menu), in menus, on the galaxy map, and in the game's own photo mode. |
 | Log | The start lines as the sheet says, "LE3MelePause 10 ready", the first `BioHUD.PostRender` with the same controller, and the text in French. |
 
-Not covered yet: the console under the pause, Y and F7 under the pause, a fullscreen movie, and the skips with nothing
-paused.
+Photo mode under the pause, on the Normandy and the Citadel (2026-10-30), with keyboard and mouse and with a gamepad:
+
+| Build | Result |
+|---|---|
+| First photo build (input hooks, no GUI tick hook) | Y and F7 open and leave photo mode in a conversation and in a cutscene; the camera answers the mouse, the keys and the sticks. The panel never loads: its labels read "TEST STRING", and the reply wheel and the subtitle stay on screen. The log counts 0 GUI ticks. |
+| `GfxClock` on the GFx movies' `Tick` | The panel loads and answers (tabs, options). The conversation movie is set aside each time ("set aside" line). With the reply wheel up at the entry, the wheel came back now and then while photo mode ran. |
+| v12, `PhotoGui::Hold` each frame | 35 photo sessions, the wheel up or not: the wheel stays hidden. The game showed the movie again in 20 of them, on 25 to 170303 frames (a long session); each time it was hidden again. No warning or error in the log. |
+
+Not covered yet: the console under the pause, the photo panel in a cutscene since the `GfxClock` fix, photo mode's GUI
+sounds, a fullscreen movie, and the skips with nothing paused.

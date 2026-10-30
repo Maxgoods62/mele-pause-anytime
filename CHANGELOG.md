@@ -3,6 +3,23 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## v12 (unreleased)
+
+Games: LE1, LE2, LE3
+
+LE3 gets photo mode under the pause. In LE1 and LE2 the ASI does the same as v11.
+
+- In LE3, in a conversation or an in-engine cutscene that MelePause paused, a gamepad's Y or F7 opens the game's photo
+  mode on the paused shot, as in LE1 and LE2. Three native hooks, checked against the game's code first, let its input
+  and its panel past the world pause. LE3's GUI movies advance on the game's clock, which stands still under the pause:
+  while photo mode is on, their tick sees the real time go by, and only their tick.
+- In LE3 the reply wheel stays hidden under photo mode. The game can show it again on its own; MelePause hides it again
+  on the next frame.
+- Photo mode's GUI side is split per game: `src/PhotoGuiSF.cpp` for LE1's and LE2's ScaleForm GUI manager,
+  `src/PhotoGuiGFx.cpp` for LE3's GFx movies (`MELEPAUSE_PHOTO_GFX` in `game/LE<n>.hpp`).
+- Still not in LE3: the movie pause. Fullscreen movies keep their vanilla Esc and Start.
+- `package.sh` writes `dist/LE1MelePause-v12.zip`, `dist/LE2MelePause-v12.zip` and `dist/LE3MelePause-v12.zip`.
+
 ## v11 (unreleased)
 
 Games: LE1, LE2, LE3

@@ -6,6 +6,8 @@
 #define MELEPAUSE_PHOTO 1
 /// Photo mode's GUI sounds under the pause need our hooks: ISACT starts only bNonRealtime sounds while the world is paused.
 #define MELEPAUSE_PHOTO_GUI_SOUNDS 1
+/// Photo mode's panel is a ScaleForm panel of the GUI manager (PhotoGuiSF.cpp), not a GFx movie (PhotoGuiGFx.cpp).
+#define MELEPAUSE_PHOTO_GFX 0
 /// The Bink movie pause: the galaxy map's travel movie carries its own sound track.
 #define MELEPAUSE_MOVIES 1
 
@@ -37,6 +39,18 @@ namespace MelePause::Game
     inline USFXGameModeManager* ModeManagerOf(ABioPlayerController* pc)
     {
         return pc != nullptr ? pc->GameModeManager : nullptr;
+    }
+
+    // Photo.cpp's spellings of what the SDKs name differently.
+    inline FVector const& LocationOf(AActor const* actor) { return actor->Location; }
+    inline FVector const& LocationOf(FTPOV const& pov) { return pov.Location; }
+    /// PlayerPhotoMode's tether in a vehicle, beside PhotoModeTetherDistance on foot: VehiclePhotoModeTetherDistance.
+    inline float* VehicleTetherOf(ABioPlayerController* pc) { return &pc->VehiclePhotoModeTetherDistance; }
+    inline USFXGameModeManager_eventDisableMode_Parms DisableModeParms(unsigned char mode)
+    {
+        USFXGameModeManager_eventDisableMode_Parms p;
+        p.Mode = mode;
+        return p;
     }
 
     // Photo mode's natives (Photo.cpp) in this build of MassEffect1.exe, with their first bytes: BioPlayerInput::InputKey,

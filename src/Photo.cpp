@@ -1,11 +1,13 @@
 #include "MelePause/Photo.hpp"
 
 // The game's photo mode under the world pause, where game/LE<n>.hpp turns it on (MELEPAUSE_PHOTO). What differs from one
-// game to the next comes from there: the natives' addresses and first bytes, the conversation panel, the camera switch,
-// and whether the GUI sounds need our hooks (MELEPAUSE_PHOTO_GUI_SOUNDS).
+// game to the next comes from there: the natives' addresses and first bytes, the camera switch, and whether the GUI
+// sounds need our hooks (MELEPAUSE_PHOTO_GUI_SOUNDS). The GUI side, photo mode's panel and the conversation's, is
+// PhotoGui's.
 #if MELEPAUSE_PHOTO
 
 #include "MelePause/Engine.hpp"
+#include "MelePause/PhotoGui.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -76,33 +78,26 @@ namespace MelePause::PhotoMode
             Kept<ASFXPlayerCamera> Camera;
             Kept<USFXGameModeManager> Manager;
             Kept<USFXGameModePhoto> Photo;
-            Kept<UMassEffectGuiManager> Gui;
-            Kept<UBioSFPanel> Panel;
+            /// PhotoGui::Find's: the GUI whose tick runs photo mode's panel.
+            Kept<UObject> Gui;
             Kept<AActor> OldTarget;
             /// A blend to another view target (a cutscene's first second), held for the session.
             Kept<AActor> OldPending;
             FTViewTarget OldPendingView{};
             float OldBlendTimeToGo = 0.0f;
             Kept<AWorldInfo> World;
-            Kept<UBioSubtitles> Subtitles;
             unsigned char OldPriority = 0;
             unsigned char OldIgnoreLook = 0;
             unsigned char OldIgnoreMove = 0;
             bool OldAlwaysTick = false;
             bool OldPlayersOnly = false;
             bool OldCamDisabled = false;
-            bool OldPanelInputDisabled = false;
-            bool OldPanelHandleInput = false;
-            bool OldPanelVisible = false;
             float OldTether = 0.0f;
             float OldVehicleTether = 0.0f;
             FVector OldPcLocation{};
             FRotator OldPcRotation{};
             /// The shot on screen when the key was pressed.
             FTPOV EnterPov{};
-            /// The subtitle line on screen: LE1's photo mode Activated clears it.
-            std::wstring Subtitle;
-            float SubtitleTime = 0.0f;
             /// The static console binds: photo mode's Deactivated puts the defaults back, the conversation's stick swap lost.
             std::vector<SavedBind> ConsoleBinds;
             /// A frozen camera's (bDisabled) aspect, which the session's camera updates overwrite.
@@ -116,6 +111,10 @@ namespace MelePause::PhotoMode
             unsigned InputAxes = 0;
             /// The GUI manager's ticks run past the pause: photo mode's panel answers (tabs, options, prompts, sounds).
             unsigned GuiTicks = 0;
+            /// LE3: the last GFx movies' Tick that GfxClock moved the world's clock for.
+            LARGE_INTEGER LastGuiAt{};
+            /// Frames on which the game showed the conversation's panel again and PhotoGui::Hold hid it.
+            unsigned PanelHolds = 0;
             unsigned InputPauserChanged = 0;
             /// The GUI manager's sounds made realtime so they play under the pause (see PlayGuiSound_hook).
             unsigned GuiSounds = 0;
@@ -133,21 +132,18 @@ namespace MelePause::PhotoMode
 
         struct PhotoFunctions
         {
-            CachedFunction GetScaleFormManager;
-            CachedFunction ShowPhotoMode;
-            CachedFunction HidePhotoMode;
             CachedFunction UpdateCurrentMode;
             CachedFunction DisableMode;
             CachedFunction SetLocation;
             CachedFunction SetRotation;
             CachedFunction UpdateCamera;
-            CachedFunction DisplaySubtitle;
             CachedFunction SetStaticConsoleBinding;
         };
         PhotoFunctions PFn;
         /// The input hooks are in (see PauseLift): without them photo mode's camera gets no input under the world pause.
         bool InputHooked = false;
-        /// The GUI tick hook is in (see PauseLift): without it photo mode's panel stands still under the world pause.
+        /// The GUI tick hook is in (see PauseLift; LE3: GfxClock): without it photo mode's panel stands still under the world
+        /// pause.
         bool GuiTickHooked = false;
         /// The GUI sound hooks are in (see PlayGuiSound_hook): without them photo mode's sounds wait for the pause's end.
         bool SoundHooked = false;
@@ -166,14 +162,6 @@ namespace MelePause::PhotoMode
                 if (mode != nullptr && mode->IsA(USFXGameModePhoto::StaticClass())) return static_cast<USFXGameModePhoto*>(mode);
             }
             return nullptr;
-        }
-
-        UMassEffectGuiManager* GuiOf(ABioPlayerController* pc)
-        {
-            APlayerController_execGetScaleFormManager_Parms p;
-            if (!Call(pc, L"GetScaleFormManager", PFn.GetScaleFormManager, p)) return nullptr;
-            auto const gui = p.ReturnValue;
-            return gui != nullptr && gui->IsA(UMassEffectGuiManager::StaticClass()) ? static_cast<UMassEffectGuiManager*>(gui) : nullptr;
         }
 
         UBioPlayerInput* BioInput(APlayerController* pc)
@@ -295,14 +283,16 @@ namespace MelePause::PhotoMode
 
         /// Our controller ticks under the pause (bAlwaysTick), and so do its timers: the conversation's SkipNode (0.3 s, set by
         /// BioSFHandler_Conversation.Update) would move the conversation on. Every running timer of the controller is held,
-        /// as the pause holds them without bAlwaysTick; the exit lets go of those held here.
+        /// as the pause holds them without bAlwaysTick; the exit lets go of those held here. Photo mode's own run: LE3's
+        /// Activated turns the modes' input back on 0.5 s later (EnableInputWrapper).
         void HoldTimers(ABioPlayerController* pc, PhotoSession& s)
         {
             auto& timers = pc->Timers;
+            auto const photo = s.Photo.Object;
             for (UINT i = 0; i < timers.Count(); i++)
             {
                 auto& timer = timers.GetData()[i];
-                if (timer.bPaused) continue;
+                if (timer.bPaused || (photo != nullptr && timer.TimerObj == photo)) continue;
                 timer.bPaused = 1;
                 auto const known = std::any_of(s.Timers.begin(), s.Timers.end(), [&](HeldTimer const& held) {
                     return held.FuncName == timer.FuncName && held.TimerObj == timer.TimerObj;
@@ -325,18 +315,6 @@ namespace MelePause::PhotoMode
             s.Timers.clear();
         }
 
-        /// The subtitle line LE1's Activated cleared, unless another one shows now (LE2's leaves it).
-        void RestoreSubtitle(PhotoSession& s)
-        {
-            auto const subtitles = s.Subtitles.Live();
-            if (subtitles == nullptr || s.Subtitle.empty() || subtitles->m_sSubtitle.Length() != 0) return;
-            FString const text{ s.Subtitle.c_str() };
-            UBioSubtitles_execDisplaySubtitle_Parms p;
-            std::memcpy(&p.sSubtitle, &text, sizeof(FString));
-            p.fDuration = s.SubtitleTime;
-            Call(subtitles, L"DisplaySubtitle", PFn.DisplaySubtitle, p);
-        }
-
         unsigned char AddCounter(unsigned char a, unsigned char b) { return static_cast<unsigned char>(std::min(255, a + b)); }
 
         /// Y or F7 under our pause of a conversation or a cutscene. Returns what it did, or null when refused. The session is
@@ -349,7 +327,7 @@ namespace MelePause::PhotoMode
                                     ? static_cast<ASFXPlayerCamera*>(pc->PlayerCamera)
                                     : nullptr;
             auto const photo = manager != nullptr ? PhotoModeOf(manager) : nullptr;
-            auto const gui = GuiOf(pc);
+            auto const gui = PhotoGui::Find(pc);
             if (world == nullptr || manager == nullptr || camera == nullptr || photo == nullptr || gui == nullptr || photo->bIsActive != 0)
             {
                 LEASI_WARN("photo mode refused: world {}, mode manager {}, camera {}, photo mode {} (active {}), GUI manager {}", PathOf(world),
@@ -359,6 +337,7 @@ namespace MelePause::PhotoMode
 
             auto& s = Photo;
             s = {};
+            PhotoGui::Clear();
             s.On = true;
             s.Mode = mode;
             s.EnteredAt = GetTickCount64();
@@ -370,42 +349,24 @@ namespace MelePause::PhotoMode
             s.World.Set(world);
             s.Input.Set(pc->PlayerInput);
             s.EnterPov = camera->CameraCache.POV;
-            s.OldPcLocation = pc->Location;
+            s.OldPcLocation = LocationOf(pc);
             s.OldPcRotation = pc->Rotation;
             s.OldPlayersOnly = world->bPlayersOnly != 0;
-            if (world->IsA(ABioWorldInfo::StaticClass()))
-            {
-                if (auto const subtitles = static_cast<ABioWorldInfo*>(world)->m_Subtitles)
-                {
-                    s.Subtitles.Set(subtitles);
-                    s.Subtitle.assign(subtitles->m_sSubtitle.Chars(), subtitles->m_sSubtitle.Length());
-                    s.SubtitleTime = subtitles->m_fTimeRemaining;
-                }
-            }
+            auto const subtitleChars = PhotoGui::KeepSubtitle(world);
             if (auto const input = BioInput(pc)) s.ConsoleBinds = SaveBinds(input->StaticConsoleBinds);
             auto const& pov = s.EnterPov;
             LEASI_INFO("photo mode enter, mode {} ({}): view target {} (pending {}), CameraStyle {}, camera mode {}, camera disabled {}, shot at ({:.0f} "
                        "{:.0f} {:.0f}) FOV {:.1f}, controller at ({:.0f} {:.0f} {:.0f}), pawn {}, subtitle {} chars",
                        mode, ModeName(mode), PathOf(camera->ViewTarget.Target), PathOf(camera->PendingViewTarget.Target), NameText(camera->CameraStyle),
-                       PathOf(camera->CurrentCameraMode), camera->bDisabled != 0, pov.Location.X, pov.Location.Y, pov.Location.Z, pov.FOV,
-                       pc->Location.X, pc->Location.Y, pc->Location.Z, PathOf(pc->Pawn), s.Subtitle.size());
+                       PathOf(camera->CurrentCameraMode), camera->bDisabled != 0, LocationOf(pov).X, LocationOf(pov).Y, LocationOf(pov).Z, pov.FOV,
+                       s.OldPcLocation.X, s.OldPcLocation.Y, s.OldPcLocation.Z, PathOf(pc->Pawn), subtitleChars);
 
             // 1. The controller's timers stand still, as the pause holds them.
             HoldTimers(pc, s);
 
             // 2. The conversation panel: no input (it would eat the sticks, and A or Enter would pick a reply), and hidden (the
             //    wheel, the subtitle). Activated does the input part itself, for ambient conversations only.
-            if (auto const panel = ConversationPanelOf(gui))
-            {
-                s.Panel.Set(panel);
-                s.OldPanelInputDisabled = panel->bInputDisabled != 0;
-                s.OldPanelHandleInput = panel->bHandleInputThisFrame != 0;
-                s.OldPanelVisible = panel->IsVisible != 0;
-                panel->bInputDisabled = 1;
-                panel->bHandleInputThisFrame = 1;
-                panel->IsVisible = 0;
-                s.Done |= DonePanel;
-            }
+            if (PhotoGui::SetAside(pc, gui)) s.Done |= DonePanel;
 
             // 3. Photo above Conversation and Cinematic: EnableMode's own UpdateCurrentMode then makes it current.
             s.OldPriority = photo->Priority;
@@ -445,13 +406,16 @@ namespace MelePause::PhotoMode
 
             // 5. PlayerPhotoMode.PlayerMove keeps the camera within PhotoModeTetherDistance (1000) of the pawn: a cutscene's shot
             //    may be farther. No pawn: of the origin.
-            auto const away = pc->Pawn != nullptr ? Distance(pov.Location, pc->Pawn->Location) : Distance(pov.Location, FVector{});
+            auto const away = pc->Pawn != nullptr ? Distance(LocationOf(pov), LocationOf(pc->Pawn)) : Distance(LocationOf(pov), FVector{});
             if (away + 500.0f > pc->PhotoModeTetherDistance)
             {
                 s.OldTether = pc->PhotoModeTetherDistance;
-                s.OldVehicleTether = pc->VehiclePhotoModeTetherDistance;
                 pc->PhotoModeTetherDistance = away + 1000.0f;
-                pc->VehiclePhotoModeTetherDistance = std::max(pc->VehiclePhotoModeTetherDistance, away + 1000.0f);
+                if (auto const vehicle = VehicleTetherOf(pc))
+                {
+                    s.OldVehicleTether = *vehicle;
+                    *vehicle = std::max(*vehicle, away + 1000.0f);
+                }
                 s.Done |= DoneTether;
             }
 
@@ -461,12 +425,14 @@ namespace MelePause::PhotoMode
 
             // 6. The game's own entry: EnableMode(Photo) -> Activated (PushState PlayerPhotoMode at CameraCache's shot,
             //    bPlayersOnly, post process, static binds; in LE1 the subtitle cleared) -> UpdateCurrentMode; then the photo panel.
-            auto const show = FunctionOf(gui, L"ShowPhotoMode", PFn.ShowPhotoMode);
-            if (show == nullptr) return nullptr;
-            // Before the call: a fault inside it still gets the game's exit.
+            // DoneShown before the call: a fault inside it still gets the game's exit.
             s.Done |= DoneShown;
-            UMassEffectGuiManager_execShowPhotoMode_Parms shown;
-            CallGame(gui, show, &shown);
+            UObject* handler = nullptr;
+            if (!PhotoGui::Show(pc, gui, handler))
+            {
+                s.Done &= ~DoneShown;
+                return nullptr;
+            }
             if (manager->CurrentMode != ModePhoto) UpdateCurrentMode(manager);
             if (manager->CurrentMode != ModePhoto)
             {
@@ -476,7 +442,7 @@ namespace MelePause::PhotoMode
             // LE1's Activated cleared the subtitle line: back now, in the hidden conversation panel. The GUI ticks let past the pause
             // run the panel's handler, whose Update hides the panel's line when the text changes, and nothing shows it again
             // before the world resumes. Only with the panel there: without it, the GUI manager's Update would open one.
-            if (s.Done & DonePanel) RestoreSubtitle(s);
+            if (s.Done & DonePanel) PhotoGui::AfterShow();
 
             // 7. The conversation's ignore counters (1 each) would zero the sticks: kept, zeroed, given back at the exit.
             s.OldIgnoreLook = pc->bIgnoreLookInput;
@@ -502,15 +468,15 @@ namespace MelePause::PhotoMode
                 SetPhotoFov(photo->PhotoCamFree, pov.FOV);
                 SetPhotoFov(photo->PhotoCamOrbit, pov.FOV);
             }
-            auto const pcOff = Distance(pc->Location, pov.Location);
+            auto const pcOff = Distance(LocationOf(pc), LocationOf(pov));
             auto const pcTurn = Turn(pc->Rotation, pov.Rotation);
-            SetPcPlace(pc, pov.Location, pov.Rotation);
+            SetPcPlace(pc, LocationOf(pov), pov.Rotation);
             UpdateCamera(camera, 0.0f);
             QueryPerformanceCounter(&s.LastCameraAt);
             LEASI_INFO("photo mode on: camera mode {}, controller {:.0f} uu and {:.0f} deg from the shot (put on it), view {:.0f} uu and {:.0f} deg from it, "
                        "FOV {:.1f}, photo handler {}, {} timer(s) held, ignore counters were look {} move {}, {} prompts, input {}, panel {}, GUI sounds {}",
-                       PathOf(camera->CurrentCameraMode), pcOff, pcTurn, Distance(camera->CameraCache.POV.Location, pov.Location),
-                       Turn(camera->CameraCache.POV.Rotation, pov.Rotation), camera->CameraCache.POV.FOV, PathOf(shown.ReturnValue), s.Timers.size(),
+                       PathOf(camera->CurrentCameraMode), pcOff, pcTurn, Distance(LocationOf(camera->CameraCache.POV), LocationOf(pov)),
+                       Turn(camera->CameraCache.POV.Rotation, pov.Rotation), camera->CameraCache.POV.FOV, PathOf(handler), s.Timers.size(),
                        s.OldIgnoreLook, s.OldIgnoreMove, gamepad ? "pad" : "keyboard",
                        InputHooked ? "let past the pause" : "NOT hooked (the camera won't answer: see the start of this log)",
                        GuiTickHooked ? "let past the pause" : "NOT hooked (tabs, options and prompts won't answer: see the start of this log)",
@@ -552,6 +518,8 @@ namespace MelePause::PhotoMode
             }
             if (!pc->bAlwaysTick) pc->bAlwaysTick = 1;
             HoldTimers(pc, s);
+            if ((s.Done & DonePanel) && PhotoGui::Hold() && s.PanelHolds++ == 0)
+                LEASI_INFO("photo mode: the game showed the conversation's panel again, hidden again");
             if (!s.CameraThisFrame)
             {
                 if (auto const camera = s.Camera.Live())
@@ -589,7 +557,6 @@ namespace MelePause::PhotoMode
             auto const pc = s.Pc.Live();
             auto const camera = s.Camera.Live();
             auto const photo = s.Photo.Live();
-            auto const panel = s.Panel.Live();
             auto const world = s.World.Live();
             if ((s.Done & DonePriority) && photo != nullptr) photo->Priority = s.OldPriority;
             s.Done &= ~DonePriority;
@@ -601,12 +568,7 @@ namespace MelePause::PhotoMode
                 pc->bIgnoreMoveInput = AddCounter(pc->bIgnoreMoveInput, s.OldIgnoreMove);
             }
             s.Done &= ~DoneInput;
-            if ((s.Done & DonePanel) && panel != nullptr)
-            {
-                panel->bInputDisabled = s.OldPanelInputDisabled ? 1 : 0;
-                panel->bHandleInputThisFrame = s.OldPanelHandleInput ? 1 : 0;
-                panel->IsVisible = s.OldPanelVisible ? 1 : 0;
-            }
+            if (s.Done & DonePanel) PhotoGui::GiveBack(calls);
             s.Done &= ~DonePanel;
             if ((s.Done & DoneViewTarget) && camera != nullptr) camera->ViewTarget.Target = s.OldTarget.Live() != nullptr ? s.OldTarget.Object : pc;
             s.Done &= ~DoneViewTarget;
@@ -617,7 +579,7 @@ namespace MelePause::PhotoMode
             if ((s.Done & DoneTether) && pc != nullptr)
             {
                 pc->PhotoModeTetherDistance = s.OldTether;
-                pc->VehiclePhotoModeTetherDistance = s.OldVehicleTether;
+                if (auto const vehicle = VehicleTetherOf(pc)) *vehicle = s.OldVehicleTether;
             }
             s.Done &= ~DoneTether;
             if ((s.Done & DoneTicking) && pc != nullptr) pc->bAlwaysTick = s.OldAlwaysTick ? 1 : 0;
@@ -650,15 +612,10 @@ namespace MelePause::PhotoMode
             unsigned binds = 0;
             if (s.Done & DoneShown)
             {
-                if (gui != nullptr)
-                {
-                    UMassEffectGuiManager_execHidePhotoMode_Parms p;
-                    Call(gui, L"HidePhotoMode", PFn.HidePhotoMode, p);
-                }
+                if (gui != nullptr) PhotoGui::Hide(pc, gui);
                 if (manager != nullptr && photo != nullptr && photo->bIsActive)
                 {
-                    USFXGameModeManager_eventDisableMode_Parms p;
-                    p.Mode = ModePhoto;
+                    auto p = DisableModeParms(ModePhoto);
                     Call(manager, L"DisableMode", PFn.DisableMode, p);
                 }
                 s.Done &= ~DoneShown;
@@ -674,7 +631,7 @@ namespace MelePause::PhotoMode
             auto const reblend = (s.Done & DoneBlend) != 0;
             s.Done &= ~DoneBlend;
             RestoreFields(s, true);
-            RestoreSubtitle(s);
+            PhotoGui::RestoreSubtitle();
             if (manager != nullptr && manager->CurrentMode == ModePhoto) UpdateCurrentMode(manager);
 
             // 3. One camera update: PickCameraMode picks the conversation's (or the director's) camera again, its transition
@@ -688,10 +645,11 @@ namespace MelePause::PhotoMode
             if (refreeze && camera != nullptr) RefreezeCamera(s, camera);
             if (reblend && camera != nullptr) RestoreBlend(s, camera);
             LEASI_INFO("photo mode left ({}) after {:.1f} s: mode {} ({}), camera mode {}, {} static bind(s) set back, {} PlayerTick and {} HUD camera "
-                       "steps, let past the pause: {} key and {} axis event(s), {} GUI tick(s) ({} changed the Pauser: put back), {} GUI sound(s)",
+                       "steps, let past the pause: {} key and {} axis event(s), {} GUI tick(s) ({} changed the Pauser: put back), {} GUI sound(s), "
+                       "conversation panel hidden again on {} frame(s)",
                        why, HeldFor(s.EnteredAt), manager != nullptr ? manager->CurrentMode : NoMode,
                        manager != nullptr ? ModeName(manager->CurrentMode) : "none", camera != nullptr ? PathOf(camera->CurrentCameraMode) : "None", binds,
-                       s.TickSteps, s.HudSteps, s.InputKeys, s.InputAxes, s.GuiTicks, s.InputPauserChanged, s.GuiSounds);
+                       s.TickSteps, s.HudSteps, s.InputKeys, s.InputAxes, s.GuiTicks, s.InputPauserChanged, s.GuiSounds, s.PanelHolds);
         }
 
         void ExitPhotoEntry(void* why) { ExitPhoto(static_cast<char const*>(why)); }
@@ -734,8 +692,9 @@ namespace MelePause::PhotoMode
         using t_InputKey = unsigned long(UObject* Input, int ControllerId, unsigned long long Key, int Event, float Amount, unsigned long bGamepad);
         using t_InputAxis = unsigned long(UObject* Input, int ControllerId, unsigned long long Key, float Delta, float DeltaTime, unsigned long bGamepad);
 
-        /// UBioSFManager::Tick: the GUI manager's frame (event cooldowns, its script Update, each panel's movie, the focus,
-        /// the UI world). Under the Pauser it returns right after marking which panels take input.
+        /// LE1 and LE2: UBioSFManager::Tick, the GUI manager's frame (event cooldowns, its script Update, each panel's movie,
+        /// the focus, the UI world); under the Pauser it returns right after marking which panels take input. LE3: the GFx
+        /// movies' Tick (see GfxClock), whose this is no UObject.
         using t_GuiTick = void(UObject* Manager, float DeltaTime);
 
         std::atomic<t_InputKey*> InputKey_orig{ nullptr };
@@ -787,6 +746,61 @@ namespace MelePause::PhotoMode
             APlayerReplicationInfo* Pauser = nullptr;
         };
 
+#if MELEPAUSE_PHOTO_GFX
+        /// For one call of the GFx movies' Tick (LE3): it checks no Pauser, but advances each movie by the time since its last
+        /// advance, and most movies run on the world's TimeSeconds, which stands still under the pause. Photo mode's panel
+        /// would never load: its movie tells the game it loaded from its own frames. While our session is on, on the game
+        /// thread, TimeSeconds moves by the real time since the last call, for this call only; the stamps the call wrote with
+        /// that time are then put back to the world's, so the next call measures from the world's clock again.
+        class GfxClock
+        {
+        public:
+            GfxClock(UObject* movies, unsigned& count) : Movies(reinterpret_cast<unsigned char*>(movies))
+            {
+                if (!Photo.On || GetCurrentThreadId() != GameThread()) return;
+                auto const world = Photo.World.Live();
+                if (world == nullptr || world->Pauser == nullptr) return;
+                auto const dt = SecondsSince(Photo.LastGuiAt);
+                if (dt <= 0.0f) return;
+                World.Set(world);
+                Time = world->TimeSeconds;
+                Fed = Time + dt;
+                world->TimeSeconds = Fed;
+                count++;
+            }
+
+            ~GfxClock()
+            {
+                auto const world = World.Live();
+                if (world == nullptr) return;
+                for (auto const& list : GfxMovieLists)
+                {
+                    unsigned char** entries = nullptr;
+                    int num = 0;
+                    std::memcpy(&entries, Movies + list.Data, sizeof entries);
+                    std::memcpy(&num, Movies + list.Count, sizeof num);
+                    for (int i = 0; entries != nullptr && i < num; i++)
+                    {
+                        if (entries[i] == nullptr) continue;
+                        float stamp = 0.0f;
+                        std::memcpy(&stamp, entries[i] + GfxMovieStamp, sizeof stamp);
+                        if (stamp == Fed) std::memcpy(entries[i] + GfxMovieStamp, &Time, sizeof Time);
+                    }
+                }
+                world->TimeSeconds = Time;
+            }
+
+            GfxClock(GfxClock const&) = delete;
+            GfxClock& operator=(GfxClock const&) = delete;
+
+        private:
+            unsigned char* Movies;
+            Kept<AWorldInfo> World;
+            float Time = 0.0f;
+            float Fed = 0.0f;
+        };
+#endif
+
         unsigned long InputKey_hook(UObject* input, int controllerId, unsigned long long key, int event, float amount, unsigned long gamepad)
         {
             auto const orig = OriginalOf(InputKey_orig);
@@ -804,7 +818,11 @@ namespace MelePause::PhotoMode
         void GuiTick_hook(UObject* manager, float deltaTime)
         {
             auto const orig = OriginalOf(GuiTick_orig);
+#if MELEPAUSE_PHOTO_GFX
+            GfxClock clock(manager, Photo.GuiTicks);
+#else
             PauseLift lift(manager, Photo.Gui.Object, Photo.GuiTicks);
+#endif
             orig(manager, deltaTime);
         }
 
@@ -883,8 +901,8 @@ namespace MelePause::PhotoMode
         InputHooked = keys && axes;
         if (InputHooked) LEASI_INFO("input hooked: photo mode's keys and axes get past the world pause");
 
-        GuiTickHooked = HookNative(Init, "UBioSFManager::Tick", PhotoGuiTickRva, PhotoGuiTickStart, GuiTick_hook, GuiTick_orig,
-                                   "photo mode's panel under the pause won't answer (tabs, options, prompts)");
+        GuiTickHooked = HookNative(Init, MELEPAUSE_PHOTO_GFX ? "the GFx movies' Tick" : "UBioSFManager::Tick", PhotoGuiTickRva, PhotoGuiTickStart,
+                                   GuiTick_hook, GuiTick_orig, "photo mode's panel under the pause won't answer (tabs, options, prompts)");
         if (GuiTickHooked) LEASI_INFO("GUI tick hooked: photo mode's panel gets past the world pause");
 
 #if MELEPAUSE_PHOTO_GUI_SOUNDS
