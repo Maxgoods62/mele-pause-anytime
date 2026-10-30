@@ -9,10 +9,10 @@ and other ASIs use too. The sources:
 | `src/Entry.cpp` | The loader entry: the log, the SDK, then the hooks in `Pause.cpp`, `Bink.cpp`, `MovieInput.cpp` and `Overlay.cpp`. The loader loads every file of the ASI folder before it attaches any, so a copy of version 6 or older (`Game::LegacyModule`, `MelePause.asi` for LE1) is already loaded then: if it is, the entry installs nothing and leaves the log to it (the loader would refuse its hooks anyway: same names), says so to a debugger (DebugView), and returns false, which the loader logs in `Logs\bink2w64_proxy.log`. |
 | `src/SharedVersion.h`, `src/MelePause.rc` | The name and version the loader logs, and the Windows version info (`N.0.<game id>.0`) and Exo 2 fonts compiled into `LE<n>MelePause.asi`. |
 | `src/Pause.cpp` | The keys, the world pause, the skip guard and the fallback banner. Game thread only. |
-| `src/Photo.hpp`, `src/PhotoLE1.cpp` | Photo mode under the pause: the session, the camera, and the natives that let its input, panel and sounds past the pause. |
+| `src/Photo.hpp`, `src/Photo.cpp` | Photo mode under the pause: the session, the camera, and the natives that let its input, panel and (in LE1) sounds past the pause. The natives' RVAs, the conversation panel and the camera switch gate come from `game/LE<n>.hpp`. |
 | `src/PhotoOff.cpp` | The same calls for a game whose `game/LE<n>.hpp` turns photo mode off (`MELEPAUSE_PHOTO 0`): Y and F7 stay the game's. |
 | `src/Engine.cpp` | Helpers for calling into the game and reading its objects (`CallGame`, `PathOf`, `Alive`, ...). |
-| `src/game/` | What differs per game: `Game.hpp` picks `LE1.hpp` or `LE2.hpp` for the build's SDK target (modes, GuiKey events, the photo mode and movie pause switches, ...). `LE2.hpp` turns photo mode off and gives the movie pause only the movies whose sound it knows ([games/LE2.md](games/LE2.md)). |
+| `src/game/` | What differs per game: `Game.hpp` picks `LE1.hpp` or `LE2.hpp` for the build's SDK target (modes, GuiKey events, the photo mode and movie pause switches, ...). `LE2.hpp` leaves photo mode's GUI sounds unhooked and gives the movie pause only the movies whose sound it knows ([games/LE2.md](games/LE2.md)). |
 | `src/Bink.cpp` | The movie pause, on the thread that plays the movie. |
 | `src/MovieSound.cpp` | LE2: the Wwise event a Kismet movie action posts beside the picture, latched on the game thread and paused beside `BinkPause` with the exe's `AK::SoundEngine::ExecuteActionOnEvent`. Inert in LE1. |
 | `src/MovieInput.cpp` | LE2: the hook on the engine's movie input, which would skip a movie on Esc's and Start's press. Nothing in LE1. |
@@ -32,8 +32,8 @@ and other ASIs use too. The sources:
 | The engine's movie input, a native `InputKey` (LE2, `MovieInput.cpp`) | Every key event reaches it before `Console.InputKey`. While the pause keys are the movies', a press of Esc or Start skips it and goes on to `Console.InputKey`; under the movie pause, every press does. Space and X reach it as Enter, so they skip a movie the game lets skip. The rest goes to it unchanged ([games/LE2.md](games/LE2.md#movie-keys)). |
 | `ProcessEvent`: after `PlayerController.PlayerTick` on the player's controller | While photo mode is on: `SFXPlayerCamera.UpdateCamera`, so the camera follows the controller that `PlayerPhotoMode.PlayerMove` just moved. The engine does not update the camera under the world pause. |
 | `ProcessEvent`: `ShowMenuGui` on `SFXGameModePhoto` | Dropped while MelePause's photo mode is on: photo mode's own Esc and Start binds would hide it and open the pause menu over the conversation. |
-| Native: `BioPlayerInput::InputKey` (RVA 0xc6de70), `UPlayerInput::InputAxis` (RVA 0x68bc40), `UBioSFManager::Tick` (RVA 0x193bc0) (`PhotoLE1.cpp`) | While photo mode is on, a call on the controller's `PlayerInput` or on the GUI manager runs with `WorldInfo.Pauser` cleared, and the `Pauser` is put back after. The engine drops input and stops the GUI under the world pause. |
-| Native: `UBioSFManager::PlayGuiSound` (RVA 0x191ee0), `UAudioDevice::CreateComponent` (RVA 0x2ff470) (`PhotoLE1.cpp`) | While photo mode is on, the sound the GUI manager's `PlayGuiSound` makes is marked `bNonRealtime`: under the world pause the audio device starts only those. |
+| Native: `BioPlayerInput::InputKey`, `UPlayerInput::InputAxis`, `UBioSFManager::Tick` (`Photo.cpp`; RVAs LE1 0xc6de70, 0x68bc40, 0x193bc0; LE2 0xa62e00, 0x541790, 0x1a07c0) | While photo mode is on, a call on the controller's `PlayerInput` or on the GUI manager runs with `WorldInfo.Pauser` cleared, and the `Pauser` is put back after. The engine drops input and stops the GUI under the world pause. |
+| Native: `UBioSFManager::PlayGuiSound` (RVA 0x191ee0), `UAudioDevice::CreateComponent` (RVA 0x2ff470) (LE1, `Photo.cpp`) | While photo mode is on, the sound the GUI manager's `PlayGuiSound` makes is marked `bNonRealtime`: under the world pause the audio device starts only those. LE2's GUI sounds are Wwise events, which play under the world pause: no hook. |
 | `dxgi`: `IDXGISwapChain::Present`, `IDXGISwapChain1::Present1`, `IDXGISwapChain::ResizeBuffers` (`Overlay.cpp`) | Draws the pause screen into the back buffer before the frame is shown, once per frame, whichever of the two presents it. Releases its views of the back buffer before a resize. The methods' addresses come from a throwaway device and swap chain made at start. |
 | `bink2w64_original.dll`: `BinkOpen`, `BinkOpenWithOptions`, `BinkClose`, `BinkWait`, `BinkDoFrame`, `BinkDoFrameAsync` (`Bink.cpp`) | Tracks the open movies (from a file or from memory) and logs who plays them. `BinkWait` also reads Esc, toggles the movie pause on its press and applies a pause; reads Space, which only resumes; and, while the movie stays paused, presents the pause screen. `BinkDoFrame` and `BinkDoFrameAsync` count calls and apply a resume, never a pause. |
 
@@ -90,10 +90,11 @@ before it makes it, so a stop midway gives back what it got to.
 3. `SFXGameModePhoto.Priority` is raised to 3 (`ModePriority_Menus`), above Conversation (2), so `ShowPhotoMode` makes
    it the current mode. In a cutscene, the director's `CameraActor` view target is swapped for the controller, and the
    photo tether (`PhotoModeTetherDistance`, 1000) is widened when the shot is far from the pawn.
-4. `ShowPhotoMode`, the game's own entry, places the controller on the shot and clears the subtitle. The subtitle line
-   is put back at once in the hidden conversation panel. The GUI ticks let past the pause (step 5) run the panel's
-   handler, whose `Update` would hide the line, and nothing would show it again before the world resumes. Then the
-   ignore counters are zeroed and `bAlwaysTick` is set on the controller, so `PlayerTick` runs under the pause.
+4. `ShowPhotoMode`, the game's own entry, places the controller on the shot; in LE1 it also clears the subtitle. The
+   subtitle line is put back at once in the hidden conversation panel. The GUI ticks let past the pause (step 5) run
+   the panel's handler, whose `Update` would hide the line, and nothing would show it again before the world resumes.
+   Then the ignore counters are zeroed and `bAlwaysTick` is set on the controller, so `PlayerTick` runs under the
+   pause.
 5. Input. The engine drops it while `WorldInfo.Pauser` is set: `UInput::InputKey` keeps only the releases of keys held
    from before, and `UPlayerInput::InputAxis` skips the axis binds, so the sticks, the keys and the mouse never reach
    photo mode. The GUI manager's tick (`UBioSFManager::Tick`) stops too: no panel's movie advances (photo mode's tabs
@@ -108,10 +109,17 @@ before it makes it, so a stop midway gives back what it got to.
 6. Sounds. Under the world pause the audio device (its `Update` gets `bGameTicking` off) starts and advances no sound
    except an `AudioComponent` marked `bNonRealtime`, so photo mode's click (`TakePhoto`), tab and option sounds would
    wait for the pause to end and then all play at once. Two hooks, `UBioSFManager::PlayGuiSound` on the GUI manager and
-   `UAudioDevice::CreateComponent` inside it, mark the component it makes `bNonRealtime`, so it plays at once.
-7. One `UpdateCamera`, with `LastTransitionTime` pushed back first: `GameTimeSeconds` stands still under the pause, and
-   a camera switch within 0.1 s of the last is refused. The photo cameras get the shot's field of view. They start at
-   54.4 degrees, and a conversation shot is often near 24.
+   `UAudioDevice::CreateComponent` inside it, mark the component it makes `bNonRealtime`, so it plays at once. That is
+   LE1; LE2's GUI sounds are Wwise events, which play under the world pause, and get no hook.
+7. The camera. `LastTransitionTime` is pushed back first: the game refuses a camera switch too soon after the last,
+   and its clock stands still under the pause (LE1: `GameTimeSeconds` and 0.1 s, in `PickCameraMode`; LE2:
+   `TimeSeconds` and `TransitionTimeout`, 0.25 s, in `SFXPlayerCamera.UpdateViewTarget`). One `UpdateCamera` then
+   switches to the photo camera. The switch is an instant transition, an `SFXCameraMode_Interpolate` of 0.00001 s,
+   which an update of 0 s leaves at its start, the old camera's view: one more update of 0.001 s ends it. Its start
+   (`InitializeTransition`) also turns the controller to the old camera mode's view. In a director's shot that mode is
+   the gameplay camera left behind, which looks elsewhere, so the controller is put back on the shot, place and
+   rotation, before a last `UpdateCamera`. The photo cameras get the shot's field of view. They start at 54.4 degrees,
+   and a conversation shot is often near 24.
 
 ## Photo mode, leaving
 
@@ -124,8 +132,9 @@ gives back:
   defaults hold such pairs (Enter and Alt+Enter);
 - every field changed on entry;
 - the subtitle line, when the entry could not put it back (`BioSubtitles.DisplaySubtitle`);
-- the controller's place, then one `UpdateCamera`. A camera the conversation had frozen is frozen again after that
-  update, on the saved shot.
+- the controller's place, then one `UpdateCamera`, and one of 0.001 s that ends the instant transition back to the
+  conversation's or the director's camera (entering, step 7). A camera the conversation had frozen is frozen again
+  after that, on the saved shot.
 
 Each frame and each key also check the session: if the world pause ends without MelePause, the world goes, or the mode
 leaves Photo, the photo session ends.

@@ -4,6 +4,8 @@
 
 /// Photo mode under the pause: five MassEffect1.exe natives get past it.
 #define MELEPAUSE_PHOTO 1
+/// Photo mode's GUI sounds under the pause need our hooks: ISACT starts only bNonRealtime sounds while the world is paused.
+#define MELEPAUSE_PHOTO_GUI_SOUNDS 1
 /// The Bink movie pause: the galaxy map's travel movie carries its own sound track.
 #define MELEPAUSE_MOVIES 1
 
@@ -36,6 +38,29 @@ namespace MelePause::Game
     {
         return pc != nullptr ? pc->GameModeManager : nullptr;
     }
+
+    // Photo mode's natives (Photo.cpp) in this build of MassEffect1.exe, with their first bytes: BioPlayerInput::InputKey,
+    // UPlayerInput::InputAxis (BioPlayerInput::InputAxis ends in a jump to it), UBioSFManager::Tick, and for the GUI
+    // sounds UBioSFManager::PlayGuiSound and UAudioDevice::CreateComponent. Read from a memory dump of the running game.
+    inline constexpr unsigned long long PhotoInputKeyRva = 0xc6de70;
+    inline constexpr std::array<unsigned char, 13> PhotoInputKeyStart{ 0x4C, 0x89, 0x44, 0x24, 0x18, 0x53, 0x55, 0x41, 0x54, 0x41, 0x56, 0x41, 0x57 };
+    inline constexpr unsigned long long PhotoInputAxisRva = 0x68bc40;
+    inline constexpr std::array<unsigned char, 11> PhotoInputAxisStart{ 0x48, 0x8B, 0xC4, 0x56, 0x57, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x70 };
+    inline constexpr unsigned long long PhotoGuiTickRva = 0x193bc0;
+    inline constexpr std::array<unsigned char, 9> PhotoGuiTickStart{ 0x40, 0x53, 0x57, 0x41, 0x54, 0x48, 0x83, 0xEC, 0x50 };
+    inline constexpr unsigned long long PhotoPlayGuiSoundRva = 0x191ee0;
+    inline constexpr std::array<unsigned char, 15> PhotoPlayGuiSoundStart{ 0x40, 0x57, 0x48, 0x83, 0xEC, 0x50, 0x48, 0xC7,
+                                                                           0x44, 0x24, 0x30, 0xFE, 0xFF, 0xFF, 0xFF };
+    inline constexpr unsigned long long PhotoCreateAudioComponentRva = 0x2ff470;
+    inline constexpr std::array<unsigned char, 16> PhotoCreateAudioComponentStart{ 0x48, 0x8B, 0xC4, 0x57, 0x41, 0x54, 0x41, 0x55,
+                                                                                   0x41, 0x56, 0x41, 0x57, 0x48, 0x81, 0xEC, 0xA0 };
+
+    /// The conversation's panel (the wheel and the subtitle), or null.
+    inline UBioSFPanel* ConversationPanelOf(UMassEffectGuiManager* gui) { return gui->m_oConversationPanel; }
+
+    /// PickCameraMode only switches modes when GameTimeSeconds - LastTransitionTime > 0.1 s, and GameTimeSeconds stands
+    /// still under the pause: a switch just before it would keep the photo camera from ever being picked.
+    inline void AllowCameraSwitch(ASFXPlayerCamera* camera, AWorldInfo* world) { camera->LastTransitionTime = world->GameTimeSeconds - 1.0f; }
 
     /// Every movie carries its sound in its .bik, which BinkPause stops: no Wwise event to pause, no list of Bink-audio
     /// movies to keep.

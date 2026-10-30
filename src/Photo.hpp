@@ -3,8 +3,8 @@
 #include <LESDK/Init.hpp>
 #include "MelePause/game/Game.hpp"
 
-// The game's photo mode over our world pause, as Pause.cpp asks for it. Game thread only. A game's photo mode is in its own
-// file (PhotoLE1.cpp); where game/LE<n>.hpp turns it off (MELEPAUSE_PHOTO 0), PhotoOff.cpp refuses everything.
+// The game's photo mode over our world pause, as Pause.cpp asks for it. Game thread only. Photo.cpp, with the facts of
+// game/LE<n>.hpp; where that file turns it off (MELEPAUSE_PHOTO 0), PhotoOff.cpp refuses everything.
 namespace MelePause::PhotoMode
 {
     /// The natives that let photo mode's input, panel and sounds past the world pause. Each one missing is logged.

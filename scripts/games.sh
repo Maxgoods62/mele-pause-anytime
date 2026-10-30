@@ -58,9 +58,10 @@ EOF
 LE2MelePause.asi is an ASI plugin for Mass Effect 2 in the Legendary Edition (LE2). Esc, or
 Start on a gamepad, pauses a conversation, an in-engine cutscene, or a fullscreen movie whose
 sound it knows, such as the mass relay jump, and Esc, Start, Space or A resumes it. While the
-game is paused, the picture is blurred and darkened under a pause screen. In a skippable
-cutscene or movie, Esc pauses instead of skipping it: Space, or X on a gamepad, skips. There is
-no photo mode under the pause in LE2.
+game is paused, the picture is blurred and darkened under a pause screen. In a paused
+conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot.
+In a skippable cutscene or movie, Esc pauses instead of skipping it: Space, or X on a gamepad,
+skips.
 EOF
             ;;
         *) return 1 ;;

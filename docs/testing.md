@@ -57,11 +57,11 @@ Before a version is tagged, each game its CHANGELOG entry names (the `Games:` li
 
 | When | Lines |
 |---|---|
-| At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ...", or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>MelePause N ready", where N is the build's `ASI_VERSION`. In a build without the movie pause or photo mode, "movie pause: not in the LE<n> build" stands for the Bink line, and "photo mode under the pause: not in the LE<n> build" for the three hook lines. |
+| At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ..." (LE2: "GUI sounds: not hooked in the LE2 build, ..."), or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>MelePause N ready", where N is the build's `ASI_VERSION`. In a build without the movie pause or photo mode, "movie pause: not in the LE<n> build" stands for the Bink line, and "photo mode under the pause: not in the LE<n> build" for the three hook lines. |
 | At the first frame | "overlay ready: back buffer ..., text in <language>, Exo 2 embedded, blur ready". "first BioHUD.PostRender": the HUD owner and GEngine's controller should be the same. |
 | Each press that reaches `Console.InputKey` | One "Esc pressed: mode ..." or "Start pressed: mode ..." line, with what it did. |
 | Each pause | "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts", then "overlay hidden" ("at once" for photo mode). |
-| Photo mode | "photo mode enter, mode ..." (the view target, the shot, the subtitle). "photo mode on: ..." (the camera mode, and how far the controller and the view are from the shot: 0 expected), with "pad prompts" after Y or "keyboard prompts" after F7. Then "Y pressed ...: left photo mode", "photo mode exit: ignore counters ...", and "photo mode left (Y) after ... s: mode 5 (Conversation), camera mode ...". The last one gives the number of static binds set back, of camera steps, and what got past the pause: "N key and M axis event(s), G GUI tick(s) (0 changed the Pauser: put back), S GUI sound(s)". M is in the thousands after moving a stick or the mouse, G about one per frame, S at least one per screenshot. |
+| Photo mode | "photo mode enter, mode ..." (the view target, the shot, the subtitle). "photo mode on: ..." (the camera mode; how far the controller was from the shot, in units and degrees, before it was put on it; and how far the view is: 0 uu and 0 deg expected), with "pad prompts" after Y or "keyboard prompts" after F7. Then "Y pressed ...: left photo mode", "photo mode exit: ignore counters ...", and "photo mode left (Y) after ... s: mode 5 (Conversation), camera mode ...". The last one gives the number of static binds set back, of camera steps, and what got past the pause: "N key and M axis event(s), G GUI tick(s) (0 changed the Pauser: put back), S GUI sound(s)". M is in the thousands after moving a stick or the mouse, G about one per frame, S at least one per screenshot. |
 | A movie | Its open line ("from a file"); "is a fullscreen movie" with the HUD's silence; "Console.InputKey runs while movie #N is open" (the game mode during it); one "Esc pressed, read on thread ..." line per press (movie pause or resume asked); the PAUSED and RESUMED lines and the reports between them; "Esc released during a fullscreen movie ..." lines; its close line. |
 | Start in a movie | "Start held (or released) during a fullscreen movie, its press unseen here on thread ...: movie pause asked" (or resume asked). |
 | Skips | Any `SkipMovie` or `SkipCinematic` line (dropped or passed), and any dropped `GuiKey` line. A passed `GuiKey` is not logged. |
@@ -124,3 +124,18 @@ On 2026-10-30 a test build of the LE2 movie pause (v9's code, still numbered 8) 
 Not covered yet: a movie with no known sound (Esc must skip it as in the vanilla game), the Prologue's FirstFlight
 movie (level music plays beside it) and `visionavi` (Bink audio). The same build passed S3 in LE1 (the travel movie):
 Esc paused it, Start resumed it after 8 s, Start paused it and A resumed it, twice, with no movie-input hook line.
+
+On 2026-10-30 a test build of LE2 photo mode (v10's code, still numbered 9) passed S6 in conversations, with keyboard and mouse
+and with a gamepad, over three runs. The two camera faults the first runs showed are fixed in it
+([how-it-works.md](how-it-works.md#photo-mode-entering), step 7).
+
+| Area | Result |
+|---|---|
+| Entry and exit | Y and F7 open photo mode on the paused shot; Y, F7, Esc and Start leave it, still paused. The camera moves with the pad and with keyboard and mouse, and the panel answers. |
+| Camera | The first F7 of a pause in a director's shot opens facing the shot (the log: the controller 24 degrees off before it was put back, the view 0). Re-entries and the resume keep the shot, with no jump. |
+| Sounds | Photo mode's sounds play under the pause, with no hook. |
+
+Not covered yet: LE2 photo mode in an in-engine cutscene. The same build passed S6 in LE1, in a conversation and in an
+in-engine cutscene, with Y and F7. One entry pressed in the first second of a cutscene, while the camera still blended
+from the player to the director's camera, opened 51 units and 8 degrees off the shot (the log's "pending" view
+target).

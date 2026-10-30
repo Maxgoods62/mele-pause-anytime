@@ -35,6 +35,6 @@ namespace MelePause::Game
     #error "MelePause: no game/LE<n>.hpp for this SDK target"
 #endif
 
-#if !defined(MELEPAUSE_PHOTO) || !defined(MELEPAUSE_MOVIES)
-    #error "MelePause: game/LE<n>.hpp must define MELEPAUSE_PHOTO and MELEPAUSE_MOVIES"
+#if !defined(MELEPAUSE_PHOTO) || !defined(MELEPAUSE_PHOTO_GUI_SOUNDS) || !defined(MELEPAUSE_MOVIES)
+    #error "MelePause: game/LE<n>.hpp must define MELEPAUSE_PHOTO, MELEPAUSE_PHOTO_GUI_SOUNDS and MELEPAUSE_MOVIES"
 #endif

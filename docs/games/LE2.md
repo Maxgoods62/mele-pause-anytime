@@ -1,11 +1,11 @@
 # MelePause in LE2
 
 Status: from v8, LE2 is in `RELEASED_GAMES` (`scripts/games.sh`), so a plain `./build.sh` or `./package.sh` covers it.
-From v9 it has the movie pause.
-`./build.sh --game LE2` builds `LE2MelePause.asi` from the same sources as LE1, against LE2's SDK, with photo mode off
-and the movie pause limited to movies whose sound MelePause knows. On 2026-10-29 the v7 build
-passed the sheet below with keyboard and mouse and with a gamepad ([testing.md](../testing.md#le2)). On 2026-10-30 a test
-build of the movie pause passed S3 in the relay movie and the Citadel arrival ([testing.md](../testing.md#le2)).
+From v9 it has the movie pause, and from v10 photo mode under the pause. `./build.sh --game LE2` builds
+`LE2MelePause.asi` from the same sources as LE1, against LE2's SDK, with the movie pause limited to movies whose sound
+MelePause knows. On 2026-10-29 the v7 build passed the sheet below with keyboard and mouse and with a gamepad
+([testing.md](../testing.md#le2)). On 2026-10-30 a test build of the movie pause passed S3 in the relay movie and the
+Citadel arrival, and a test build of photo mode passed S6 in conversations ([testing.md](../testing.md#le2)).
 
 ## What the build has
 
@@ -14,10 +14,11 @@ build of the movie pause passed S3 in the relay movie and the Citadel arrival ([
 | Esc and Start pause a conversation or an in-engine cutscene; skip guard; Space and A resume | compiled in | on |
 | Pause screen, and the Canvas banner where it cannot draw | compiled in | on |
 | Movie pause (`MELEPAUSE_MOVIES`) | on for a movie whose sound MelePause knows (below); Esc and Start in any other movie stay the game's. Space and X skip a movie the game lets skip | on |
-| Photo mode under the pause (`MELEPAUSE_PHOTO`) | off: `PhotoOff.cpp`. Y and F7 stay the game's, and the pause screen offers no photo key | on |
-| File | `LE2MelePause.asi`, Windows version `9.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `9.0.4.0` |
+| Photo mode under the pause (`MELEPAUSE_PHOTO`) | on, with three MassEffect2.exe natives ([Photo mode](#photo-mode)) | on |
+| Photo mode's GUI sounds made realtime (`MELEPAUSE_PHOTO_GUI_SOUNDS`) | off: they are Wwise events and play under the world pause as they are | on |
+| File | `LE2MelePause.asi`, Windows version `10.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `10.0.4.0` |
 
-Why the movie pause takes only some movies, and why photo mode is off:
+Why the movie pause takes only some movies:
 
 - Movie pause: 164 of the 166 movies in `BioGame\Movies` have no Bink audio track, and none of the DLC's 45 has one.
   Their sound is a Wwise event, which `BinkPause` does not stop: the picture would hold while the sound plays on. Only
@@ -32,10 +33,6 @@ Why the movie pause takes only some movies, and why photo mode is off:
 - In LE2 the engine's movie input skips a skippable movie on Esc and Start, before MelePause sees the press, and Space
   and X skip nothing ([Movie keys](#movie-keys)). `src/MovieInput.cpp` hooks that input: on a movie whose sound is
   known, Esc and Start pause it, and Space and X skip a movie the game lets you skip, as Esc did.
-- Photo mode: `PhotoLE1.cpp` hooks five MassEffect1.exe natives by address and checks their first bytes against that
-  executable. MassEffect2.exe's are not known. The file also uses names LE2's SDK does not have:
-  `WorldInfo.GameTimeSeconds` (LE2's `WorldInfo` has `TimeSeconds` and `RealTimeSeconds`,
-  `Engine_classes.hpp:5125-5126`), `AudioComponent.bNonRealtime`, and `MassEffectGuiManager.m_oConversationPanel`.
 
 ## Facts
 
@@ -88,6 +85,28 @@ Seen in the game:
   it, as in LE1, and the per-frame console check (`Console.StateFrame`, `Typing` or `Open`) holds.
 - `BioHUD.PostRender` runs every frame in conversations and in-engine cutscenes: the pause screen shows in both.
 
+### Photo mode
+
+`src/Photo.cpp` serves both games; `src/game/LE2.hpp` holds what differs. The natives come from the same dump, each
+found through its class's vtable: the class name's string leads to its `StaticClass`, that to the constructor, and the
+constructor writes the vtable. LE2's `BioPlayerInput` slots sit one below LE1's. The hooks check each function's first
+bytes (`Game::Photo*Start`) before they patch it.
+
+| What | LE2 | LE1 |
+|---|---|---|
+| `BioPlayerInput::InputKey` | `0xa62e00`, slot 89 of the vtable at `0x1261688`. It offers the key to the GUI, then calls `UPlayerInput::InputKey` (`0x542220`) and `UInput::InputKey` (`0x541e00`), which drops it under `WorldInfo.Pauser` | `0xc6de70` |
+| `UPlayerInput::InputAxis` | `0x541790`, slot 90, not overridden. Its `Pauser` check is at `0x54189f` | `0x68bc40` |
+| `UBioSFManager::Tick` | `0x1a07c0`. `MassEffectGuiManager`'s override (`0xb27820`) does its own part only while the world runs, then jumps there | `0x193bc0` |
+| GUI sounds | Wwise events: they play under the world pause, no hook | `PlayGuiSound` and `UAudioDevice::CreateComponent`, the component marked `bNonRealtime` |
+| The conversation panel | `MassEffectGuiManager.m_oConversationHandler.oPanel` | `m_oConversationPanel` |
+| The camera switch gate | `SFXPlayerCamera.UpdateViewTarget` calls `PickCameraMode` only when `TimeSeconds - LastTransitionTime > TransitionTimeout` (0.25 s) | in `PickCameraMode`, `GameTimeSeconds`, 0.1 s |
+| The subtitle at `SFXGameModePhoto.Activated` | kept | cleared |
+
+The camera seen in the game: entering from a director's shot (a `CameraActor` view target), the camera mode left
+behind is the gameplay camera, `SFXCameraMode_Explore`. The switch to the photo camera is an instant transition whose
+start turns the controller to that camera's view, 24 degrees off the shot in one log; the entry puts it back on the
+shot ([how-it-works.md](../how-it-works.md#photo-mode-entering), step 7).
+
 ## Sheet for a first run
 
 The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` needs the ASI loader in ME2
@@ -97,8 +116,8 @@ The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` 
 - L0, before MelePause is installed. Open the Steam overlay (Shift+Tab) for 15 s during a conversation line, then during
   an in-engine cutscene. In LE1 the overlay sets the world pause MelePause uses (`WorldInfo.Pauser`). Note whether
   voice, lips and music stop together and resume in sync.
-- S1, conversation. Esc pauses: picture, voice, music and lips stop, and the pause screen shows "Space Resume" with no
-  photo key. Esc resumes at the same word, in sync. Then Start, with the A icon on the pause screen; A resumes.
+- S1, conversation. Esc pauses: picture, voice, music and lips stop, and the pause screen shows "Space Resume" and "F7
+  Photo mode". Esc resumes at the same word, in sync. Then Start, with the A icon on the pause screen; A resumes.
 - S2, in-engine cutscene. The same. Esc and Space are the cutscene's skip keys in LE2: the Esc that pauses and the Space
   that resumes must not skip it. With nothing paused, Space and X skip a skippable cutscene as in the vanilla game.
 - S3, fullscreen movie. In the relay jump and the Citadel arrival or departure, Esc pauses the picture and the sound
@@ -111,9 +130,12 @@ The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` 
 - S5, resume keys and the console. Pause with Esc and resume with Space, pause with Start and resume with A. With
   nothing paused, Space skips the line. Open the console during a pause: the pause screen hides, and Esc closes the
   console ("the console is open, vanilla" in the log).
-- S6, Y and F7 under the pause. They do what they do in the vanilla game, and the log has no line for them.
+- S6, photo mode, as in [testing.md](../testing.md)'s S6, with Y and F7, in a conversation and in an in-engine cutscene.
+  The first press of a pause opens on the paused shot, facing the same way: the "photo mode on" line gives 0 uu and 0
+  deg for the view. Its clicks and screenshot sound play.
 - S7, the log. At start: "Bink: ... hooked", "movie sound: the exe's AK::SoundEngine::ExecuteActionOnEvent at ...",
-  "movie input hooked"; "photo mode under the pause: not in the LE2 build" and no input, GUI tick or GUI sound hook line; "overlay: swap chain hooks Present true ..."; a line that
+  "movie input hooked"; "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds: not hooked in the LE2 build, ...";
+  "overlay: swap chain hooks Present true ..."; a line that
   ends in "LE2MelePause N ready" (N is `ASI_VERSION`). At the first frame, "first BioHUD.PostRender" with the same
   controller for the HUD owner and GEngine. Each press: "Esc pressed: mode 5 (Conversation)" and the like, with LE2's
   mode names.

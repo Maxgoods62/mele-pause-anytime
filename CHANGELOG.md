@@ -3,6 +3,23 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## v10 (unreleased)
+
+Games: LE1, LE2
+
+LE2 gets photo mode under the pause. In LE1 the camera's entry and exit change; the rest is as in v9.
+
+- In LE2, in a conversation or an in-engine cutscene that MelePause paused, a gamepad's Y or F7 opens the game's photo
+  mode on the paused shot, as in LE1. Three native hooks, checked against the game's code first, let its input and its
+  panel past the world pause. Its sounds play without a hook.
+- Photo mode's camera, both games. On entry, the game's switch to the photo camera turns the controller to the camera
+  mode left behind; MelePause now puts it back on the paused shot. In LE2 the first entry of a pause in a director's
+  shot looked away. On exit, the switch back now ends at once on the paused shot; in LE2 the view came back about half
+  a second after the resume.
+- `src/PhotoLE1.cpp` is now `src/Photo.cpp`, for every game; the per-game natives and names are in
+  `src/game/LE<n>.hpp`.
+- `package.sh` writes `dist/LE1MelePause-v10.zip` and `dist/LE2MelePause-v10.zip`.
+
 ## v9 (unreleased)
 
 Games: LE1, LE2

@@ -3,10 +3,10 @@
 MelePause is an ASI plugin for Mass Effect 1 and Mass Effect 2 in the Legendary Edition (LE1 and LE2), installed as
 `LE1MelePause.asi` and `LE2MelePause.asi`. Esc, or Start on a gamepad, pauses a conversation or an in-engine cutscene,
 and a fullscreen movie such as LE1's galaxy map travel movie or LE2's mass relay jump, and the same key resumes it. While the game is
-paused, the picture is blurred and darkened under a pause screen. In LE1, in a paused conversation or cutscene, a
-gamepad's Y or F7 opens the game's photo mode on the paused shot. Everywhere else these keys do what they always did.
+paused, the picture is blurred and darkened under a pause screen. In a paused conversation or cutscene, a gamepad's Y
+or F7 opens the game's photo mode on the paused shot. Everywhere else these keys do what they always did.
 
-Version 9 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
+Version 10 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
 it from source and copy it into the game ([Install](#install)).
 
 ## Games
@@ -16,7 +16,7 @@ it from source and copy it into the game ([Install](#install)).
 | Esc pauses a conversation or an in-engine cutscene | since v2 | since v8 | no |
 | Esc pauses a fullscreen movie | since v2 | since v9, a movie whose sound MelePause knows | no |
 | Start on a gamepad pauses what Esc pauses | since v3 | since v8 | no |
-| Photo mode on the paused shot (Y or F7) | since v4 | no | no |
+| Photo mode on the paused shot (Y or F7) | since v4 | since v10 | no |
 | Pause screen; Space and A resume | since v5 | since v8 | no |
 
 LE3 is not supported. Each game has its own file, for its own ASI folder: `LE1MelePause.asi` for ME1,
@@ -59,7 +59,8 @@ lighter pause, under which a conversation's clock and the music keep running.
   presses from it in a movie it can pause, and no key skips a paused movie. Space, or a gamepad's X, skips any movie
   the game lets you skip (in the vanilla game they do nothing there).
 - Any other movie keeps vanilla Esc and Start: Esc skips it when the game lets you.
-- There is no photo mode under the pause. Y and F7 keep their vanilla job, and the pause screen shows no photo mode key.
+- Photo mode under the pause works as in LE1. Its sounds play under the pause without the hook LE1 needs: LE2's GUI
+  sounds go through Wwise.
 
 The details, and the open questions: [docs/games/LE2.md](docs/games/LE2.md).
 

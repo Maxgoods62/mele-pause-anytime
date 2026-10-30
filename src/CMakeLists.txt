@@ -36,7 +36,7 @@ asi_target (MelePause
     "Pause.cpp"
     "Pause.hpp"
     "Photo.hpp"
-    "PhotoLE1.cpp"
+    "Photo.cpp"
     "PhotoOff.cpp"
     "game/Game.hpp"
     "game/LE1.hpp"

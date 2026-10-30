@@ -1024,7 +1024,7 @@ namespace MelePause
                 // take those keys first in Console.InputKey; this is for a bind that gets past it.
                 if (PhotoMode::On() && Context->IsA(USFXGameModePhoto::StaticClass()))
                 {
-                    LEASI_INFO("ShowMenuGui on {} dropped: our photo mode is left with Esc, Start, Y or F7", PathOf(Context));
+                    LEASI_INFO("{} on {} dropped: our photo mode is left with Esc, Start, Y or F7", NameText(name), PathOf(Context));
                     return;
                 }
             }
