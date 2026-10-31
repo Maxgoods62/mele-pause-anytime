@@ -7,7 +7,7 @@ key resumes it. While the game is paused, the picture is blurred and darkened un
 conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot. Everywhere else these keys
 do what they always did.
 
-Version 16 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
+Version 18 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
 it from source and copy it into the game ([Install](#install)).
 
 ## Games
@@ -19,9 +19,9 @@ it from source and copy it into the game ([Install](#install)).
 | Start on a gamepad pauses what Esc pauses | since v3 | since v8 | since v11 |
 | Photo mode on the paused shot (Y or F7) | since v4 | since v10 | since v12 |
 | Pause screen; Space and A resume | since v5 | since v8 | since v11 |
-| Pause screen in the game's menu colours, with its words and its menu sound | since v14 | no | no |
-| The game's own gamepad buttons on the pause screen | since v15 | no | no |
-| The game's own fonts on the pause screen | since v16 | no | no |
+| Pause screen in the game's menu colours, with its words and its menu sound | since v14 | since v17 | since v18 |
+| The game's own gamepad buttons on the pause screen | since v15 | since v17 | since v18 |
+| The game's own fonts on the pause screen | since v16 | since v17 | since v18 |
 
 Each game has its own file, for its own ASI folder: `LE1MelePause.asi` for ME1, `LE2MelePause.asi` for ME2,
 `LE3MelePause.asi` for ME3. The sections below describe LE1; [In LE2](#in-le2) and [In LE3](#in-le3) say what differs
@@ -107,12 +107,12 @@ pause menu is unchanged.
 
 | Part | How it looks |
 |---|---|
-| The picture | Blurred (about 24 pixels of radius at 1080p, and the same share of the screen at any resolution), half as bright, a little desaturated, darker in the corners; in LE1 a little bluer. It fades in over 0.2 s and out over 0.15 s. The wheel and the subtitle are blurred with it. |
-| The centre | LE1: the title in the game's Aero Light and pale cyan, on a band like the game's menu bars (dark blue, a light blue rule along each edge, fading out at both ends). LE2: the same band in the game's brown and orange, the title in its Biomass and gold. LE3: "PAUSE" set wide in Exo 2 Light, in a thin frame with bracketed corners. |
-| The bottom left | "Resume" (A, or Space; Start and Esc resume too), and "Photo mode" (Y, or F7) where photo mode opens, with the keys of whichever device pressed one of those keys last. LE1 and LE2: each key left of its label, the labels in the game's BioMass and its label colour (LE1 blue, LE2 orange); the gamepad's keys the game's own A and Y pictures, read from its renderer (green and yellow discs drawn to match them if it can't give them), the keyboard's as grey keycaps in the game's light font, Aero Light or Myriad (a wide space bar named in the launcher's language, English in Japanese, and F7). LE3: each key over its label; gamepad icons in rings (a green A, a yellow Y) or white keycaps. |
-| The words | LE1: the game's own, from its string table, in its text language ("PAUSED", "Resume", "Photo Mode" in English; "PAUSE", "Continuer", "Mode photo" in French). LE2: the labels the game's own, the title MelePause's (LE2's string table has no such word in every language). LE3: MelePause's, in the text language the game's launcher passes: English, French, German, Italian, Spanish, Polish or Russian. MelePause's words are English for Japanese in LE2 and LE3 (Exo 2 has no kana), and when the game starts without the launcher's language switch. |
-| The fonts | LE1 and LE2: the game's own, read from its memory as it runs. Nothing of them is in the ASI or written to disk. If they can't be read: Exo 2, and MelePause's English in Japanese. LE3: Exo 2. |
-| The sound | LE1 and LE2: the game's menu sound as the pause starts, and as a key resumes. None for the movie pause, nor in LE3. |
+| The picture | Blurred (about 24 pixels of radius at 1080p, and the same share of the screen at any resolution), half as bright, a little desaturated, darker in the corners; in LE1 and LE3 a little bluer, in LE2 a little warmer. It fades in over 0.2 s and out over 0.15 s. The wheel and the subtitle are blurred with it. |
+| The centre | LE1: the title in the game's Aero Light and pale cyan, on a band like the game's menu bars (dark blue, a light blue rule along each edge, fading out at both ends). LE2: the same band in the game's brown and orange, the title in its Biomass and gold. LE3: the same band in the game's blue, the title in its Biomass and white. |
+| The bottom left | "Resume" (A, or Space; Start and Esc resume too), and "Photo mode" (Y, or F7) where photo mode opens, with the keys of whichever device pressed one of those keys last. Each key stands left of its label, the labels in the game's BioMass and its label colour (LE1 blue, LE2 orange, LE3 pale cyan); the gamepad's keys the game's own A and Y pictures, read from its renderer (green and yellow discs drawn to match them if it can't give them), the keyboard's as grey keycaps in the game's light font, Aero Light or Myriad (a wide space bar named in the launcher's language, English in Japanese, and F7). |
+| The words | LE1: the game's own, from its string table, in its text language ("PAUSED", "Resume", "Photo Mode" in English; "PAUSE", "Continuer", "Mode photo" in French). LE2 and LE3: the labels the game's own, the title MelePause's (their string tables have no such word in every language), in the text language the game's launcher passes: English, French, German, Italian, Spanish, Polish or Russian. MelePause's words are English for Japanese in LE2 and LE3 (Exo 2 has no kana), and when the game starts without the launcher's language switch. |
+| The fonts | The game's own, read from its memory as it runs. Nothing of them is in the ASI or written to disk. If they can't be read: Exo 2, and MelePause's English in Japanese. |
+| The sound | The game's menu sound as the pause starts, and as a key resumes. None for the movie pause. |
 
 The pause screen goes away at once, with no fade, when photo mode starts, so photo mode's screenshots never contain it.
 It also hides while the console is open. It comes back three frames after photo mode ends.
@@ -156,7 +156,7 @@ copy by hand, delete it yourself: while it is there, the ASI loader loads both f
 `LE1MelePause.asi` stays off.
 
 To check that it loaded, start the game and open `<LE folder>\Game\ME<n>\Binaries\Win64\Logs\MelePause.log`. It has a
-line that ends in `LE<n>MelePause 12 ready`. In LE1, a line that ends in `MelePause 6 ready`, or an older number, means
+line that ends in `LE<n>MelePause N ready`, where N is the version. In LE1, a line that ends in `MelePause 6 ready`, or an older number, means
 that the old `MelePause.asi` is still in the ASI folder.
 
 ## Uninstall
@@ -174,7 +174,7 @@ With the game closed, run `./build.sh --uninstall` (or `--game LE1 --uninstall` 
 | The Steam overlay, ReShade, MeleBridge's editor | Each draws over the frame too. Whichever hook runs later draws on top. |
 | Any resolution or aspect ratio | Sizes follow the height of the back buffer, laid out for 1080 lines. |
 | Gamepads | Tested with an Xbox pad. A PlayStation pad would go through Steam Input or DS4Windows, which present it to the game as an Xbox pad; this is untested. |
-| Another build of the game | The native hooks for photo mode check the game's code before they patch it. If it differs, the log has a warning, photo mode still opens, and its camera, its panel or its sounds may not answer. If the camera's or the panel's hook is missing, the pause screen leaves out the photo mode key. LE2's and LE3's movie input hooks check it too: if it differs, Esc and Start skip a skippable movie as in the vanilla game (and in LE2, Space and X skip nothing). In LE1 and LE2 the pause screen's A and Y are then drawn discs, and the log has a warning. |
+| Another build of the game | The native hooks for photo mode check the game's code before they patch it. If it differs, the log has a warning, photo mode still opens, and its camera, its panel or its sounds may not answer. If the camera's or the panel's hook is missing, the pause screen leaves out the photo mode key. LE2's and LE3's movie input hooks check it too: if it differs, Esc and Start skip a skippable movie as in the vanilla game (and in LE2, Space and X skip nothing). The pause screen's A and Y are then drawn discs, and the log has a warning. |
 
 ## Known issues
 

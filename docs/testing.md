@@ -25,12 +25,13 @@ Before a version is tagged, each game its CHANGELOG entry names (the `Games:` li
 ## Sheet
 
 - S1, conversation. During a spoken line, press Esc. Picture, voice, music and lips stop. The picture blurs and darkens,
-  "PAUSE" stands in its frame at the centre, and "Space Resume" and "F7 Photo mode" are at the bottom left, in the
-  game's language. In LE1 the title stands on a blue band in the game's words ("PAUSED" in English, "PAUSE" in French),
-  the keys are left of their labels ("Resume" and "Photo Mode", "Continuer" and "Mode photo"), and the game's menu
-  swish plays as the pause starts. Wait a few seconds, then press Esc: the line resumes at the same word, in sync, the
-  picture is sharp again, and in LE1 the swish plays again. Then the same with Start on a gamepad: the pause screen shows the A icon, and the Y icon where photo
-  mode opens (in LE1 the game's own pictures, with no dark box around them, and they fade in and out with the screen).
+  the title stands on a band in the game's menu colours at the centre, and the keys are left of their labels at the
+  bottom left, the labels in the game's language ("Resume" and "Photo Mode"; in French "Mode photo", with "Continuer" in
+  LE1 and "Reprendre" in LE2 and LE3). In LE1 the title is the game's word too ("PAUSED" in English, "PAUSE" in French).
+  The game's menu sound plays as the pause starts. Wait a few seconds, then press Esc: the line resumes at the same word,
+  in sync, the picture is sharp again, and the sound plays again. Then the same with Start on a gamepad: the pause screen
+  shows the A icon, and the Y icon where photo mode opens (the game's own pictures, with no dark box around them, and they
+  fade in and out with the screen).
 - S2, in-engine cutscene, such as the Noveria undocking scene: the same, Esc, wait, Esc, then Start, wait, Start.
 - S3, galaxy map travel movie (a trip within a cluster, or through a relay). Half a second into it, press Esc. The
   movie stops, picture and sound. Wait a few seconds, then press Esc: it resumes and plays to its end. Then hold a pause
@@ -59,10 +60,10 @@ Before a version is tagged, each game its CHANGELOG entry names (the `Games:` li
 
 | When | Lines |
 |---|---|
-| At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ..." (LE2: "GUI sounds: not hooked in the LE2 build, ..."), or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>MelePause N ready", where N is the build's `ASI_VERSION`. In a build without the movie pause or photo mode, "movie pause: not in the LE<n> build" stands for the Bink line, and "photo mode under the pause: not in the LE<n> build" for the three hook lines. |
-| At the first frame | "overlay ready: back buffer ..., LE1 look (LE2 look; LE3: our own look), text in <language>, Exo 2 embedded, blur ready". "first BioHUD.PostRender": the HUD owner and GEngine's controller should be the same. LE1 and LE2: "the game's string table: title ..., resume ..., photo mode ..." with the words in the game's language (LE2 has no title there), and "overlay: the game's gamepad icons: A fine, Y fine: used" ("refused" and "ours drawn instead" if a view failed its checks, and "no view of the game's gamepad icons" if the textures gave none). A line with "the pause screen keeps Exo 2" if the game's fonts could not be read. |
+| At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ..." (LE2 and LE3: "GUI sounds: not hooked in the LE<n> build, ..."), or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>MelePause N ready", where N is the build's `ASI_VERSION`. In a build without the movie pause or photo mode, "movie pause: not in the LE<n> build" stands for the Bink line, and "photo mode under the pause: not in the LE<n> build" for the three hook lines. |
+| At the first frame | "overlay ready: back buffer ..., LE1 look (LE2 look, LE3 look), text in <language>, Exo 2 embedded, blur ready". "first BioHUD.PostRender": the HUD owner and GEngine's controller should be the same. "the game's string table: title ..., resume ..., photo mode ..." with the words in the game's language (LE2 and LE3 have no title there), and "overlay: the game's gamepad icons: A fine, Y fine: used" ("refused" and "ours drawn instead" if a view failed its checks, and "no view of the game's gamepad icons" if the textures gave none). LE3: "the game's fonts: loaded their package in ... ms". A line with "the pause screen keeps Exo 2" if the game's fonts could not be read. |
 | Each press that reaches `Console.InputKey` | One "Esc pressed: mode ..." or "Start pressed: mode ..." line, with what it did. |
-| Each pause | "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts", then "overlay hidden" ("at once" for photo mode). LE1 and LE2: at the first one, "overlay: the game's fonts: ... used" ("Exo 2 stays" if not), then "overlay: the game's texts: ..." with "used" after each word (Japanese without the game's fonts: "kept ours"); after "world paused", "GUI sound InGameGuiEnter: played"; after a key's "world resumed", "GUI sound InGameGuiExit: played". |
+| Each pause | "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts", then "overlay hidden" ("at once" for photo mode). At the first one, "overlay: the game's fonts: ... used" ("Exo 2 stays" if not), then "overlay: the game's texts: ..." with "used" after each word (Japanese without the game's fonts: "kept ours"); after "world paused", "GUI sound InGameGuiEnter: played"; after a key's "world resumed", "GUI sound InGameGuiExit: played". |
 | Photo mode | "photo mode enter, mode ..." (the view target, the shot, the subtitle). "photo mode on: ..." (the camera mode; how far the controller was from the shot, in units and degrees, before it was put on it; and how far the view is: 0 uu and 0 deg expected), with "pad prompts" after Y or "keyboard prompts" after F7. Then "Y pressed ...: left photo mode", "photo mode exit: ignore counters ...", and "photo mode left (Y) after ... s: mode 5 (Conversation), camera mode ...". The last one gives the number of static binds set back, of camera steps, and what got past the pause: "N key and M axis event(s), G GUI tick(s) (0 changed the Pauser: put back), S GUI sound(s)". M is in the thousands after moving a stick or the mouse, G about one per frame, S at least one per screenshot. |
 | A movie | Its open line ("from a file"); "is a fullscreen movie" with the HUD's silence; "Console.InputKey runs while movie #N is open" (the game mode during it); one "Esc pressed, read on thread ..." line per press (movie pause or resume asked); the PAUSED and RESUMED lines and the reports between them; "Esc released during a fullscreen movie ..." lines; its close line. |
 | Start in a movie | "Start held (or released) during a fullscreen movie, its press unseen here on thread ...: movie pause asked" (or resume asked). |
@@ -93,6 +94,8 @@ has "the game's fonts: ... used" and all three words "used", with no warning and
 Aero Light, centred on its band, the labels in BioMass, and the `Espace` and `F7` keycaps in Aero Light. Russian and
 Japanese, the movie pause and the fall back to Exo 2 were not run in the game. The fonts were added between ImGui's frames
 in French, Russian and Japanese in a headless test, with ImGui's asserts on.
+On 2026-10-31, v17, in French, paused with a gamepad and with the keyboard: the look is v16's. The log has "LE1 look", the
+game's icons and fonts "used", all three words "used", and both GUI sounds "played", with no warning.
 
 | Area | Result |
 |---|---|
@@ -198,3 +201,10 @@ The movie pause, a test build of v13's code (2026-10-30), with the keyboard: use
 
 Not covered yet: photo mode's GUI sounds, a movie inside a cutscene or a conversation, a 15 s movie hold, Start and A in
 a movie, and the skips with nothing paused.
+
+On 2026-10-31, v18, in French, on the Normandy (`BioP_Nor`) and the Citadel (`BioP_CitHub`): the LE3 look showed, with the
+title in Biomass on the blue band, the labels in pale cyan and the game's A and Y (user: "works
+well"). The log has "LE3 look", "loaded their package in 31 ms" at the main menu, "A fine, Y fine: used", both fonts "used" and
+both labels "used", with no warning. 7 pauses (6 in conversations, 1 in a cutscene), 5 with gamepad prompts and 2 with
+keyboard prompts, resumed with A, Esc and Start; each played `InGameGuiEnter` and `InGameGuiExit`. Not run with v18: Space as
+the resume key, photo mode under the pause, a movie pause, Russian, Japanese, the Exo 2 fallback.

@@ -994,12 +994,31 @@ namespace MelePause
             return { movie->RawData.GetData(), static_cast<std::size_t>(movie->RawData.Count()) };
         }
 
+        /// The game's loader brings back the package of a movie it doesn't keep in memory (game/LE<n>.hpp's PauseFonts.LoadPath),
+        /// on this thread, for the one read after it: the next garbage collection drops it.
+        void LoadFontMovies(ABioPlayerController* pc)
+        {
+            static CachedFunction cache;
+            FString const path{ PauseFonts.LoadPath };
+            UObject_execDynamicLoadObject_Parms parms;
+            std::memcpy(&parms.ObjectName, &path, sizeof(FString));
+            parms.ObjectClass = UObjectReferencer::StaticClass();
+            parms.MayFail = 1;
+            auto const start = GetTickCount64();
+            if (Call(pc, L"DynamicLoadObject", cache, parms) && parms.ReturnValue != nullptr)
+                LEASI_INFO("the game's fonts: loaded their package in {} ms: {}", GetTickCount64() - start, PathOf(parms.ReturnValue));
+            else
+                LEASI_WARN("the game's fonts: their package did not load ({})", ToUtf8(PauseFonts.LoadPath));
+        }
+
         /// The bytes of the movies that hold the game's fonts (game/LE<n>.hpp's PauseFonts), which Overlay.cpp converts in this
         /// call. Tried again on the next frames while there are none; a fault ends the tries (AfterPostRender).
-        void ReadGameFonts()
+        void ReadGameFonts(ABioPlayerController* pc)
         {
             G.GameFontTries++;
             SFXName const package{ PauseFonts.Package, 0 };
+            if (PauseFonts.LoadPath != nullptr && pc != nullptr && FindObject<UGFxMovieInfo>(package, SFXName{ PauseFonts.LightMovie, 0 }) == nullptr)
+                LoadFontMovies(pc);
             auto const lightMovie = FindObject<UGFxMovieInfo>(package, SFXName{ PauseFonts.LightMovie, 0 });
             auto const boldMovie = FindObject<UGFxMovieInfo>(package, SFXName{ PauseFonts.BoldMovie, 0 });
             auto const light = MovieBytes(lightMovie);
@@ -1015,7 +1034,7 @@ namespace MelePause
             Overlay::UseGameFonts({ light, PauseFonts.LightFont }, { bold, PauseFonts.BoldFont });
         }
 
-        void ReadGameFontsEntry(void*) { ReadGameFonts(); }
+        void ReadGameFontsEntry(void* context) { ReadGameFonts(static_cast<ABioPlayerController*>(context)); }
 #endif
 
         /// The checks of each frame. The banner is drawn apart, under its own guard: a fault while drawing must not stop them.
@@ -1067,7 +1086,7 @@ namespace MelePause
 #endif
 #if MELEPAUSE_GAME_FONTS
             // After the texts: the fonts are cut to their letters.
-            if (G.GameTextTries >= MaxGameTextTries && G.GameFontTries < MaxGameFontTries && !Guarded(ReadGameFontsEntry, nullptr))
+            if (G.GameTextTries >= MaxGameTextTries && G.GameFontTries < MaxGameFontTries && !Guarded(ReadGameFontsEntry, pc))
             {
                 G.GameFontTries = MaxGameFontTries;
                 LEASI_ERROR("access violation while reading the game's fonts: the pause screen keeps Exo 2");

@@ -5,17 +5,17 @@ Status: from v11, LE3 is in `RELEASED_GAMES` (`scripts/games.sh`), so a plain `.
 the movie pause, limited as in LE2 to movies whose sound MelePause knows. On 2026-10-30 the first build passed the pause
 part of the sheet below with keyboard and mouse and with a gamepad, from v12 photo mode under the pause passed in
 conversations and in an in-engine cutscene, and a test build of the movie pause passed S3 in the relay jump
-([testing.md](../testing.md#le3)).
+([testing.md](../testing.md#le3)). The game's look ([Pause screen](#pause-screen)) came with v18.
 
 ## What the build has
 
 | Part | LE3 build | LE1 build |
 |---|---|---|
 | Esc and Start pause a conversation or an in-engine cutscene; skip guard; Space and A resume | compiled in | on |
-| Pause screen, and the Canvas banner where it cannot draw | compiled in, MelePause's own look (`Game::Look`), its words in the launcher's language (`MELEPAUSE_GAME_TEXTS` off), no sound, its own buttons (`MELEPAUSE_GAME_ICONS` off), Exo 2 (`MELEPAUSE_GAME_FONTS` off) | on, from v14 in the game's menu colours, with the game's words (`MELEPAUSE_GAME_TEXTS` on) and its menu sound, from v15 with its gamepad buttons (`MELEPAUSE_GAME_ICONS` on), from v16 in its fonts (`MELEPAUSE_GAME_FONTS` on) |
+| Pause screen, and the Canvas banner where it cannot draw | on, from v18 in the game's menu colours, with its words for the labels (`MELEPAUSE_GAME_TEXTS` on), its menu sound, its gamepad buttons (`MELEPAUSE_GAME_ICONS` on) and its fonts (`MELEPAUSE_GAME_FONTS` on) | on, from v14 in the game's menu colours, with the game's words (`MELEPAUSE_GAME_TEXTS` on) and its menu sound, from v15 with its gamepad buttons (`MELEPAUSE_GAME_ICONS` on), from v16 in its fonts (`MELEPAUSE_GAME_FONTS` on) |
 | Movie pause (`MELEPAUSE_MOVIES`) | on from v13 for a movie a level starts whose sound MelePause knows ([Movies](#movies)); Esc and Start in any other movie stay the game's | on |
 | Photo mode under the pause (`MELEPAUSE_PHOTO`) | on from v12, its GUI side in `PhotoGuiGFx.cpp` (`MELEPAUSE_PHOTO_GFX`); its GUI sounds get no hook | on, `PhotoGuiSF.cpp` |
-| File | `LE3MelePause.asi`, Windows version `17.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `17.0.4.0` |
+| File | `LE3MelePause.asi`, Windows version `18.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `18.0.4.0` |
 
 ## Movies
 
@@ -80,6 +80,23 @@ stamp at +0x44 of each entry) and `TimeSeconds`: the next call measures from the
 the clock move. `SFXGUIInteraction`'s own tick (slot 87, 0xbcbf70) skips only its queued message boxes under the pause
 (`IsPaused`, 0x593f40).
 
+## Pause screen
+
+`src/game/LE3.hpp` holds the names and ids, `Le3Look` in `src/Overlay.cpp` the colours and sizes. All of them were read
+from the game's files, and none of those files is shipped.
+
+| What | LE3 | LE2 |
+|---|---|---|
+| Colours | title `#FFFFFF` (`MainWheel`'s `guiTitleText`), labels `#ACF5FE` (its buttons), rules `#0896F7` (the edge of `PC_SharedAssets_I46`), band `#08759C` to `#084E7E` (its bars `MainWheel_I1E` and `_I9`, lighter at the top), blur toward blue | title `#FFCC66`, labels `#FF9142`, rules `#FF9C5B`, band `#5F2C0C` to `#843E14`, blur toward warm |
+| Title | $BioMass 63 at 1080 lines, spacing 1.5: 1.5 times `guiTitleText`'s 42, spacing 1 | $BioMass 49.5, spacing 1.5 |
+| Labels and keys | font and sizes as in LE2, in the colour of the wheel's buttons. The wheel's own prompts differ: $AeroLight 30, `#FFBA65` (`PC_SharedAssets`' `ControlTextLeftAlign`) | $BioMass 22.8, the keys in the light font at 18 |
+| Fonts | `GUI_SF_Fonts.gfxfonts` of `SFXGUI_Fonts.pcc`, both fonts in one SWF version 15 movie, LE2's two: cut to the pause screen's letters of all 8 languages they come out byte-identical to LE2's. The movie is out of the object list by the first HUD, unlike the GUI movies, so `Pause.cpp` has the game's loader bring it back there, at the main menu, with `DynamicLoadObject` on the file's `ObjectReferencer_448` (`PauseFonts.LoadPath`), 31 ms on the test machine; the next garbage collection drops it. `SFXGUI_FontsJPN.pcc`, which the Japanese game uses (`SFXGUIInteraction.FontMap`), gives the same letters, so one file serves every language. `$BioMass` and `$AeroLight` are "BioMass Shared" and "AeroLight Shared" here | `GUI_SF_Fonts.AeroLightFont_glyphs` and `.BioMassFont_glyphs` |
+| Words | resume 157151, photo mode 817979, title ours: 170645 is not in the table, 174771 stays "Pause" in Russian, Polish and Japanese, and 687508 ("Pause Game") is a sentence in French | resume 157151, photo mode 392221, title ours |
+| Gamepad buttons | `GUI_SF_MainWheel.Xbox_ControllerIcons_ABtn` and `_YBtn`, as the wheel shows them, in `Startup.pcc`, 256x256 DXT5, a ring 108 texels across, centred | `GUI_SF_Xbox_ControllerIcons.Xbox_ControllerIcons_IA` and `_I1` |
+| Sound | `SFXGUIInteraction.PlayGuiSound` with `InGameGuiEnter` and `InGameGuiExit`, as `ShowBrowserWheel` and `HideBrowserWheel` | `BioSFManager.PlaySound` with the same names |
+| `GetSimpleString` | `SFXGame` | `SFXGame` |
+| `UTexture.Resource` | at +0x60 | at +0xA0 |
+
 ## Facts
 
 `src/game/LE3.hpp` holds these. The file and line are in the LE3 SDK of the LExASIs commit `build.sh` pins
@@ -128,6 +145,11 @@ The procedure is in [testing.md](../testing.md), with `--game LE3`. `--install` 
   hooked: ..."; "overlay: swap chain hooks Present true ..."; a line that ends in "LE3MelePause N ready" (N is
   `ASI_VERSION`). At the first frame, "first BioHUD.PostRender" with the same controller for the HUD owner and GEngine.
   Each press: "Esc pressed: mode 7 (Conversation)" and the like, with LE3's mode names.
+- S8, the look. The title on a blue band in white, the labels in pale cyan, each key left of its label. With a gamepad,
+  the game's A and Y at the height of their labels, not drawn discs. "overlay ready: ..., LE3 look", "overlay: the game's
+  gamepad icons: A fine, Y fine: used", "the game's fonts: loaded their package in ... ms: SFXGUI_Fonts.ObjectReferencer_448",
+  "overlay: the game's fonts: ... used", "overlay: the game's texts: title \"\" kept ours, resume ... used, photo mode ...
+  used", and "GUI sound InGameGuiEnter: played" after "world paused".
 
 ## Open questions
 

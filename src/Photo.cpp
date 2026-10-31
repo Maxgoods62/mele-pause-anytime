@@ -969,8 +969,13 @@ namespace MelePause::PhotoMode
         CallMarkedGuiSound(gui, function, &parms);
         return true;
 #elif MELEPAUSE_PHOTO_GFX
-        LEASI_UNUSED_2(pc, row);
-        return false;
+        // SFXGUIInteraction's, a Wwise event as in LE2: no hook to go through.
+        auto const gui = pc != nullptr ? PhotoGui::Find(pc) : nullptr;
+        if (gui == nullptr) return false;
+        static CachedFunction cache;
+        USFXGUIInteraction_execPlayGuiSound_Parms parms;
+        parms.nmSound = SFXName{ row, 0 };
+        return Call(gui, L"PlayGuiSound", cache, parms) && parms.ReturnValue != 0;
 #else
         // A Wwise event, which plays under the pause: no hook to go through.
         auto const gui = pc != nullptr ? PhotoGui::Find(pc) : nullptr;

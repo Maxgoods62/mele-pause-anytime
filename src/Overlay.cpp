@@ -26,12 +26,12 @@
 // The pause screen, drawn into the game's back buffer from a hooked IDXGISwapChain::Present on the render thread: over our
 // world pause and our movie pause the frame is blurred and darkened (Blur.cpp), "PAUSE" stands in a bracketed frame at the
 // centre, and the keys are named at the bottom left (resume, and photo mode where it opens), for the gamepad or the keyboard,
-// whichever pressed our keys last. In LE1 and LE2 it wears the game's menu colours instead (OverlayLook, NativeLook): the title
-// on a band, each key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons,
+// whichever pressed our keys last. Each game wears its menu colours instead (OverlayLook, NativeLook): the title on a band, each
+// key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons,
 // UseGameFonts); nothing here touches a game object, only the D3D11 views of two of its textures and, on the game thread, the
 // bytes of its fonts' movies. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the
-// language the game's launcher passes, or in the game's own words where it gives them, and in LE1 and LE2 in the game's own
-// fonts, turned into TrueType in memory (GameFont.cpp) and never written anywhere. Without the hook or after a fault the Canvas
+// language the game's launcher passes, or in the game's own words where it gives them, and in the game's own fonts, turned
+// into TrueType in memory (GameFont.cpp) and never written anywhere. Without the hook or after a fault the Canvas
 // banner of Pause.cpp is drawn instead (Drawing).
 namespace MelePause::Overlay
 {
@@ -316,11 +316,29 @@ namespace MelePause::Overlay
                                   .BoldCaps = 0.8003f,
                                   .Button = { 128, 61, 55.5f, 93 } };
 
+        // LE3's pause wheel (MainWheel): its title #FFFFFF in $BioMass (Biomass+DFGSoGei-W7 here too), at 1.5 times its 42 as in
+        // LE2, its buttons' words #ACF5FE, its bars from #08759C to #084E7E, the edge of its bar PC_SharedAssets_I46 #0896F7. The
+        // labels and keys keep LE2's fonts and sizes, in the colour of its buttons; its own prompts are $AeroLight at 30, #FFBA65.
+        NativeLook const Le3Look{ .Name = "LE3",
+                                  .Title = { 0xFF, 0xFF, 0xFF },
+                                  .Label = { 0xAC, 0xF5, 0xFE },
+                                  .Line = { 0x08, 0x96, 0xF7 },
+                                  .PanelTop = { 0x08, 0x75, 0x9C },
+                                  .PanelBottom = { 0x08, 0x4E, 0x7E },
+                                  .Blur = { .Tint = { 0.88f, 0.97f, 1.06f } },
+                                  .TitleLine = { true, 63.f, 1.5f },
+                                  .LabelLine = { true, 22.8f, 0.9f },
+                                  .KeyLine = { false, 18.f, 0.75f },
+                                  .LightCaps = 0.6743f,
+                                  .BoldCaps = 0.8003f,
+                                  .Button = { 256, 128, 128, 108 } };
+
         /// Null for our own look.
         NativeLook const* NativeLookOf(OverlayLook look)
         {
             if (look == OverlayLook::LE1) return &Le1Look;
             if (look == OverlayLook::LE2) return &Le2Look;
+            if (look == OverlayLook::LE3) return &Le3Look;
             return nullptr;
         }
 

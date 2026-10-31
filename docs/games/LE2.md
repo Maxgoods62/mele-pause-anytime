@@ -18,7 +18,7 @@ look ([Pause screen](#pause-screen)) came with v17, which passed in a conversati
 | Movie pause (`MELEPAUSE_MOVIES`) | on for a movie whose sound MelePause knows (below); Esc and Start in any other movie stay the game's. Space and X skip a movie the game lets skip | on |
 | Photo mode under the pause (`MELEPAUSE_PHOTO`) | on, with three MassEffect2.exe natives ([Photo mode](#photo-mode)) | on |
 | Photo mode's GUI sounds made realtime (`MELEPAUSE_PHOTO_GUI_SOUNDS`) | off: they are Wwise events and play under the world pause as they are | on |
-| File | `LE2MelePause.asi`, Windows version `17.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `17.0.4.0` |
+| File | `LE2MelePause.asi`, Windows version `18.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `18.0.4.0` |
 
 Why the movie pause takes only some movies:
 

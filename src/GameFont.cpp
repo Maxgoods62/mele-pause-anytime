@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <utility>
 
-// The source is a GFX movie (Scaleform's SWF, version 8) with one DefineFont3 tag per font:
+// The source is a GFX movie (Scaleform's SWF, version 8, or 15 for LE3's font library) with one DefineFont3 tag per font:
 //   FontID u16, flags u8, language u8, name length u8, name, glyph count N u16,
 //   offset table u32[N], code table offset u32, N SHAPEs, code table u16[N],
 //   ascent, descent, leading u16, advances u16[N], N RECTs, kerning count u16, kerning (u16, u16, s16)[count].
@@ -273,7 +273,7 @@ namespace MelePause::GameFont
             auto const signature = reader.Take(3);
             auto const version = reader.U8();
             reader.U32(); // file length: the span's size is what counts
-            if (reader.Failed() || signature[0] != 'G' || signature[1] != 'F' || signature[2] != 'X' || version != 8) return false;
+            if (reader.Failed() || signature[0] != 'G' || signature[1] != 'F' || signature[2] != 'X' || (version != 8 && version != 15)) return false;
 
             // The stage RECT: 5 bits give the size of its 4 fields, then it pads to a byte.
             auto const rectBits = reader.U8() >> 3;
