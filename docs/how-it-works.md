@@ -18,7 +18,7 @@ shared hook manager, which MeleBridge and other ASIs use too. The sources:
 | `src/MovieSound.cpp` | LE2 and LE3: the Wwise event a Kismet movie action posts beside the picture, latched on the game thread and paused beside `BinkPause` with the exe's `AK::SoundEngine::ExecuteActionOnEvent`. Inert in LE1. |
 | `src/MovieInput.cpp` | LE2 and LE3: the hook on the engine's movie input, which would skip a movie on Esc's and Start's press. Nothing in LE1. |
 | `src/Overlay.cpp`, `src/Blur.cpp` | The pause screen, on the render thread. |
-| `src/GameFont.hpp`, `src/GameFont.cpp` | LE1: one of the game's fonts, from its GFx movie, as a TrueType file in memory. Plain C++, no game or ImGui types. |
+| `src/GameFont.hpp`, `src/GameFont.cpp` | LE1 and LE2: one of the game's fonts, from a GFx movie, as a TrueType file in memory. Plain C++, no game or ImGui types. |
 | `src/Api.hpp` | What `Pause.cpp`, `Bink.cpp`, `MovieSound.cpp`, `MovieInput.cpp` and `Overlay.cpp` call of each other. No game class: `Bink.cpp`, `MovieSound.cpp` and `Overlay.cpp` include only it. |
 
 ## Hooks
@@ -152,7 +152,7 @@ leaves Photo, the photo session ends.
 
 `Overlay.cpp` draws into the game's back buffer from the hooked `IDXGISwapChain::Present`, on the render thread. The
 blur passes come first (`Blur.cpp`, which sets back every piece of D3D11 state it changes), then the text and icons with
-Dear ImGui. Nothing on that thread touches a game object, only the D3D11 views of two of its textures in LE1: the game
+Dear ImGui. Nothing on that thread touches a game object, only the D3D11 views of two of its textures in LE1 and LE2: the game
 thread publishes what to show each frame after `BioHUD.PostRender`. Sizes follow the back buffer's height, laid out for
 1080 lines.
 
@@ -166,8 +166,9 @@ nothing for 0.1 s, the movie's `BinkWait` hook puts that frame back and presents
 times a second at most. It does this only on the thread that presents the game's frames, which in LE1 is the movie's
 thread. A window resized while the movie is paused keeps its frame until the movie resumes.
 
-The look is the game's (`Game::Look` in `game/LE<n>.hpp`). LE2 and LE3 have MelePause's own: "PAUSE" in a bracketed
-frame, each key over its label. LE1 has the colours of its menus: the title on a band (a blue gradient at 55 % opacity
+The look is the game's (`Game::Look` in `game/LE<n>.hpp`, one `NativeLook` table each in `Overlay.cpp`). LE3 has
+MelePause's own: "PAUSE" in a bracketed frame, each key over its label. LE2 has the same layout as LE1 with its own
+table ([games/LE2.md](games/LE2.md#pause-screen)). LE1 has the colours of its menus: the title on a band (a blue gradient at 55 % opacity
 with a #3199C6 rule along each edge, both fading out over 120 px at each end) in #CCFFFF, each key left of its label in
 #3199C6, the game's own gamepad buttons and fonts, the keys as translucent grey keycaps, and the blur tinted toward blue.
 The colours were read from the game's files; nothing of those files is shipped.
@@ -183,7 +184,7 @@ same device; only then is it called. It must also be on the device the overlay d
 overlay then holds a reference. These checks have their own guard too: a fault costs the icons, not the overlay. Both
 views pass or neither is used: the drawn discs stay, also after a change of device. The textures are BC3_UNORM with one mip
 and no sRGB view, so ImGui samples them as they are. The disc is 95 of a texture's 128 texels across, so the texture
-is drawn 128/95 larger than the disc.
+is drawn 128/95 larger than the disc (`NativeLook::Button`).
 
 In LE1 the words come from the game's string table (`MELEPAUSE_GAME_TEXTS`). On the first frame whose world has a
 `BioSPGame`, `Pause.cpp` calls the static native `BioSPGame.GetSimpleString` for the ids in `Game::PauseTexts` (170645,
@@ -196,9 +197,9 @@ heard at once under the world pause; the resume's plays once the world is unpaus
 the game.
 
 In LE1 the text is set in the game's own fonts (`MELEPAUSE_GAME_FONTS`), which live in one GFx movie,
-`GUI_SF_Fonts.Fonts` of `Startup_<lang>.pcc`, loaded with the game and kept for good (RootSet). Its bytes stay in memory
-as `UGFxMovieInfo.RawData`. Once the words are known, `Pause.cpp` finds the movie by name and hands those bytes to
-`Overlay::UseGameFonts`, on the game thread, under an access violation guard, tried on three frames while there are none.
+`GUI_SF_Fonts.Fonts` of `Startup_<lang>.pcc`, loaded with the game and kept for good (RootSet). LE2 keeps one in each of
+two movies (`Game::PauseFonts`). Their bytes stay in memory as `UGFxMovieInfo.RawData`. Once the words are known,
+`Pause.cpp` finds the movies by name and hands those bytes to `Overlay::UseGameFonts`, on the game thread, under an access violation guard, tried on three frames while there are none.
 `GameFont.cpp` walks the movie's tags to the `DefineFont3` tag of each font and writes a TrueType file in memory that holds
 the letters of the screen only: its own words, the game's, `Esc`, `F7`, a space and `?`, some 3 KB a font, in under a
 millisecond. A whole font would cost 2 MB that ImGui keeps for the session, and 800 times the time. Nothing is written to

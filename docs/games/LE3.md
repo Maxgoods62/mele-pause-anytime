@@ -15,7 +15,7 @@ conversations and in an in-engine cutscene, and a test build of the movie pause 
 | Pause screen, and the Canvas banner where it cannot draw | compiled in, MelePause's own look (`Game::Look`), its words in the launcher's language (`MELEPAUSE_GAME_TEXTS` off), no sound, its own buttons (`MELEPAUSE_GAME_ICONS` off), Exo 2 (`MELEPAUSE_GAME_FONTS` off) | on, from v14 in the game's menu colours, with the game's words (`MELEPAUSE_GAME_TEXTS` on) and its menu sound, from v15 with its gamepad buttons (`MELEPAUSE_GAME_ICONS` on), from v16 in its fonts (`MELEPAUSE_GAME_FONTS` on) |
 | Movie pause (`MELEPAUSE_MOVIES`) | on from v13 for a movie a level starts whose sound MelePause knows ([Movies](#movies)); Esc and Start in any other movie stay the game's | on |
 | Photo mode under the pause (`MELEPAUSE_PHOTO`) | on from v12, its GUI side in `PhotoGuiGFx.cpp` (`MELEPAUSE_PHOTO_GFX`); its GUI sounds get no hook | on, `PhotoGuiSF.cpp` |
-| File | `LE3MelePause.asi`, Windows version `16.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `16.0.4.0` |
+| File | `LE3MelePause.asi`, Windows version `17.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `17.0.4.0` |
 
 ## Movies
 

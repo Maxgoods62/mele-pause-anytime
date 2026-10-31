@@ -5,6 +5,7 @@
 #include <atomic>
 #include <span>
 #include <string>
+#include <string_view>
 
 // What Pause.cpp, Overlay.cpp, Bink.cpp and MovieSound.cpp ask of each other. No game class here: the last three include
 // only this file, so they build the same against every game's SDK.
@@ -16,9 +17,56 @@ namespace MelePause
     enum class MoviePolicy : unsigned char { Bink, BinkAndEvent };
 
     /// How a game's pause screen looks (game/LE<n>.hpp's Game::Look). Own: ours, the same in every game, "PAUSE" in a
-    /// bracketed frame and each key over its label (LE2, LE3). LE1: the colours of LE1's menus, the title on a blue band,
-    /// each key left of its label as the game draws its buttons, the blur a little cooler.
-    enum class OverlayLook : unsigned char { Own, LE1 };
+    /// bracketed frame and each key over its label (LE3). LE1 and LE2: the colours of that game's menus, the title on a band,
+    /// blue or brown, each key left of its label as the game draws its buttons, the blur a little cooler or warmer.
+    enum class OverlayLook : unsigned char { Own, LE1, LE2 };
+
+    /// The pause screen's words in a game's string table (game/LE<n>.hpp's PauseTexts). 0: that word stays ours.
+    struct PauseTextIds
+    {
+        int Title;
+        int Resume;
+        int Photo;
+    };
+
+    /// The textures of a gamepad's A and Y, right under a package (game/LE<n>.hpp's PauseIcons).
+    struct PauseIconNames
+    {
+        wchar_t const* Package;
+        wchar_t const* PadA;
+        wchar_t const* PadY;
+    };
+
+    /// How to get from a texture to its D3D11 view in one build of a game's exe (game/LE<n>.hpp's TextureView), read from a
+    /// memory dump of the running game. UTexture.Resource (its method table at ResourceTableRva) holds at Rhi, unaligned, a
+    /// pointer into the RHI texture: Base past the start of that object (its method table at RhiTableRva), and View before
+    /// the view.
+    struct TextureViewFields
+    {
+        unsigned long long ResourceTableRva;
+        unsigned Rhi;
+        unsigned long long RhiTableRva;
+        unsigned Base;
+        unsigned View;
+    };
+
+    /// A game's two GUI fonts, the light one and the bold one, as GFx movies right under a package hold them
+    /// (game/LE<n>.hpp's PauseFonts): each font's movie, and its name in that movie.
+    struct PauseFontNames
+    {
+        wchar_t const* Package;
+        wchar_t const* LightMovie;
+        char const* LightFont;
+        wchar_t const* BoldMovie;
+        char const* BoldFont;
+    };
+
+    /// One of those fonts for Overlay::UseGameFonts: the bytes of its movie, and its name.
+    struct GameFontSource
+    {
+        std::span<unsigned char const> Movie;
+        std::string_view Name;
+    };
 
     /// Where a game's fullscreen movie player keeps what Bink.cpp's movie lines show of it (game/LE<n>.hpp's MoviePlayer),
     /// read raw, for the logs only: the exe's RVA of the pointer to the player (GFullScreenMovie), and the offsets in the
@@ -72,11 +120,11 @@ namespace MelePause
         /// the drawn buttons stay without them. The first call counts, later ones are ignored. Any thread.
         void UseGameIcons(void* padA, void* padY);
 
-        /// LE1's look: the game's own fonts in place of Exo 2, from the GFx movie that holds them. They are turned into TrueType
+        /// A game's look: its own fonts in place of Exo 2, from the GFx movies that hold them. They are turned into TrueType
         /// here, in memory, with only the letters of the pause screen: call it after UseGameTexts. Both show or neither, and
-        /// Exo 2 stays with a movie that isn't the one we know (logged). The first good call counts. Game thread, under a guard:
-        /// the bytes are read in this call, and not after it.
-        void UseGameFonts(std::span<unsigned char const> movie);
+        /// Exo 2 stays with a movie that isn't one we know (logged). The first good call counts. Game thread, under a guard: the
+        /// bytes are read in this call, and not after it.
+        void UseGameFonts(GameFontSource light, GameFontSource bold);
 
         /// Game thread, each frame and at once when photo mode starts: the world pause screen shows (the HUD drawing), with
         /// photo mode's key where it opens; or it goes at once, with no fade (photo mode, the console).

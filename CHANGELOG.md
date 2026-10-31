@@ -3,6 +3,25 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## v17 (unreleased)
+
+Games: LE1, LE2, LE3
+
+LE2's pause screen takes the look of the game's menus, as LE1's did in v14 to v16. In LE1 and LE3 the ASI does the same as
+v16.
+
+- In LE2 the title sits on a band in the game's menu brown, with an orange rule along each edge, in its Biomass and its
+  gold, and each key stands left of its label, in Biomass and orange. The blur leans warm. The keycaps stay grey, in its
+  Myriad.
+- The labels are the game's own words, in its text language. The title stays MelePause's: LE2's string table has no word
+  for it in every language, and its old paused box has no string left.
+- The gamepad's A and Y are the game's own pictures, read from its renderer. If they can't be had, drawn discs show
+  instead, and the log says so.
+- The fonts are read from the game's memory, as in LE1, from one movie each. Nothing of them is in the ASI, and nothing is
+  written to disk. If they can't be read, Exo 2 stays and the log says so.
+- In LE2 the game's menu sound plays as the pause starts, and as a key ends it.
+- `package.sh` writes `dist/LE1MelePause-v17.zip`, `dist/LE2MelePause-v17.zip` and `dist/LE3MelePause-v17.zip`.
+
 ## v16 (unreleased)
 
 Games: LE1, LE2, LE3

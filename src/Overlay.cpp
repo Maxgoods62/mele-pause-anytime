@@ -26,13 +26,13 @@
 // The pause screen, drawn into the game's back buffer from a hooked IDXGISwapChain::Present on the render thread: over our
 // world pause and our movie pause the frame is blurred and darkened (Blur.cpp), "PAUSE" stands in a bracketed frame at the
 // centre, and the keys are named at the bottom left (resume, and photo mode where it opens), for the gamepad or the keyboard,
-// whichever pressed our keys last. In LE1 it wears the game's menu colours instead (OverlayLook::LE1): the title on a blue
-// band, each key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons,
+// whichever pressed our keys last. In LE1 and LE2 it wears the game's menu colours instead (OverlayLook, NativeLook): the title
+// on a band, each key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons,
 // UseGameFonts); nothing here touches a game object, only the D3D11 views of two of its textures and, on the game thread, the
-// bytes of its fonts' movie. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the
-// language the game's launcher passes, or in the game's own words where it gives them, and in LE1 in the game's own fonts,
-// turned into TrueType in memory (GameFont.cpp) and never written anywhere. Without the hook or after a fault the Canvas banner
-// of Pause.cpp is drawn instead (Drawing).
+// bytes of its fonts' movies. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the
+// language the game's launcher passes, or in the game's own words where it gives them, and in LE1 and LE2 in the game's own
+// fonts, turned into TrueType in memory (GameFont.cpp) and never written anywhere. Without the hook or after a fault the Canvas
+// banner of Pause.cpp is drawn instead (Drawing).
 namespace MelePause::Overlay
 {
     namespace
@@ -99,8 +99,8 @@ namespace MelePause::Overlay
         /// UseGameFonts'. Never freed: ImGui reads the files for as long as its atlas lives.
         struct GameFonts
         {
-            GameFontFile AeroLight;
-            GameFontFile BioMass;
+            GameFontFile Light;
+            GameFontFile Bold;
         };
         std::atomic<GameFonts const*> GameFontFiles{ nullptr };
 
@@ -223,13 +223,106 @@ namespace MelePause::Overlay
             float SizePerEm = 1;
         };
 
-        /// The lines of LE1's screen: in Exo 2 until the game's fonts come (TakeGameFonts).
-        struct Le1Styles
+        /// The lines of a game's screen: in Exo 2 until the game's fonts come (TakeGameFonts).
+        struct NativeStyles
         {
             LineStyle Title;
             LineStyle Label;
             LineStyle Key;
         };
+
+        // ! The games' looks
+        // ========================================
+
+        struct Rgb
+        {
+            int R, G, B;
+        };
+
+        /// A line as the game's movies set it, at 1080 lines (their 720-line stage times 1.5): in its bold font or its light one.
+        struct GameLine
+        {
+            bool Bold;
+            float Em;
+            float Spacing;
+        };
+
+        /// Where a gamepad button's disc lies in its square texture, in texels.
+        struct ButtonArt
+        {
+            float Size;
+            float CentreX;
+            float CentreY;
+            float Disc;
+        };
+
+        /// What a game's pause screen takes from its menus. Colours and sizes read from the game's files; nothing of them is
+        /// shipped.
+        struct NativeLook
+        {
+            char const* Name;
+            Rgb Title;
+            Rgb Label;
+            /// The band's rules and short ticks.
+            Rgb Line;
+            Rgb PanelTop;
+            Rgb PanelBottom;
+            /// A cast over the blurred frame, toward the game's menus.
+            Blur::Settings Blur;
+            GameLine TitleLine;
+            GameLine LabelLine;
+            GameLine KeyLine;
+            /// The height of the fonts' H, in EM.
+            float LightCaps;
+            float BoldCaps;
+            ButtonArt Button;
+        };
+
+        // LE1's menus (the GUI_SF movies): titles #CCFFFF, labels and rules #3199C6, panels a gradient from #174868 to #226E8F at
+        // about half opacity. The title as the paused box of WindowPop sets it, in $AeroLight (Tigensu_jpn) at 45; the labels as
+        // PC_MainWheel sets these two strings beside its B and Y buttons, in $BioMass (Biomass_jpn) at 15.21, with the 0.585 of
+        // its Resume field for both (its Photo Mode field states none); a key's name as the key bindings of PCOptions set it, in
+        // $AeroLight at 12 with a spacing of 0.5.
+        NativeLook const Le1Look{ .Name = "LE1",
+                                  .Title = { 0xCC, 0xFF, 0xFF },
+                                  .Label = { 0x31, 0x99, 0xC6 },
+                                  .Line = { 0x31, 0x99, 0xC6 },
+                                  .PanelTop = { 0x17, 0x48, 0x68 },
+                                  .PanelBottom = { 0x22, 0x6E, 0x8F },
+                                  .Blur = { .Tint = { 0.88f, 0.97f, 1.06f } },
+                                  .TitleLine = { false, 67.5f, 0 },
+                                  .LabelLine = { true, 22.8f, 0.9f },
+                                  .KeyLine = { false, 18.f, 0.75f },
+                                  .LightCaps = 0.8018f,
+                                  .BoldCaps = 0.8003f,
+                                  .Button = { 128, 64, 64, 95 } };
+
+        // LE2's pause wheel (PC_MainWheel): its title #FFCC66, the labels of its B and Y fields #FF9142, in $BioMass (here
+        // Biomass+DFGSoGei-W7), and its bands: on screen brown from #5F2C0C to #843E14 with an edge of #FF9C5B. The paused box
+        // of WindowPop is LE1's, left behind with no string: the title takes the wheel's font instead, at 1.5 times its 33, with
+        // its spacing. The labels as in LE1, which LE2's fields repeat. The keys in the light font, here Myriad: LE2 has no
+        // key bindings screen to copy, so at LE1's size.
+        NativeLook const Le2Look{ .Name = "LE2",
+                                  .Title = { 0xFF, 0xCC, 0x66 },
+                                  .Label = { 0xFF, 0x91, 0x42 },
+                                  .Line = { 0xFF, 0x9C, 0x5B },
+                                  .PanelTop = { 0x5F, 0x2C, 0x0C },
+                                  .PanelBottom = { 0x84, 0x3E, 0x14 },
+                                  .Blur = { .Tint = { 1.06f, 0.97f, 0.88f } },
+                                  .TitleLine = { true, 49.5f, 1.5f },
+                                  .LabelLine = { true, 22.8f, 0.9f },
+                                  .KeyLine = { false, 18.f, 0.75f },
+                                  .LightCaps = 0.6743f,
+                                  .BoldCaps = 0.8003f,
+                                  .Button = { 128, 61, 55.5f, 93 } };
+
+        /// Null for our own look.
+        NativeLook const* NativeLookOf(OverlayLook look)
+        {
+            if (look == OverlayLook::LE1) return &Le1Look;
+            if (look == OverlayLook::LE2) return &Le2Look;
+            return nullptr;
+        }
 
         struct RenderState
         {
@@ -261,7 +354,8 @@ namespace MelePause::Overlay
             IDXGISwapChain* LastChain = nullptr;
             bool IdleLogged = false;
             bool CleanLogged = false;
-            OverlayLook Look = OverlayLook::Own;
+            /// Null for our own look.
+            NativeLook const* Native = nullptr;
             Texts const* Text = &English;
             /// The language's texts with the game's words in place of ours (Text points here once they came).
             Texts Mixed = English;
@@ -272,7 +366,7 @@ namespace MelePause::Overlay
             bool GameIconsSeen = false;
             bool GameFontsSeen = false;
             Fonts Font;
-            Le1Styles Style;
+            NativeStyles Style;
         };
         /// Leaked on purpose: no D3D Release from DllMain at process exit, after d3d11.dll may have cleaned up.
         RenderState& R = *new RenderState{};
@@ -319,7 +413,7 @@ namespace MelePause::Overlay
             R.Style = { { R.Font.Regular, 58, 18 }, { R.Font.Regular, 28, 0 }, { R.Font.SemiBold, 19.55f, 0 } };
         }
 
-        ImFont* TitleFont() { return R.Look == OverlayLook::LE1 ? R.Style.Title.Font : R.Font.Light; }
+        ImFont* TitleFont() { return R.Native != nullptr ? R.Style.Title.Font : R.Font.Light; }
 
         /// The font has every letter of a text that has some.
         bool Drawable(ImFont* font, std::string const& text)
@@ -355,20 +449,6 @@ namespace MelePause::Overlay
                        game->Photo, photo);
         }
 
-        // The game's fonts on LE1's screen, set as its own movies set the same words, at 1080 lines (the movies' 720-line stage
-        // times 1.5): the title as the paused box of WindowPop sets it, in $AeroLight (Tigensu_jpn) at 45; the labels as
-        // PC_MainWheel sets these two strings beside its B and Y buttons, in $BioMass (Biomass_jpn) at 15.21, with the 0.585 of
-        // its Resume field for both (its Photo Mode field states none); a key's name as the key bindings of PCOptions set it, in
-        // $AeroLight at 12 with a spacing of 0.5.
-        constexpr float Le1TitleEm = 67.5f;
-        constexpr float Le1LabelEm = 22.8f;
-        constexpr float Le1LabelSpacing = 0.9f;
-        constexpr float Le1KeyEm = 18.f;
-        constexpr float Le1KeySpacing = 0.75f;
-        /// The height of the fonts' H, in EM.
-        constexpr float AeroLightCaps = 0.8018f;
-        constexpr float BioMassCaps = 0.8003f;
-
         /// Null if ImGui can't read it.
         ImFont* AddGameFont(GameFontFile const& file)
         {
@@ -378,10 +458,10 @@ namespace MelePause::Overlay
             return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(file.Ttf.data()), static_cast<int>(file.Ttf.size()), 32.f, &config);
         }
 
-        LineStyle GameStyle(ImFont* font, GameFontFile const& file, float em, float spacing, float caps)
+        LineStyle GameStyle(ImFont* font, GameFontFile const& file, GameLine const& line, float caps)
         {
             auto const perEm = file.Layout.SizePerEm;
-            return { font, em * perEm, spacing, caps / perEm, file.Layout.Kerning, perEm };
+            return { font, line.Em * perEm, line.Spacing, caps / perEm, file.Layout.Kerning, perEm };
         }
 
         /// Once UseGameFonts gave them: the game's fonts in place of Exo 2, both or neither. They must draw our words too, since
@@ -390,29 +470,33 @@ namespace MelePause::Overlay
         {
             if (R.GameFontsSeen) return;
             auto const game = GameFontFiles.load(std::memory_order_acquire);
-            if (game == nullptr) return;
+            if (game == nullptr || R.Native == nullptr) return;
             R.GameFontsSeen = true;
-            auto const aeroLight = AddGameFont(game->AeroLight);
-            auto const bioMass = AddGameFont(game->BioMass);
-            if (aeroLight == nullptr || bioMass == nullptr)
+            auto const light = AddGameFont(game->Light);
+            auto const bold = AddGameFont(game->Bold);
+            if (light == nullptr || bold == nullptr)
             {
                 LEASI_WARN("overlay: ImGui did not read the game's fonts: Exo 2 stays");
                 return;
             }
+            auto const& look = *R.Native;
+            auto const style = [&](GameLine const& line) {
+                return line.Bold ? GameStyle(bold, game->Bold, line, look.BoldCaps) : GameStyle(light, game->Light, line, look.LightCaps);
+            };
+            NativeStyles const styles{ style(look.TitleLine), style(look.LabelLine), style(look.KeyLine) };
             auto const& ours = LanguageTexts();
-            if (!Drawable(aeroLight, ours.Title) || !Drawable(bioMass, ours.Resume) || !Drawable(bioMass, ours.Photo) || !Drawable(aeroLight, ours.Space) ||
-                !Drawable(aeroLight, "F7"))
+            if (!Drawable(styles.Title.Font, ours.Title) || !Drawable(styles.Label.Font, ours.Resume) || !Drawable(styles.Label.Font, ours.Photo) ||
+                !Drawable(styles.Key.Font, ours.Space) || !Drawable(styles.Key.Font, "F7"))
             {
                 LEASI_WARN("overlay: the game's fonts lack letters of the pause screen: Exo 2 stays");
                 return;
             }
-            R.Style = { GameStyle(aeroLight, game->AeroLight, Le1TitleEm, 0, AeroLightCaps), GameStyle(bioMass, game->BioMass, Le1LabelEm, Le1LabelSpacing, BioMassCaps),
-                        GameStyle(aeroLight, game->AeroLight, Le1KeyEm, Le1KeySpacing, AeroLightCaps) };
+            R.Style = styles;
             // The game's words are judged again, by these fonts.
             R.Text = &ours;
             R.GameTextsSeen = false;
-            LEASI_INFO("overlay: the game's fonts: {} and {} bytes of TrueType, {} and {} kerning pairs: used", game->AeroLight.Ttf.size(), game->BioMass.Ttf.size(),
-                       game->AeroLight.Layout.Kerning.size(), game->BioMass.Layout.Kerning.size());
+            LEASI_INFO("overlay: the game's fonts: {} and {} bytes of TrueType, {} and {} kerning pairs: used", game->Light.Ttf.size(), game->Bold.Ttf.size(),
+                       game->Light.Layout.Kerning.size(), game->Bold.Layout.Kerning.size());
         }
 
         // ! The game's icons
@@ -633,8 +717,8 @@ namespace MelePause::Overlay
         float IconWidth(Icon icon, float radius, float k)
         {
             if (IsPad(icon)) return 2 * radius;
-            auto const textWidth = R.Look == OverlayLook::LE1 ? SpacedWidth(R.Style.Key, k, KeyLabel(icon))
-                                                              : R.Font.SemiBold->CalcTextSizeA(0.85f * radius, FLT_MAX, 0, KeyLabel(icon)).x;
+            auto const textWidth = R.Native != nullptr ? SpacedWidth(R.Style.Key, k, KeyLabel(icon))
+                                                       : R.Font.SemiBold->CalcTextSizeA(0.85f * radius, FLT_MAX, 0, KeyLabel(icon)).x;
             // The space bar reads as one: wider than a key, whatever its label.
             return std::max(icon == Icon::KeySpace ? 5 * radius : 2 * radius, textWidth + 22 * k);
         }
@@ -704,35 +788,18 @@ namespace MelePause::Overlay
             }
         }
 
-        // ! LE1's look
+        // ! A game's look
         // ========================================
 
-        // The colours of LE1's menus (the GUI_SF movies): titles #CCFFFF, labels and rules #3199C6, panels a gradient from
-        // #174868 to #226E8F at about half opacity. The gamepad's buttons are GUI_SF_SharedAssets' XBox_ControllerIcons
-        // themselves, drawn from the game's own views of them (UseGameIcons), or without those drawn to look like them (a disc
-        // in the button's colour, a dark rim, a dark letter). The keys are drawn as GUI_SF_PhotoMode's translucent grey keycaps.
-        // Colours read from the game's files; nothing of them is shipped.
+        // The gamepad's buttons are the game's own textures, drawn from its own views of them (UseGameIcons), or without those
+        // drawn to look like them (a disc in the button's colour, a dark rim, a dark letter). The keys are drawn as
+        // GUI_SF_PhotoMode's translucent grey keycaps, the same in LE1 and LE2.
 
-        struct Rgb
-        {
-            int R, G, B;
-        };
-
-        constexpr Rgb Le1Title{ 0xCC, 0xFF, 0xFF };
-        constexpr Rgb Le1Line{ 0x31, 0x99, 0xC6 };
-        constexpr Rgb Le1PanelTop{ 0x17, 0x48, 0x68 };
-        constexpr Rgb Le1PanelBottom{ 0x22, 0x6E, 0x8F };
-        constexpr Rgb Le1PadA{ 0x7B, 0x9E, 0x3F };
-        constexpr Rgb Le1PadY{ 0xFC, 0xD3, 0x05 };
-        constexpr Rgb Le1PadStart{ 0xCB, 0xFF, 0xFF };
-        constexpr Rgb Le1KeyTop{ 0x47, 0x49, 0x47 };
-        constexpr Rgb Le1KeyBottom{ 0x9C, 0x9A, 0x9C };
-
-        /// A cooler cast over the blurred frame, toward the game's blue menus.
-        Blur::Settings const Le1Blur{ .Tint = { 0.88f, 0.97f, 1.06f } };
-
-        /// The disc of a button texture is 95 of its 128 texels across, centred: the texture is this much larger than the disc.
-        constexpr float ButtonTextureScale = 128.f / 95.f;
+        constexpr Rgb DiscA{ 0x7B, 0x9E, 0x3F };
+        constexpr Rgb DiscY{ 0xFC, 0xD3, 0x05 };
+        constexpr Rgb DiscStart{ 0xCB, 0xFF, 0xFF };
+        constexpr Rgb KeyTop{ 0x47, 0x49, 0x47 };
+        constexpr Rgb KeyBottom{ 0x9C, 0x9A, 0x9C };
 
         ImU32 Colour(Rgb c, float alpha, float shade = 1)
         {
@@ -758,6 +825,7 @@ namespace MelePause::Overlay
         /// The centre: the title on a band like the game's menu bars, a rule along each edge, a short rule beyond each end.
         void DrawBandTitle(ImDrawList* list, float width, float height, float alpha, float k)
         {
+            auto const& look = *R.Native;
             auto const& style = R.Style.Title;
             auto const text = R.Text->Title;
             auto const textWidth = SpacedWidth(style, k, text);
@@ -769,19 +837,19 @@ namespace MelePause::Overlay
             ImVec2 const max{ centre.x + halfWidth, centre.y + halfHeight };
             auto const fade = 120 * k;
             auto const rule = std::max(1.f, 2 * k);
-            FadedStrip(list, min, max, fade, Le1PanelTop, Le1PanelBottom, 0.55f * alpha);
-            FadedStrip(list, min, { max.x, min.y + rule }, fade, Le1Line, Le1Line, 0.95f * alpha);
-            FadedStrip(list, { min.x, max.y - rule }, max, fade, Le1Line, Le1Line, 0.95f * alpha);
+            FadedStrip(list, min, max, fade, look.PanelTop, look.PanelBottom, 0.55f * alpha);
+            FadedStrip(list, min, { max.x, min.y + rule }, fade, look.Line, look.Line, 0.95f * alpha);
+            FadedStrip(list, { min.x, max.y - rule }, max, fade, look.Line, look.Line, 0.95f * alpha);
             for (auto const side : { -1.f, 1.f })
             {
                 auto const from = centre.x + side * (halfWidth + 14 * k);
-                list->AddLine({ from, centre.y }, { from + side * 26 * k, centre.y }, Colour(Le1Line, 0.9f * alpha), rule);
+                list->AddLine({ from, centre.y }, { from + side * 26 * k, centre.y }, Colour(look.Line, 0.9f * alpha), rule);
             }
 
             ImVec2 const at{ centre.x - textWidth * 0.5f, CapsTop(style, k, centre.y) };
             DrawSpaced(list, style, k, { at.x + 3 * k, at.y + 4 * k }, Colour(0, 0, 0, 0.25f * alpha), text);
             DrawSpaced(list, style, k, { at.x + 2 * k, at.y + 3 * k }, Colour(0, 0, 0, 0.4f * alpha), text);
-            DrawSpaced(list, style, k, at, Colour(Le1Title, alpha), text);
+            DrawSpaced(list, style, k, at, Colour(look.Title, alpha), text);
         }
 
         /// A key in the game's style, centred on c: a gamepad button (the game's texture of it where we have one, else a disc
@@ -794,12 +862,14 @@ namespace MelePause::Overlay
                 auto const texture = icon == Icon::PadA ? R.IconA : icon == Icon::PadY ? R.IconY : nullptr;
                 if (texture != nullptr)
                 {
-                    auto const half = radius * ButtonTextureScale;
-                    list->AddImage(reinterpret_cast<ImTextureID>(texture), { c.x - half, c.y - half }, { c.x + half, c.y + half }, { 0, 0 }, { 1, 1 },
+                    auto const& art = R.Native->Button;
+                    auto const texel = 2 * radius / art.Disc;
+                    ImVec2 const min{ c.x - art.CentreX * texel, c.y - art.CentreY * texel };
+                    list->AddImage(reinterpret_cast<ImTextureID>(texture), min, { min.x + art.Size * texel, min.y + art.Size * texel }, { 0, 0 }, { 1, 1 },
                                    Colour(255, 255, 255, alpha));
                     return;
                 }
-                auto const fill = icon == Icon::PadA ? Le1PadA : icon == Icon::PadY ? Le1PadY : Le1PadStart;
+                auto const fill = icon == Icon::PadA ? DiscA : icon == Icon::PadY ? DiscY : DiscStart;
                 list->AddCircleFilled(c, radius, Colour(0, 0, 0, 0.5f * alpha));
                 list->AddCircleFilled(c, 0.95f * radius, Colour(fill, alpha, 0.3f));
                 list->AddCircleFilled(c, 0.9f * radius, Colour(fill, alpha, 0.55f));
@@ -828,8 +898,8 @@ namespace MelePause::Overlay
             auto const rounding = 5 * k;
             list->AddRectFilled({ min.x + k, min.y + 2 * k }, { max.x + k, max.y + 2 * k }, Colour(0, 0, 0, 0.35f * alpha), rounding);
             auto const first = list->VtxBuffer.Size;
-            list->AddRectFilled(min, max, Colour(Le1KeyBottom, 0.62f * alpha), rounding);
-            ImGui::ShadeVertsLinearColorGradientKeepAlpha(list, first, list->VtxBuffer.Size, min, { min.x, max.y }, Colour(Le1KeyTop, 1), Colour(Le1KeyBottom, 1));
+            list->AddRectFilled(min, max, Colour(KeyBottom, 0.62f * alpha), rounding);
+            ImGui::ShadeVertsLinearColorGradientKeepAlpha(list, first, list->VtxBuffer.Size, min, { min.x, max.y }, Colour(KeyTop, 1), Colour(KeyBottom, 1));
             list->AddRect(min, max, Colour(0xBD, 0xBE, 0xBD, 0.45f * alpha), rounding, std::max(1.f, k));
             auto const& style = R.Style.Key;
             auto const width = SpacedWidth(style, k, label);
@@ -853,7 +923,7 @@ namespace MelePause::Overlay
                 auto const labelX = x + iconWidth + 14 * k;
                 ImVec2 const at{ labelX, CapsTop(style, k, y) };
                 DrawSpaced(list, style, k, { at.x + 2 * k, at.y + 2 * k }, Colour(0, 0, 0, 0.55f * alpha), p.Label);
-                DrawSpaced(list, style, k, at, Colour(Le1Line, alpha), p.Label);
+                DrawSpaced(list, style, k, at, Colour(R.Native->Label, alpha), p.Label);
                 x = labelX + SpacedWidth(style, k, p.Label) + 52 * k;
             }
         }
@@ -967,11 +1037,11 @@ namespace MelePause::Overlay
             auto const blur = Blur::Init(R.Device);
 
             R.GameChain = chain;
-            R.Look = Look.load(std::memory_order_relaxed);
+            R.Native = NativeLookOf(Look.load(std::memory_order_relaxed));
             R.Text = &LanguageTexts();
             QueryPerformanceCounter(&R.LastFrame);
             LEASI_INFO("overlay ready: back buffer {}x{} format {}, present thread {}, {} look, text in {}, {}, {}", desc.BufferDesc.Width,
-                       desc.BufferDesc.Height, static_cast<int>(desc.BufferDesc.Format), GetCurrentThreadId(), R.Look == OverlayLook::LE1 ? "LE1" : "our own",
+                       desc.BufferDesc.Height, static_cast<int>(desc.BufferDesc.Format), GetCurrentThreadId(), R.Native != nullptr ? R.Native->Name : "our own",
                        R.Text->Language, R.Font.Embedded ? "Exo 2 embedded" : "default font", blur ? "blur ready" : "NO blur (plain darkening)");
             LEASI_FLUSH();
             return true;
@@ -1122,8 +1192,7 @@ namespace MelePause::Overlay
             auto const height = static_cast<float>(desc.BufferDesc.Height);
             auto const alpha = Blur::Ease(R.Fade);
 
-            auto const le1 = R.Look == OverlayLook::LE1;
-            auto const blurred = Blur::Draw(R.Context, R.Back, R.Target, alpha, le1 ? Le1Blur : Blur::Settings{});
+            auto const blurred = Blur::Draw(R.Context, R.Back, R.Target, alpha, R.Native != nullptr ? R.Native->Blur : Blur::Settings{});
             if (!R.BlurLogged && !blurred)
             {
                 R.BlurLogged = true;
@@ -1142,7 +1211,7 @@ namespace MelePause::Overlay
             // Laid out for 1080 lines, like the game's HUD.
             auto const k = height / 1080.f;
             auto const pad = Pad.load(std::memory_order_relaxed);
-            if (le1)
+            if (R.Native != nullptr)
             {
                 DrawBandTitle(list, width, height, alpha, k);
                 DrawGamePrompts(list, height, alpha, k, pad);
@@ -1381,14 +1450,14 @@ namespace MelePause::Overlay
         if (!GameIcon.compare_exchange_strong(none, icons, std::memory_order_acq_rel)) delete icons;
     }
 
-    void UseGameFonts(std::span<unsigned char const> movie)
+    void UseGameFonts(GameFontSource light, GameFontSource bold)
     {
         auto const letters = ScreenLetters();
-        auto const fonts = new GameFonts{ ReadGameFont(movie, GameFont::AeroLight, letters), ReadGameFont(movie, GameFont::BioMass, letters) };
-        if (fonts->AeroLight.Ttf.empty() || fonts->BioMass.Ttf.empty())
+        auto const fonts = new GameFonts{ ReadGameFont(light.Movie, light.Name, letters), ReadGameFont(bold.Movie, bold.Name, letters) };
+        if (fonts->Light.Ttf.empty() || fonts->Bold.Ttf.empty())
         {
-            LEASI_WARN("the game's fonts movie is not what we know ($AeroLight {} bytes of TrueType, $BioMass {}): the pause screen keeps Exo 2", fonts->AeroLight.Ttf.size(),
-                       fonts->BioMass.Ttf.size());
+            LEASI_WARN("the game's fonts movies are not what we know ({}: {} bytes of TrueType, {}: {}): the pause screen keeps Exo 2", light.Name, fonts->Light.Ttf.size(),
+                       bold.Name, fonts->Bold.Ttf.size());
             delete fonts;
             return;
         }

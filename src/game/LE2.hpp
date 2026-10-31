@@ -11,10 +11,13 @@
 /// The Bink movie pause: on, for a movie whose sound we know (Game::Movies). 164 of the 166 movies in BioGame\Movies
 /// have no Bink audio track (nor do the DLC's): their sound is a Wwise event that BinkPause does not stop.
 #define MELEPAUSE_MOVIES 1
-/// The pause screen's texts are ours (Overlay.cpp), in the language the launcher passes.
-#define MELEPAUSE_GAME_TEXTS 0
-#define MELEPAUSE_GAME_ICONS 0
-#define MELEPAUSE_GAME_FONTS 0
+/// The pause screen's labels come from the game's string table (Game::PauseTexts), through SFXGame.GetSimpleString.
+#define MELEPAUSE_GAME_TEXTS 1
+/// The pause screen's gamepad buttons are the game's own textures (Game::PauseIcons), as its renderer holds them.
+#define MELEPAUSE_GAME_ICONS 1
+/// The pause screen's text is set in the game's own fonts, read from the GFx movies that hold them (Game::PauseFonts), once
+/// MELEPAUSE_GAME_TEXTS has given the words they are cut to.
+#define MELEPAUSE_GAME_FONTS 1
 
 namespace MelePause::Game
 {
@@ -122,12 +125,34 @@ namespace MelePause::Game
     // others: in the Prologue (BioD_ProNor ProNorEscape, Opening_End_Seq, ProNor_Pod2), the suicide mission (EndGm1), Tali's
     // and Grunt's arrivals; and visionavi's Matinee posts Play_cineanim_N7Spdr1_flashback_exit with it.
 
-    /// Our own pause screen, as in LE3: only LE1's wears its game's colours so far.
-    inline constexpr OverlayLook Look = OverlayLook::Own;
+    /// The pause screen in the colours of LE2's menus.
+    inline constexpr OverlayLook Look = OverlayLook::LE2;
 
-    /// No GUI sound as our world pause starts or ends: only LE1's plays one so far.
-    inline constexpr wchar_t const* PauseSound = nullptr;
-    inline constexpr wchar_t const* ResumeSound = nullptr;
+    /// The class that has GetSimpleString, a native that any such game object runs, and its parameters.
+    using StringGame = ASFXGame;
+    using GetSimpleStringParms = ASFXGame_execGetSimpleString_Parms;
+
+    /// The pause screen's words in the game's string table, in every language it ships: resume (157151, "Resume") and photo
+    /// mode (392221, "Photo Mode"). The title stays ours: the string of the paused box in WindowPop (170645) is not in LE2's
+    /// table, and "Pause" (174771) stays English in Russian, Polish and Japanese.
+    inline constexpr PauseTextIds PauseTexts{ 0, 157151, 392221 };
+
+    /// The gamepad's A and Y: in Startup_<lang>.pcc, its own art, ARGB where LE1's is DXT5.
+    inline constexpr PauseIconNames PauseIcons{ L"GUI_SF_Xbox_ControllerIcons", L"Xbox_ControllerIcons_IA", L"Xbox_ControllerIcons_I1" };
+
+    /// MassEffect2.exe's way from a texture to its view.
+    inline constexpr TextureViewFields TextureView{ 0x1086278, 0x24, 0x1229C50, 0xC, 0x10 };
+
+    /// A movie for each font, in Startup_<lang>.pcc, the same in all eight languages. The movies AeroLightFont and BioMassFont
+    /// beside them hold no outlines: only the _glyphs ones do, each a whole DefineFont3. LE2's light font is Myriad, not LE1's
+    /// Tigensu.
+    inline constexpr PauseFontNames PauseFonts{ L"GUI_SF_Fonts", L"AeroLightFont_glyphs", "Myriad Pro+DFGGothicP-W5", L"BioMassFont_glyphs",
+                                                "Biomass+DFGSoGei-W7" };
+
+    /// What ShowBrowserWheel and HideBrowserWheel play as the game's wheel opens and closes (BioSFManager.PlaySound): two Wwise
+    /// events, which play under the world pause with no hook.
+    inline constexpr wchar_t const* PauseSound = L"InGameGuiEnter";
+    inline constexpr wchar_t const* ResumeSound = L"InGameGuiExit";
 }
 
 #include "MelePause/game/KismetMovie.hpp"

@@ -968,9 +968,17 @@ namespace MelePause::PhotoMode
         parms.nmSound = SFXName{ row, 0 };
         CallMarkedGuiSound(gui, function, &parms);
         return true;
-#else
+#elif MELEPAUSE_PHOTO_GFX
         LEASI_UNUSED_2(pc, row);
         return false;
+#else
+        // A Wwise event, which plays under the pause: no hook to go through.
+        auto const gui = pc != nullptr ? PhotoGui::Find(pc) : nullptr;
+        if (gui == nullptr) return false;
+        static CachedFunction cache;
+        UBioSFManager_execPlaySound_Parms parms;
+        parms.nmSound = SFXName{ row, 0 };
+        return Call(gui, L"PlaySound", cache, parms) && parms.ReturnValue != 0;
 #endif
     }
 }

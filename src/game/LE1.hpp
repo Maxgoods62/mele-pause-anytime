@@ -103,47 +103,26 @@ namespace MelePause::Game
     /// The pause screen in the colours of LE1's menus.
     inline constexpr OverlayLook Look = OverlayLook::LE1;
 
+    /// The class that has GetSimpleString, a static native that any such game object runs, and its parameters.
+    using StringGame = ABioSPGame;
+    using GetSimpleStringParms = ABioSPGame_execGetSimpleString_Parms;
+
     /// The pause screen's words in the game's string table, in every language it ships: the title (170645, "PAUSED"; the
     /// game's own unused paused box shows it), resume (157151, "Resume") and photo mode (184397, "Photo Mode").
-    struct PauseTextIds
-    {
-        int Title;
-        int Resume;
-        int Photo;
-    };
     inline constexpr PauseTextIds PauseTexts{ 170645, 157151, 184397 };
 
-    /// The textures of the gamepad's A and Y, which the game's wheel and message boxes show: in Startup_<lang>.pcc, the same
-    /// in every language, loaded with the game and kept for good (RootSet).
-    struct PauseIconNames
-    {
-        wchar_t const* Package;
-        wchar_t const* PadA;
-        wchar_t const* PadY;
-    };
+    /// The gamepad's A and Y, which the game's wheel and message boxes show: in Startup_<lang>.pcc, the same in every
+    /// language, loaded with the game and kept for good (RootSet).
     inline constexpr PauseIconNames PauseIcons{ L"GUI_SF_SharedAssets", L"XBox_ControllerIcons_I4", L"XBox_ControllerIcons_I9" };
 
-    /// How to get from a texture to its D3D11 view in this build of MassEffect1.exe, read from a memory dump of the running
-    /// game. UTexture.Resource (its method table at ResourceTableRva) holds at Rhi, unaligned, a pointer into the RHI
-    /// texture: Base past the start of that object (its method table at RhiTableRva), and View before the view.
-    struct TextureViewFields
-    {
-        unsigned long long ResourceTableRva;
-        unsigned Rhi;
-        unsigned long long RhiTableRva;
-        unsigned Base;
-        unsigned View;
-    };
+    /// MassEffect1.exe's way from a texture to its view.
     inline constexpr TextureViewFields TextureView{ 0x10247A8, 0x24, 0x1211D20, 0xC, 0x10 };
 
-    /// The GFx movie that holds the game's GUI fonts: in Startup_<lang>.pcc, the same in every language but for its order in
-    /// Japanese, loaded with the game and kept for good (RootSet), its bytes in memory as in the package.
-    struct PauseFontNames
-    {
-        wchar_t const* Package;
-        wchar_t const* Movie;
-    };
-    inline constexpr PauseFontNames PauseFonts{ L"GUI_SF_Fonts", L"Fonts" };
+    /// The GFx movie that holds both fonts: in Startup_<lang>.pcc, the same in every language but for its order in Japanese,
+    /// loaded with the game and kept for good (RootSet), its bytes in memory as in the package. It has no export names:
+    /// "$AeroLight" and "$BioMass" are aliases in the game's exe, and ids and order differ between languages, so only the
+    /// fonts' names can be trusted.
+    inline constexpr PauseFontNames PauseFonts{ L"GUI_SF_Fonts", L"Fonts", "Tigensu_jpn", L"Fonts", "Biomass_jpn" };
 
     /// The GUI manager's sounds (GuiSounds 2DA rows, both snd_gui.c_snd_guiswish) our world pause plays as it starts and as
     /// a key ends it: the game's menus play them as they open and close. Null: none.

@@ -228,7 +228,7 @@ namespace MelePause
         {
             if (row == nullptr) return;
             auto const played = PhotoMode::PlayGuiSound(pc, row);
-            LEASI_INFO("GUI sound {}: {}", ToUtf8(row), played ? "played" : "NOT played (no GUI manager, or the GUI sound hooks are off)");
+            LEASI_INFO("GUI sound {}: {}", ToUtf8(row), played ? "played" : "NOT played (no GUI manager, the GUI sound hooks are off, or the game refused it)");
         }
 
         bool PauseWorld(ABioPlayerController* pc, unsigned char mode)
@@ -882,31 +882,32 @@ namespace MelePause
         }
 
 #if MELEPAUSE_GAME_TEXTS
-        /// Frames on which ReadGameTexts may try, each with a BioSPGame: the strings are there from the first.
+        /// Frames on which ReadGameTexts may try, each with a game object: the strings are there from the first.
         constexpr unsigned MaxGameTextTries = 3;
 
-        /// One string of the game's string table, in its language: BioSPGame.GetSimpleString, a static native that any
-        /// BioSPGame runs. The FString it returns is the game's allocation, left to it: a few bytes, once a session.
-        std::string GameString(ABioSPGame* game, int id)
+        /// One string of the game's string table, in its language: GetSimpleString, a native that any game object of that class
+        /// runs. The FString it returns is the game's allocation, left to it: a few bytes, once a session. Empty for id 0.
+        std::string GameString(StringGame* game, int id)
         {
+            if (id == 0) return {};
             static CachedFunction cache;
-            ABioSPGame_execGetSimpleString_Parms parms;
+            GetSimpleStringParms parms;
             parms.StrRef = id;
             parms.bParse = 0;
             if (!Call(game, L"GetSimpleString", cache, parms)) return {};
             return ToUtf8(std::wstring_view(parms.ReturnValue.Chars(), parms.ReturnValue.Length()));
         }
 
-        /// Once the world has a BioSPGame: the pause screen's words from the game's string table (game/LE<n>.hpp's PauseTexts),
+        /// Once the world has a game object: the pause screen's words from the game's string table (game/LE<n>.hpp's PauseTexts),
         /// for Overlay.cpp. Tried again on the next frames while none comes back.
         void ReadGameTexts(ABioPlayerController* pc)
         {
             auto const world = pc != nullptr ? pc->WorldInfo : nullptr;
             auto const game = world != nullptr ? world->Game : nullptr;
-            if (game == nullptr || !game->IsA(ABioSPGame::StaticClass())) return;
+            if (game == nullptr || !game->IsA(StringGame::StaticClass())) return;
             // Counted first: a fault in the calls costs a try, not a frame's checks each frame.
             G.GameTextTries++;
-            auto const sp = static_cast<ABioSPGame*>(game);
+            auto const sp = static_cast<StringGame*>(game);
             auto title = GameString(sp, PauseTexts.Title);
             auto resume = GameString(sp, PauseTexts.Resume);
             auto photo = GameString(sp, PauseTexts.Photo);
@@ -983,23 +984,35 @@ namespace MelePause
 #endif
 
 #if MELEPAUSE_GAME_FONTS
-        /// Frames on which ReadGameFonts may try: the movie loads with the game, before the first HUD.
+        /// Frames on which ReadGameFonts may try: the movies load with the game, before the first HUD.
         constexpr unsigned MaxGameFontTries = 3;
 
-        /// The bytes of the movie that holds the game's fonts (game/LE<n>.hpp's PauseFonts), which Overlay.cpp converts in this
+        /// The bytes of a font's movie, empty without them.
+        std::span<unsigned char const> MovieBytes(UGFxMovieInfo* movie)
+        {
+            if (movie == nullptr) return {};
+            return { movie->RawData.GetData(), static_cast<std::size_t>(movie->RawData.Count()) };
+        }
+
+        /// The bytes of the movies that hold the game's fonts (game/LE<n>.hpp's PauseFonts), which Overlay.cpp converts in this
         /// call. Tried again on the next frames while there are none; a fault ends the tries (AfterPostRender).
         void ReadGameFonts()
         {
             G.GameFontTries++;
-            auto const movie = FindObject<UGFxMovieInfo>(SFXName{ PauseFonts.Package, 0 }, SFXName{ PauseFonts.Movie, 0 });
-            auto const count = movie != nullptr ? movie->RawData.Count() : 0;
-            if (count == 0)
+            SFXName const package{ PauseFonts.Package, 0 };
+            auto const lightMovie = FindObject<UGFxMovieInfo>(package, SFXName{ PauseFonts.LightMovie, 0 });
+            auto const boldMovie = FindObject<UGFxMovieInfo>(package, SFXName{ PauseFonts.BoldMovie, 0 });
+            auto const light = MovieBytes(lightMovie);
+            auto const bold = MovieBytes(boldMovie);
+            if (light.empty() || bold.empty())
             {
-                if (G.GameFontTries >= MaxGameFontTries) LEASI_WARN("no bytes from the game's fonts movie ({}): the pause screen keeps Exo 2", PathOf(movie));
+                if (G.GameFontTries >= MaxGameFontTries)
+                    LEASI_WARN("no bytes from the game's fonts movies ({}: {}, {}: {}): the pause screen keeps Exo 2", PathOf(lightMovie), light.size(), PathOf(boldMovie),
+                               bold.size());
                 return;
             }
             G.GameFontTries = MaxGameFontTries;
-            Overlay::UseGameFonts({ movie->RawData.GetData(), static_cast<std::size_t>(count) });
+            Overlay::UseGameFonts({ light, PauseFonts.LightFont }, { bold, PauseFonts.BoldFont });
         }
 
         void ReadGameFontsEntry(void*) { ReadGameFonts(); }

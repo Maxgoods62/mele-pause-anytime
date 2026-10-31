@@ -5,18 +5,20 @@ From v9 it has the movie pause, and from v10 photo mode under the pause. `./buil
 `LE2MelePause.asi` from the same sources as LE1, against LE2's SDK, with the movie pause limited to movies whose sound
 MelePause knows. On 2026-10-29 the v7 build passed the sheet below with keyboard and mouse and with a gamepad
 ([testing.md](../testing.md#le2)). On 2026-10-30 a test build of the movie pause passed S3 in the relay movie and the
-Citadel arrival, and a test build of photo mode passed S6 in conversations ([testing.md](../testing.md#le2)).
+Citadel arrival, and a test build of photo mode passed S6 in conversations ([testing.md](../testing.md#le2)). The game's
+look ([Pause screen](#pause-screen)) came with v17, which passed in a conversation on 2026-10-31
+([testing.md](../testing.md#le2)).
 
 ## What the build has
 
 | Part | LE2 build | LE1 build |
 |---|---|---|
 | Esc and Start pause a conversation or an in-engine cutscene; skip guard; Space and A resume | compiled in | on |
-| Pause screen, and the Canvas banner where it cannot draw | compiled in, MelePause's own look (`Game::Look`), its words in the launcher's language (`MELEPAUSE_GAME_TEXTS` off), no sound, its own buttons (`MELEPAUSE_GAME_ICONS` off), Exo 2 (`MELEPAUSE_GAME_FONTS` off) | on, from v14 in the game's menu colours, with the game's words (`MELEPAUSE_GAME_TEXTS` on) and its menu sound, from v15 with its gamepad buttons (`MELEPAUSE_GAME_ICONS` on), from v16 in its fonts (`MELEPAUSE_GAME_FONTS` on) |
+| Pause screen, and the Canvas banner where it cannot draw | on, from v17 in the game's menu colours, with its words for the labels (`MELEPAUSE_GAME_TEXTS` on), its menu sound, its gamepad buttons (`MELEPAUSE_GAME_ICONS` on) and its fonts (`MELEPAUSE_GAME_FONTS` on) | on, from v14 in the game's menu colours, with the game's words (`MELEPAUSE_GAME_TEXTS` on) and its menu sound, from v15 with its gamepad buttons (`MELEPAUSE_GAME_ICONS` on), from v16 in its fonts (`MELEPAUSE_GAME_FONTS` on) |
 | Movie pause (`MELEPAUSE_MOVIES`) | on for a movie whose sound MelePause knows (below); Esc and Start in any other movie stay the game's. Space and X skip a movie the game lets skip | on |
 | Photo mode under the pause (`MELEPAUSE_PHOTO`) | on, with three MassEffect2.exe natives ([Photo mode](#photo-mode)) | on |
 | Photo mode's GUI sounds made realtime (`MELEPAUSE_PHOTO_GUI_SOUNDS`) | off: they are Wwise events and play under the world pause as they are | on |
-| File | `LE2MelePause.asi`, Windows version `16.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `16.0.4.0` |
+| File | `LE2MelePause.asi`, Windows version `17.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `17.0.4.0` |
 
 Why the movie pause takes only some movies:
 
@@ -107,6 +109,21 @@ behind is the gameplay camera, `SFXCameraMode_Explore`. The switch to the photo 
 start turns the controller to that camera's view, 24 degrees off the shot in one log; the entry puts it back on the
 shot ([how-it-works.md](../how-it-works.md#photo-mode-entering), step 7).
 
+## Pause screen
+
+`src/game/LE2.hpp` holds the names and ids, `Le2Look` in `src/Overlay.cpp` the colours and sizes. All of them were read
+from the game's files, and none of those files is shipped.
+
+| What | LE2 | LE1 |
+|---|---|---|
+| Colours | title `#FFCC66`, labels `#FF9142` (`PC_MainWheel`), rules `#FF9C5B`, band `#5F2C0C` to `#843E14` (sampled from the game's wheel on screen, its fills in the movie are the same family), blur toward warm | title `#CCFFFF`, labels and rules `#3199C6`, band `#174868` to `#226E8F`, blur toward blue |
+| Title | $BioMass 49.5 at 1080 lines, spacing 1.5: 1.5 times `PC_MainWheel`'s `guiTitleText` (22 at 720 lines, spacing 1) | $AeroLight 67.5, as `WindowPop` sets it |
+| Fonts | `GUI_SF_Fonts.AeroLightFont_glyphs` (Myriad Pro+DFGGothicP-W5) and `.BioMassFont_glyphs` (Biomass+DFGSoGei-W7), byte-identical in all 8 languages. `AeroLightFont` and `BioMassFont` hold no outlines | `GUI_SF_Fonts.Fonts`, both in one movie |
+| Words | resume 157151, photo mode 392221, title ours: 170645 is "No Data" (`WindowPop`'s paused box is dead in LE2) and 174771 "Pause" stays English in Russian, Polish and Japanese | 170645, 157151, 184397 |
+| Gamepad buttons | `GUI_SF_Xbox_ControllerIcons.Xbox_ControllerIcons_IA` and `_I1`, 128x128, disc 93 texels across, centred at (61, 55.5): off-centre, so `ButtonArt` places it | `GUI_SF_SharedAssets.XBox_ControllerIcons_I4` and `_I9`, disc 95, centred |
+| Sound | `BioSFManager.PlaySound` with `InGameGuiEnter` and `InGameGuiExit`, as `MassEffectGuiManager.ShowBrowserWheel` and `HideBrowserWheel` | `PlayGuiSound` with the same names, through the GUI sound hooks |
+| `GetSimpleString` | `SFXGame`, which `BioSPGame` extends | `BioSPGame` |
+
 ## Sheet for a first run
 
 The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` needs the ASI loader in ME2
@@ -139,6 +156,10 @@ The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` 
   ends in "LE2MelePause N ready" (N is `ASI_VERSION`). At the first frame, "first BioHUD.PostRender" with the same
   controller for the HUD owner and GEngine. Each press: "Esc pressed: mode 5 (Conversation)" and the like, with LE2's
   mode names.
+- S8, the look. The title on a brown band in gold, the labels in orange, each key left of its label. With a gamepad, the
+  game's A and Y at the height of their labels, not drawn discs. "overlay ready: ..., LE2 look", "overlay: the game's
+  gamepad icons: A fine, Y fine: used", "overlay: the game's fonts: ... used", "overlay: the game's texts: title \"\" kept
+  ours, resume ... used, photo mode ... used", and "GUI sound InGameGuiEnter: played" after "world paused".
 
 ## Open questions
 

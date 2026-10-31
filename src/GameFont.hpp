@@ -5,21 +5,14 @@
 #include <string_view>
 #include <vector>
 
-// The game's own GUI fonts for ImGui. GUI_SF_Fonts.Fonts is a GFX movie that holds them as vector outlines; this turns one of
-// them into a TrueType file in memory, which ImGui's stb_truetype can read. Plain C++ with no game or ImGui types, so it runs
-// anywhere. Nothing here keeps a state, writes a file or touches a global.
+// A game's own GUI fonts for ImGui. GFX movies hold them as vector outlines (game/LE<n>.hpp's PauseFonts); this turns one of them
+// into a TrueType file in memory, which ImGui's stb_truetype can read. Plain C++ with no game or ImGui types, so it runs anywhere.
+// Nothing here keeps a state, writes a file or touches a global.
 //
 // The movie is untrusted input: a mod can replace it. Every read is checked and every size capped, and anything unexpected
 // gives an empty result, never a crash. The span itself must be valid memory: that is the caller's part.
 namespace MelePause::GameFont
 {
-    /// The three fonts, by their names in the movie. The movie has no ExportAssets tag: "$BioMass", "$AeroLight" and "$Myriad"
-    /// are aliases in the game's exe, and the movie does not know them. Ids and order differ between languages (JA swaps two):
-    /// only the names can be trusted.
-    inline constexpr std::string_view BioMass = "Biomass_jpn";
-    inline constexpr std::string_view AeroLight = "Tigensu_jpn";
-    inline constexpr std::string_view Myriad = "Myriad Pro+DFGGothicP-W5";
-
     /// The kerning of two neighbouring characters, in EM: add it to the pen after <see cref="Left"/>.
     struct KerningPair
     {
