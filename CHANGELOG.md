@@ -3,6 +3,18 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## v15 (unreleased)
+
+Games: LE1, LE2, LE3
+
+LE1's pause screen shows the game's own gamepad buttons. In LE2 and LE3 the ASI does the same as v14.
+
+- In LE1 the A and Y of the gamepad prompts are the game's own pictures (`GUI_SF_SharedAssets`, the ones its wheel and
+  message boxes show), read from its renderer as the game runs. Nothing of them is in the ASI. If they can't be had (another
+  build of the game, another D3D11 device), the discs of v14 are drawn instead, and the log says so.
+- The keyboard's keys stay drawn: the game has no F7 key picture, and its space bar has no word on it.
+- `package.sh` writes `dist/LE1MelePause-v15.zip`, `dist/LE2MelePause-v15.zip` and `dist/LE3MelePause-v15.zip`.
+
 ## v14 (unreleased)
 
 Games: LE1, LE2, LE3

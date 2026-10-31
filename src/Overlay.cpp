@@ -24,10 +24,10 @@
 // world pause and our movie pause the frame is blurred and darkened (Blur.cpp), "PAUSE" stands in a bracketed frame at the
 // centre, and the keys are named at the bottom left (resume, and photo mode where it opens), for the gamepad or the keyboard,
 // whichever pressed our keys last. In LE1 it wears the game's menu colours instead (OverlayLook::LE1): the title on a blue
-// band, each key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts); nothing here
-// touches a game object. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the
-// language the game's launcher passes, or in the game's own words where it gives them. Without the hook or after a fault the
-// Canvas banner of Pause.cpp is drawn instead (Drawing).
+// band, each key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons);
+// nothing here touches a game object, only the D3D11 views of two of its textures. The text is set in Exo 2 (SIL OFL 1.1,
+// fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the language the game's launcher passes, or in the game's own words
+// where it gives them. Without the hook or after a fault the Canvas banner of Pause.cpp is drawn instead (Drawing).
 namespace MelePause::Overlay
 {
     namespace
@@ -75,6 +75,14 @@ namespace MelePause::Overlay
             std::string Photo;
         };
         std::atomic<GameTexts const*> GameText{ nullptr };
+
+        /// UseGameIcons', not checked yet. Never freed, like GameTexts.
+        struct GameIcons
+        {
+            void* PadA;
+            void* PadY;
+        };
+        std::atomic<GameIcons const*> GameIcon{ nullptr };
 
         // ! Text
         // ========================================
@@ -184,6 +192,10 @@ namespace MelePause::Overlay
             /// The language's texts with the game's words in place of ours (Text points here once they came).
             Texts Mixed = English;
             bool GameTextsSeen = false;
+            /// The game's gamepad buttons, referenced from when they passed TakeView: both or neither.
+            ID3D11ShaderResourceView* IconA = nullptr;
+            ID3D11ShaderResourceView* IconY = nullptr;
+            bool GameIconsSeen = false;
             Fonts Font;
         };
         /// Leaked on purpose: no D3D Release from DllMain at process exit, after d3d11.dll may have cleaned up.
@@ -262,6 +274,100 @@ namespace MelePause::Overlay
             R.Text = &R.Mixed;
             LEASI_INFO("overlay: the game's texts: title \"{}\" {}, resume \"{}\" {}, photo mode \"{}\" {}", game->Title, title, game->Resume, resume,
                        game->Photo, photo);
+        }
+
+        // ! The game's icons
+        // ========================================
+
+        /// The first word of what may not be an object, or null where it can't be read. No C++ object may live in this frame.
+        void const* TableOf(void const* object)
+        {
+            __try
+            {
+                return *static_cast<void const* const*>(object);
+            }
+            __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+            {
+                return nullptr;
+            }
+        }
+
+        /// The method table of this device's views, read off a view of our own on a one-pixel texture. Null without one. Any
+        /// overlay or driver in between shows here as it shows on the game's.
+        void const* ViewTable()
+        {
+            D3D11_TEXTURE2D_DESC desc{};
+            desc.Width = 1;
+            desc.Height = 1;
+            desc.MipLevels = 1;
+            desc.ArraySize = 1;
+            desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            desc.SampleDesc.Count = 1;
+            desc.Usage = D3D11_USAGE_DEFAULT;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            ID3D11Texture2D* texture = nullptr;
+            if (FAILED(R.Device->CreateTexture2D(&desc, nullptr, &texture)) || texture == nullptr) return nullptr;
+            ID3D11ShaderResourceView* view = nullptr;
+            auto const hr = R.Device->CreateShaderResourceView(texture, nullptr, &view);
+            texture->Release();
+            if (FAILED(hr) || view == nullptr) return nullptr;
+            auto const table = TableOf(view);
+            view->Release();
+            return table;
+        }
+
+        /// The game's pointer, referenced, if it is a view as ours are, of a 2D texture, on the device we draw with. Nothing of
+        /// it is called before its method table matched.
+        ID3D11ShaderResourceView* TakeView(void* candidate, void const* table)
+        {
+            if (candidate == nullptr || table == nullptr || TableOf(candidate) != table) return nullptr;
+            auto const view = static_cast<ID3D11ShaderResourceView*>(candidate);
+            ID3D11Device* device = nullptr;
+            view->GetDevice(&device);
+            if (device != nullptr) device->Release();
+            D3D11_SHADER_RESOURCE_VIEW_DESC desc{};
+            view->GetDesc(&desc);
+            if (device != R.Device || desc.ViewDimension != D3D11_SRV_DIMENSION_TEXTURE2D) return nullptr;
+            view->AddRef();
+            return view;
+        }
+
+        void ReleaseGameIcons()
+        {
+            if (R.IconA != nullptr) R.IconA->Release();
+            if (R.IconY != nullptr) R.IconY->Release();
+            R.IconA = nullptr;
+            R.IconY = nullptr;
+        }
+
+        /// Once UseGameIcons gave them: the game's buttons in place of the drawn ones, both or neither. A view stays ours from
+        /// here on, whatever the game does with its texture.
+        void TakeGameIcons()
+        {
+            auto const game = GameIcon.load(std::memory_order_acquire);
+            if (game == nullptr) return;
+            R.GameIconsSeen = true;
+            auto const table = ViewTable();
+            R.IconA = TakeView(game->PadA, table);
+            R.IconY = TakeView(game->PadY, table);
+            auto const a = R.IconA != nullptr;
+            auto const y = R.IconY != nullptr;
+            if (!a || !y) ReleaseGameIcons();
+            LEASI_INFO("overlay: the game's gamepad icons: A {}, Y {}: {}", a ? "fine" : "refused", y ? "fine" : "refused", a && y ? "used" : "ours drawn instead");
+        }
+
+        /// A fault in there costs the icons, not the overlay. No C++ object may live in this frame.
+        bool GuardedGameIcons()
+        {
+            __try
+            {
+                TakeGameIcons();
+                return true;
+            }
+            __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+            {
+                return false;
+            }
         }
 
         // ! Drawing
@@ -446,9 +552,10 @@ namespace MelePause::Overlay
         // ========================================
 
         // The colours of LE1's menus (the GUI_SF movies): titles #CCFFFF, labels and rules #3199C6, panels a gradient from
-        // #174868 to #226E8F at about half opacity. The gamepad's buttons are drawn as GUI_SF_SharedAssets' XBox_ControllerIcons
-        // look (a disc in the button's colour, a dark rim, a dark letter), the keys as GUI_SF_PhotoMode's translucent grey
-        // keycaps. Colours read from the game's files; nothing of them is shipped.
+        // #174868 to #226E8F at about half opacity. The gamepad's buttons are GUI_SF_SharedAssets' XBox_ControllerIcons
+        // themselves, drawn from the game's own views of them (UseGameIcons), or without those drawn to look like them (a disc
+        // in the button's colour, a dark rim, a dark letter). The keys are drawn as GUI_SF_PhotoMode's translucent grey keycaps.
+        // Colours read from the game's files; nothing of them is shipped.
 
         struct Rgb
         {
@@ -467,6 +574,9 @@ namespace MelePause::Overlay
 
         /// A cooler cast over the blurred frame, toward the game's blue menus.
         Blur::Settings const Le1Blur{ .Tint = { 0.88f, 0.97f, 1.06f } };
+
+        /// The disc of a button texture is 95 of its 128 texels across, centred: the texture is this much larger than the disc.
+        constexpr float ButtonTextureScale = 128.f / 95.f;
 
         ImU32 Colour(Rgb c, float alpha, float shade = 1)
         {
@@ -521,12 +631,21 @@ namespace MelePause::Overlay
             DrawSpaced(list, font, size, at, Colour(Le1Title, alpha), text, spacing);
         }
 
-        /// A key as the game draws it, centred on c: a gamepad button (a disc in its colour, darker toward a black rim, its
-        /// letter dark; Start pale with three dark lines), or a keycap (translucent grey, lighter toward the bottom).
+        /// A key in the game's style, centred on c: a gamepad button (the game's texture of it where we have one, else a disc
+        /// in its colour, darker toward a black rim, its letter dark; Start pale with three dark lines), or a keycap (translucent
+        /// grey as the art is stored, lighter toward the bottom).
         void DrawGameIcon(ImDrawList* list, Icon icon, ImVec2 c, float radius, float alpha, float k)
         {
             if (IsPad(icon))
             {
+                auto const texture = icon == Icon::PadA ? R.IconA : icon == Icon::PadY ? R.IconY : nullptr;
+                if (texture != nullptr)
+                {
+                    auto const half = radius * ButtonTextureScale;
+                    list->AddImage(reinterpret_cast<ImTextureID>(texture), { c.x - half, c.y - half }, { c.x + half, c.y + half }, { 0, 0 }, { 1, 1 },
+                                   Colour(255, 255, 255, alpha));
+                    return;
+                }
                 auto const fill = icon == Icon::PadA ? Le1PadA : icon == Icon::PadY ? Le1PadY : Le1PadStart;
                 list->AddCircleFilled(c, radius, Colour(0, 0, 0, 0.5f * alpha));
                 list->AddCircleFilled(c, 0.95f * radius, Colour(fill, alpha, 0.3f));
@@ -715,6 +834,8 @@ namespace MelePause::Overlay
             if (device != R.Device)
             {
                 ImGui_ImplDX11_Shutdown();
+                if (R.IconA != nullptr) LEASI_INFO("overlay: the game's gamepad icons were on the old device: ours drawn from now on");
+                ReleaseGameIcons();
                 R.Context->Release();
                 R.Device->Release();
                 R.Device = device;
@@ -760,6 +881,13 @@ namespace MelePause::Overlay
             }
             R.GameChainSeen = now;
             PresentThread.store(GetCurrentThreadId(), std::memory_order_relaxed);
+
+            // As soon as they come, not at the first pause: a reference from here on keeps them.
+            if (!R.GameIconsSeen && !GuardedGameIcons())
+            {
+                ReleaseGameIcons();
+                LEASI_ERROR("overlay: access violation while checking the game's gamepad icons: ours drawn instead");
+            }
 
             LARGE_INTEGER time, frequency;
             QueryPerformanceCounter(&time);
@@ -1088,6 +1216,13 @@ namespace MelePause::Overlay
         auto const texts = new GameTexts{ std::move(title), std::move(resume), std::move(photo) };
         GameTexts const* none = nullptr;
         if (!GameText.compare_exchange_strong(none, texts, std::memory_order_acq_rel)) delete texts;
+    }
+
+    void UseGameIcons(void* padA, void* padY)
+    {
+        auto const icons = new GameIcons{ padA, padY };
+        GameIcons const* none = nullptr;
+        if (!GameIcon.compare_exchange_strong(none, icons, std::memory_order_acq_rel)) delete icons;
     }
 
     void MovieIdle()

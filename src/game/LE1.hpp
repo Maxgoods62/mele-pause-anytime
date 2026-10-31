@@ -13,6 +13,8 @@
 /// The pause screen's title and labels come from the game's string table (Game::PauseTexts), through
 /// BioSPGame.GetSimpleString.
 #define MELEPAUSE_GAME_TEXTS 1
+/// The pause screen's gamepad buttons are the game's own textures (Game::PauseIcons), as its renderer holds them.
+#define MELEPAUSE_GAME_ICONS 1
 
 namespace MelePause::Game
 {
@@ -107,6 +109,29 @@ namespace MelePause::Game
         int Photo;
     };
     inline constexpr PauseTextIds PauseTexts{ 170645, 157151, 184397 };
+
+    /// The textures of the gamepad's A and Y, which the game's wheel and message boxes show: in Startup_<lang>.pcc, the same
+    /// in every language, loaded with the game and kept for good (RootSet).
+    struct PauseIconNames
+    {
+        wchar_t const* Package;
+        wchar_t const* PadA;
+        wchar_t const* PadY;
+    };
+    inline constexpr PauseIconNames PauseIcons{ L"GUI_SF_SharedAssets", L"XBox_ControllerIcons_I4", L"XBox_ControllerIcons_I9" };
+
+    /// How to get from a texture to its D3D11 view in this build of MassEffect1.exe, read from a memory dump of the running
+    /// game. UTexture.Resource (its method table at ResourceTableRva) holds at Rhi, unaligned, a pointer into the RHI
+    /// texture: Base past the start of that object (its method table at RhiTableRva), and View before the view.
+    struct TextureViewFields
+    {
+        unsigned long long ResourceTableRva;
+        unsigned Rhi;
+        unsigned long long RhiTableRva;
+        unsigned Base;
+        unsigned View;
+    };
+    inline constexpr TextureViewFields TextureView{ 0x10247A8, 0x24, 0x1211D20, 0xC, 0x10 };
 
     /// The GUI manager's sounds (GuiSounds 2DA rows, both snd_gui.c_snd_guiswish) our world pause plays as it starts and as
     /// a key ends it: the game's menus play them as they open and close. Null: none.

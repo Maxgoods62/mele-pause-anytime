@@ -118,6 +118,8 @@ namespace MelePause
 
             /// Frames on which ReadGameTexts tried (MaxGameTextTries once it is done).
             unsigned GameTextTries = 0;
+            /// Frames on which ReadGameIcons tried (MaxGameIconTries once it is done).
+            unsigned GameIconTries = 0;
         };
         State G;
 
@@ -919,6 +921,62 @@ namespace MelePause
         void ReadGameTextsEntry(void* context) { ReadGameTexts(static_cast<ABioPlayerController*>(context)); }
 #endif
 
+#if MELEPAUSE_GAME_ICONS
+        /// Frames on which ReadGameIcons may try: the textures load with the game, before the first HUD.
+        constexpr unsigned MaxGameIconTries = 3;
+
+        /// The 2D texture of that name right under that package, from the object list, or null. Names are compared first:
+        /// the list holds nearly 200,000 objects.
+        UTexture2D* FindTexture(SFXName const& package, SFXName const& name)
+        {
+            auto& objects = *UObject::GObjObjects;
+            for (UINT i = 0; i < objects.Count(); i++)
+            {
+                auto const object = objects.GetData()[i];
+                if (object != nullptr && object->Name == name && object->Outer != nullptr && object->Outer->Name == package
+                    && object->IsA(UTexture2D::StaticClass()))
+                    return static_cast<UTexture2D*>(object);
+            }
+            return nullptr;
+        }
+
+        /// The texture's D3D11 view, read raw (Game::TextureView), or null where a method table isn't the expected one
+        /// (another build of the game) or nothing is there yet. Overlay.cpp checks the view itself.
+        void* ViewOf(UTexture2D* texture)
+        {
+            using Bytes = unsigned char const*;
+            auto const exe = reinterpret_cast<Bytes>(GetModuleHandleW(nullptr));
+            auto const resource = static_cast<Bytes>(texture->Resource);
+            if (resource == nullptr || *reinterpret_cast<Bytes const*>(resource) != exe + TextureView.ResourceTableRva) return nullptr;
+            auto const inner = *reinterpret_cast<Bytes const*>(resource + TextureView.Rhi);
+            if (inner == nullptr || *reinterpret_cast<Bytes const*>(inner - TextureView.Base) != exe + TextureView.RhiTableRva) return nullptr;
+            return *reinterpret_cast<void* const*>(inner + TextureView.View);
+        }
+
+        /// The views of the gamepad's buttons (game/LE<n>.hpp's PauseIcons), for Overlay.cpp. Tried again on the next frames
+        /// while one is missing; a fault ends the tries (AfterPostRender).
+        void ReadGameIcons()
+        {
+            G.GameIconTries++;
+            SFXName const package{ PauseIcons.Package, 0 };
+            auto const padA = FindTexture(package, SFXName{ PauseIcons.PadA, 0 });
+            auto const padY = FindTexture(package, SFXName{ PauseIcons.PadY, 0 });
+            auto const viewA = padA != nullptr ? ViewOf(padA) : nullptr;
+            auto const viewY = padY != nullptr ? ViewOf(padY) : nullptr;
+            if (viewA == nullptr || viewY == nullptr)
+            {
+                if (G.GameIconTries >= MaxGameIconTries)
+                    LEASI_WARN("no view of the game's gamepad icons (texture A {}, Y {}; view A {}, Y {}): the pause screen draws its own", PathOf(padA), PathOf(padY),
+                               viewA != nullptr, viewY != nullptr);
+                return;
+            }
+            G.GameIconTries = MaxGameIconTries;
+            Overlay::UseGameIcons(viewA, viewY);
+        }
+
+        void ReadGameIconsEntry(void*) { ReadGameIcons(); }
+#endif
+
         /// The checks of each frame. The banner is drawn apart, under its own guard: a fault while drawing must not stop them.
         void AfterPostRender(ABioHUD* hud)
         {
@@ -957,6 +1015,13 @@ namespace MelePause
             {
                 G.GameTextTries = MaxGameTextTries;
                 LEASI_ERROR("access violation while reading the game's string table: the pause screen keeps its own texts");
+            }
+#endif
+#if MELEPAUSE_GAME_ICONS
+            if (G.GameIconTries < MaxGameIconTries && !Guarded(ReadGameIconsEntry, nullptr))
+            {
+                G.GameIconTries = MaxGameIconTries;
+                LEASI_ERROR("access violation while reading the game's gamepad icons: the pause screen draws its own");
             }
 #endif
         }

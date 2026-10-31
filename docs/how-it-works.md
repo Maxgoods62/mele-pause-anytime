@@ -151,8 +151,9 @@ leaves Photo, the photo session ends.
 
 `Overlay.cpp` draws into the game's back buffer from the hooked `IDXGISwapChain::Present`, on the render thread. The
 blur passes come first (`Blur.cpp`, which sets back every piece of D3D11 state it changes), then the text and icons with
-Dear ImGui. Nothing there touches a game object: the game thread publishes what to show each frame after
-`BioHUD.PostRender`. Sizes follow the back buffer's height, laid out for 1080 lines.
+Dear ImGui. Nothing there touches a game object, only the D3D11 views of two of its textures in LE1: the game thread
+publishes what to show each frame after `BioHUD.PostRender`. Sizes follow the back buffer's height, laid out for 1080
+lines.
 
 It shows under the world pause while the HUD draws (a flag left over a load or a fault shows nothing), and under the
 movie pause while the HUD does not. It is gone at once, with no fade, when photo mode starts (before photo mode shows
@@ -167,9 +168,21 @@ thread. A window resized while the movie is paused keeps its frame until the mov
 The look is the game's (`Game::Look` in `game/LE<n>.hpp`). LE2 and LE3 have MelePause's own: "PAUSE" in a bracketed
 frame, each key over its label. LE1 has the colours of its menus: the title on a band (a blue gradient at 55 % opacity
 with a #3199C6 rule along each edge, both fading out over 120 px at each end) in #CCFFFF, each key left of its label in
-#3199C6, the gamepad's buttons as discs in the colours of the game's own button icons, the keys as translucent grey
-keycaps, and the blur tinted toward blue. Nothing of the game's files is drawn or shipped: the colours were read from
-them.
+#3199C6, the game's own gamepad buttons, the keys as translucent grey keycaps, and the blur tinted toward blue. The
+colours were read from the game's files; nothing of those files is shipped.
+
+In LE1 the gamepad's A and Y are the game's textures (`MELEPAUSE_GAME_ICONS`), `XBox_ControllerIcons_I4` and `_I9` of
+`GUI_SF_SharedAssets`, which load with `Startup_<lang>.pcc` and stay for good (RootSet). Their CPU copy is freed, so
+the overlay draws the view the renderer already holds, read at the first HUD frame. `Pause.cpp` finds them by name in
+the object list and follows `UTexture.Resource` to the RHI texture and its view (`Game::TextureView`), checking the
+method table at each of the two steps, under its own access violation guard. While a view is missing it tries again on
+the next two frames; a fault ends the tries. It hands the raw pointers to the overlay (`Overlay::UseGameIcons`). On the
+render thread, a pointer counts as a view only if its method table is that of a view the overlay makes itself on the
+same device; only then is it called. It must also be on the device the overlay draws with and be of a 2D texture. The
+overlay then holds a reference. These checks have their own guard too: a fault costs the icons, not the overlay. Both
+views pass or neither is used: the drawn discs stay, also after a change of device. The textures are BC3_UNORM with one mip
+and no sRGB view, so ImGui samples them as they are. The disc is 95 of a texture's 128 texels across, so the texture
+is drawn 128/95 larger than the disc.
 
 In LE1 the words come from the game's string table (`MELEPAUSE_GAME_TEXTS`). On the first frame whose world has a
 `BioSPGame`, `Pause.cpp` calls the static native `BioSPGame.GetSimpleString` for the ids in `Game::PauseTexts` (170645,

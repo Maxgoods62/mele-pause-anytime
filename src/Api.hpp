@@ -67,6 +67,11 @@ namespace MelePause
         /// later ones are ignored. Any thread.
         void UseGameTexts(std::string title, std::string resume, std::string photo);
 
+        /// The game's own gamepad buttons, as the views its renderer holds of their textures (ID3D11ShaderResourceView):
+        /// pointers read raw from the game, which the render thread checks before it calls them. Both show or neither, and
+        /// the drawn buttons stay without them. The first call counts, later ones are ignored. Any thread.
+        void UseGameIcons(void* padA, void* padY);
+
         /// Game thread, each frame and at once when photo mode starts: the world pause screen shows (the HUD drawing), with
         /// photo mode's key where it opens; or it goes at once, with no fade (photo mode, the console).
         void Publish(bool worldPause, bool offerPhoto, bool hideNow);
