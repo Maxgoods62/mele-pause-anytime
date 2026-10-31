@@ -868,6 +868,22 @@ namespace MelePause::PhotoMode
             }
             return component;
         }
+
+        /// The GUI manager's PlayGuiSound with its sound marked as our photo session's are. The depth is put back in
+        /// __finally: a fault caught further up must not leave every later sound bNonRealtime. No C++ object may live in this
+        /// frame.
+        void CallMarkedGuiSound(UObject* gui, UFunction* function, void* parms)
+        {
+            GuiSoundDepth++;
+            __try
+            {
+                CallGame(gui, function, parms);
+            }
+            __finally
+            {
+                GuiSoundDepth--;
+            }
+        }
 #endif
 
         /// Hooks one native after checking its first bytes: another build of the game gets a warning (saying what photo mode
@@ -939,6 +955,24 @@ namespace MelePause::PhotoMode
     void Tick(ABioPlayerController* pc, float dt) { PhotoTick(pc, dt); }
 
     void Frame() { PhotoFrame(); }
+
+    bool PlayGuiSound(ABioPlayerController* pc, wchar_t const* row)
+    {
+#if MELEPAUSE_PHOTO_GUI_SOUNDS
+        auto const gui = SoundHooked && pc != nullptr ? PhotoGui::Find(pc) : nullptr;
+        if (gui == nullptr) return false;
+        static CachedFunction cache;
+        auto const function = FunctionOf(gui, L"PlayGuiSound", cache);
+        if (function == nullptr) return false;
+        UBioSFManager_execPlayGuiSound_Parms parms;
+        parms.nmSound = SFXName{ row, 0 };
+        CallMarkedGuiSound(gui, function, &parms);
+        return true;
+#else
+        LEASI_UNUSED_2(pc, row);
+        return false;
+#endif
+    }
 }
 
 #endif

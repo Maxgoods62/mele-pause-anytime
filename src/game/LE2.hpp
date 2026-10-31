@@ -11,6 +11,8 @@
 /// The Bink movie pause: on, for a movie whose sound we know (Game::Movies). 164 of the 166 movies in BioGame\Movies
 /// have no Bink audio track (nor do the DLC's): their sound is a Wwise event that BinkPause does not stop.
 #define MELEPAUSE_MOVIES 1
+/// The pause screen's texts are ours (Overlay.cpp), in the language the launcher passes.
+#define MELEPAUSE_GAME_TEXTS 0
 
 namespace MelePause::Game
 {
@@ -117,6 +119,13 @@ namespace MelePause::Game
     // hubs' arrivals and departures. Voice lines, conversations, music cues, Matinees and Play_ events run beside the
     // others: in the Prologue (BioD_ProNor ProNorEscape, Opening_End_Seq, ProNor_Pod2), the suicide mission (EndGm1), Tali's
     // and Grunt's arrivals; and visionavi's Matinee posts Play_cineanim_N7Spdr1_flashback_exit with it.
+
+    /// Our own pause screen, as in LE3: only LE1's wears its game's colours so far.
+    inline constexpr OverlayLook Look = OverlayLook::Own;
+
+    /// No GUI sound as our world pause starts or ends: only LE1's plays one so far.
+    inline constexpr wchar_t const* PauseSound = nullptr;
+    inline constexpr wchar_t const* ResumeSound = nullptr;
 }
 
 #include "MelePause/game/KismetMovie.hpp"

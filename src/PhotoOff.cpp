@@ -36,6 +36,12 @@ namespace MelePause::PhotoMode
     void Tick(ABioPlayerController* pc, float dt) { LEASI_UNUSED_2(pc, dt); }
 
     void Frame() {}
+
+    bool PlayGuiSound(ABioPlayerController* pc, wchar_t const* row)
+    {
+        LEASI_UNUSED_2(pc, row);
+        return false;
+    }
 }
 
 #endif

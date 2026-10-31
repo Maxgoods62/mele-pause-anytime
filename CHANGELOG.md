@@ -3,6 +3,26 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## v14 (unreleased)
+
+Games: LE1, LE2, LE3
+
+LE1's pause screen takes the look, the words and the sound of the game's menus. In LE2 and LE3 the ASI does the same as
+v13, apart from the log.
+
+- In LE1 the title stands on a band like the game's menu bars (dark blue, a light blue rule along each edge, fading out
+  at both ends), in the game's pale cyan. Each key is drawn left of its label as the game draws its buttons: green A and
+  yellow Y discs with a dark letter, grey keycaps for Space and F7. The labels are in the game's label blue, and the
+  blur is a little bluer.
+- In LE1 the title and the two labels are the game's own words, read from its string table in its language: "PAUSED",
+  "Resume" and "Photo Mode" in English, "PAUSE", "Continuer" and "Mode photo" in French. A word Exo 2 cannot draw
+  (Japanese) keeps MelePause's English; the space bar's keycap keeps MelePause's name for it.
+- In LE1 the pause plays the game's menu sound (`snd_gui.c_snd_guiswish`, the GUI manager's `InGameGuiEnter`), at once
+  under the pause, as photo mode's sounds do. A key that resumes plays its `InGameGuiExit` as the world runs again. The
+  movie pause plays none.
+- The font is still Exo 2: the game's own fonts and button pictures are left for later.
+- `package.sh` writes `dist/LE1MelePause-v14.zip`, `dist/LE2MelePause-v14.zip` and `dist/LE3MelePause-v14.zip`.
+
 ## v13 (unreleased)
 
 Games: LE1, LE2, LE3

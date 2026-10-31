@@ -115,6 +115,9 @@ namespace MelePause
             bool PlayerChecked = false;
             unsigned InputMovieSerial = 0;
             unsigned HudMovieSerial = 0;
+
+            /// Frames on which ReadGameTexts tried (MaxGameTextTries once it is done).
+            unsigned GameTextTries = 0;
         };
         State G;
 
@@ -215,6 +218,15 @@ namespace MelePause
             G.PausedMode = NoMode;
         }
 
+        /// The game's GUI sound for our world pause starting or ending (game/LE<n>.hpp; none for null): the pause's heard at
+        /// once under it, the resume's once the world runs again.
+        void PlayPauseSound(ABioPlayerController* pc, wchar_t const* row)
+        {
+            if (row == nullptr) return;
+            auto const played = PhotoMode::PlayGuiSound(pc, row);
+            LEASI_INFO("GUI sound {}: {}", ToUtf8(row), played ? "played" : "NOT played (no GUI manager, or the GUI sound hooks are off)");
+        }
+
         bool PauseWorld(ABioPlayerController* pc, unsigned char mode)
         {
             auto const world = pc->WorldInfo;
@@ -234,12 +246,14 @@ namespace MelePause
             G.PausedAt = GetTickCount64();
             LEASI_INFO("world paused in mode {} ({}): Pauser {} ({}), {}, thread {}", mode, ModeName(mode), PathOf(world->Pauser),
                        static_cast<void const*>(world->Pauser), PathOf(world), GetCurrentThreadId());
+            PlayPauseSound(pc, PauseSound);
             return true;
         }
 
         /// Toggles the pause back through the controller that paused, only while the world is still paused: Pause on an
-        /// unpaused world would pause it again. Our state ends before the call, so a fault inside it can't leave it armed.
-        void ResumeWorld(char const* why)
+        /// unpaused world would pause it again. Our state ends before the call, so a fault inside it can't leave it armed. A
+        /// key's resume (<paramref name="byKey"/>) plays the game's sound for it.
+        void ResumeWorld(char const* why, bool byKey = false)
         {
             if (!G.WorldPaused) return;
             auto const mode = G.PausedMode;
@@ -265,8 +279,11 @@ namespace MelePause
                 LEASI_WARN("world resume ({}) after {:.1f} s: still paused by {} ({}): another pause holds the world (Steam overlay?)", why,
                            HeldFor(since), PathOf(pauser), static_cast<void const*>(pauser));
             else
+            {
                 LEASI_INFO("world resumed ({}) after {:.1f} s, paused in mode {} ({}), thread {}", why, HeldFor(since), mode, ModeName(mode),
                            GetCurrentThreadId());
+                if (byKey) PlayPauseSound(controller, ResumeSound);
+            }
         }
 
         // ! World pause: checks
@@ -379,7 +396,7 @@ namespace MelePause
             }
             else if (G.WorldPaused)
             {
-                ResumeWorld(KeyName(key));
+                ResumeWorld(KeyName(key), true);
                 action = "resumed the world";
             }
             else if ((mode == ModeConversation || mode == ModeCinematic) && world != nullptr && pauser == nullptr)
@@ -598,7 +615,7 @@ namespace MelePause
                 Validate(pc, KeyName(key));
                 if (G.WorldPaused)
                 {
-                    ResumeWorld(KeyName(key));
+                    ResumeWorld(KeyName(key), true);
                     action = "resumed the world";
                 }
             }
@@ -860,6 +877,48 @@ namespace MelePause
             Overlay::Publish(G.WorldPaused && !hidden, G.WorldPaused && !hidden && photo, hidden);
         }
 
+#if MELEPAUSE_GAME_TEXTS
+        /// Frames on which ReadGameTexts may try, each with a BioSPGame: the strings are there from the first.
+        constexpr unsigned MaxGameTextTries = 3;
+
+        /// One string of the game's string table, in its language: BioSPGame.GetSimpleString, a static native that any
+        /// BioSPGame runs. The FString it returns is the game's allocation, left to it: a few bytes, once a session.
+        std::string GameString(ABioSPGame* game, int id)
+        {
+            static CachedFunction cache;
+            ABioSPGame_execGetSimpleString_Parms parms;
+            parms.StrRef = id;
+            parms.bParse = 0;
+            if (!Call(game, L"GetSimpleString", cache, parms)) return {};
+            return ToUtf8(std::wstring_view(parms.ReturnValue.Chars(), parms.ReturnValue.Length()));
+        }
+
+        /// Once the world has a BioSPGame: the pause screen's words from the game's string table (game/LE<n>.hpp's PauseTexts),
+        /// for Overlay.cpp. Tried again on the next frames while none comes back.
+        void ReadGameTexts(ABioPlayerController* pc)
+        {
+            auto const world = pc != nullptr ? pc->WorldInfo : nullptr;
+            auto const game = world != nullptr ? world->Game : nullptr;
+            if (game == nullptr || !game->IsA(ABioSPGame::StaticClass())) return;
+            // Counted first: a fault in the calls costs a try, not a frame's checks each frame.
+            G.GameTextTries++;
+            auto const sp = static_cast<ABioSPGame*>(game);
+            auto title = GameString(sp, PauseTexts.Title);
+            auto resume = GameString(sp, PauseTexts.Resume);
+            auto photo = GameString(sp, PauseTexts.Photo);
+            if (title.empty() && resume.empty() && photo.empty())
+            {
+                if (G.GameTextTries >= MaxGameTextTries) LEASI_WARN("the game's string table gave none of the pause screen's texts: ours stay");
+                return;
+            }
+            G.GameTextTries = MaxGameTextTries;
+            LEASI_INFO("the game's string table: title \"{}\", resume \"{}\", photo mode \"{}\"", title, resume, photo);
+            Overlay::UseGameTexts(std::move(title), std::move(resume), std::move(photo));
+        }
+
+        void ReadGameTextsEntry(void* context) { ReadGameTexts(static_cast<ABioPlayerController*>(context)); }
+#endif
+
         /// The checks of each frame. The banner is drawn apart, under its own guard: a fault while drawing must not stop them.
         void AfterPostRender(ABioHUD* hud)
         {
@@ -891,6 +950,15 @@ namespace MelePause
             Validate(pc, "frame");
             PhotoMode::Frame();
             PublishOverlay(pc);
+
+#if MELEPAUSE_GAME_TEXTS
+            // Under its own guard: a fault there ends the reading, not the checks above.
+            if (G.GameTextTries < MaxGameTextTries && !Guarded(ReadGameTextsEntry, pc))
+            {
+                G.GameTextTries = MaxGameTextTries;
+                LEASI_ERROR("access violation while reading the game's string table: the pause screen keeps its own texts");
+            }
+#endif
         }
 
         // ! Guarded entry points

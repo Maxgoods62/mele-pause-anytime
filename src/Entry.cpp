@@ -55,7 +55,7 @@ SPI_IMPLEMENT_ATTACH
                                          ::MelePause::Game::MovieSkipKeyAs);
     }
     else LEASI_INFO("movie pause: not in the {} build", SDK_TARGET_NAME_A);
-    ::MelePause::Overlay::Install(Init);
+    ::MelePause::Overlay::Install(Init, ::MelePause::Game::Look);
 
     LEASI_INFO("{} {} ready", SDK_TARGET_NAME_A ASI_NAME_NO_SPACE_A, VERSION_STRING_A);
     LEASI_FLUSH();

@@ -26,8 +26,10 @@ Before a version is tagged, each game its CHANGELOG entry names (the `Games:` li
 
 - S1, conversation. During a spoken line, press Esc. Picture, voice, music and lips stop. The picture blurs and darkens,
   "PAUSE" stands in its frame at the centre, and "Space Resume" and "F7 Photo mode" are at the bottom left, in the
-  game's language. Wait a few seconds, then press Esc: the line resumes at the same word, in sync, and the picture is
-  sharp again. Then the same with Start on a gamepad: the pause screen shows the A icon, and the Y icon where photo
+  game's language. In LE1 the title stands on a blue band in the game's words ("PAUSED" in English, "PAUSE" in French),
+  the keys are left of their labels ("Resume" and "Photo Mode", "Continuer" and "Mode photo"), and the game's menu
+  swish plays as the pause starts. Wait a few seconds, then press Esc: the line resumes at the same word, in sync, the
+  picture is sharp again, and in LE1 the swish plays again. Then the same with Start on a gamepad: the pause screen shows the A icon, and the Y icon where photo
   mode opens.
 - S2, in-engine cutscene, such as the Noveria undocking scene: the same, Esc, wait, Esc, then Start, wait, Start.
 - S3, galaxy map travel movie (a trip within a cluster, or through a relay). Half a second into it, press Esc. The
@@ -58,9 +60,9 @@ Before a version is tagged, each game its CHANGELOG entry names (the `Games:` li
 | When | Lines |
 |---|---|
 | At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ..." (LE2: "GUI sounds: not hooked in the LE2 build, ..."), or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>MelePause N ready", where N is the build's `ASI_VERSION`. In a build without the movie pause or photo mode, "movie pause: not in the LE<n> build" stands for the Bink line, and "photo mode under the pause: not in the LE<n> build" for the three hook lines. |
-| At the first frame | "overlay ready: back buffer ..., text in <language>, Exo 2 embedded, blur ready". "first BioHUD.PostRender": the HUD owner and GEngine's controller should be the same. |
+| At the first frame | "overlay ready: back buffer ..., LE1 look (LE2 and LE3: our own look), text in <language>, Exo 2 embedded, blur ready". "first BioHUD.PostRender": the HUD owner and GEngine's controller should be the same. LE1: "the game's string table: title ..., resume ..., photo mode ..." with the three words in the game's language. |
 | Each press that reaches `Console.InputKey` | One "Esc pressed: mode ..." or "Start pressed: mode ..." line, with what it did. |
-| Each pause | "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts", then "overlay hidden" ("at once" for photo mode). |
+| Each pause | "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts", then "overlay hidden" ("at once" for photo mode). LE1: at the first one, "overlay: the game's texts: ..." with "used" after each word (Japanese: "kept ours"); after "world paused", "GUI sound InGameGuiEnter: played"; after a key's "world resumed", "GUI sound InGameGuiExit: played". |
 | Photo mode | "photo mode enter, mode ..." (the view target, the shot, the subtitle). "photo mode on: ..." (the camera mode; how far the controller was from the shot, in units and degrees, before it was put on it; and how far the view is: 0 uu and 0 deg expected), with "pad prompts" after Y or "keyboard prompts" after F7. Then "Y pressed ...: left photo mode", "photo mode exit: ignore counters ...", and "photo mode left (Y) after ... s: mode 5 (Conversation), camera mode ...". The last one gives the number of static binds set back, of camera steps, and what got past the pause: "N key and M axis event(s), G GUI tick(s) (0 changed the Pauser: put back), S GUI sound(s)". M is in the thousands after moving a stick or the mouse, G about one per frame, S at least one per screenshot. |
 | A movie | Its open line ("from a file"); "is a fullscreen movie" with the HUD's silence; "Console.InputKey runs while movie #N is open" (the game mode during it); one "Esc pressed, read on thread ..." line per press (movie pause or resume asked); the PAUSED and RESUMED lines and the reports between them; "Esc released during a fullscreen movie ..." lines; its close line. |
 | Start in a movie | "Start held (or released) during a fullscreen movie, its press unseen here on thread ...: movie pause asked" (or resume asked). |
@@ -79,6 +81,10 @@ v7 code before the rename passed the full sheet with keyboard and mouse and with
 stayed vanilla. The renamed `LE1MelePause.asi` passed it with keyboard and mouse; the gamepad steps were not rerun.
 The v8 file from `LE1MelePause-v8.zip` passed the smoke sheet with keyboard and mouse and with a gamepad: Esc and
 Start in conversations and cutscenes, the travel movie paused with Start and resumed with A, photo mode with Y and F7.
+On 2026-10-31, v14's code before its last fix (the GUI sound depth put back after a fault, which changes nothing
+without one), in French, in a Feros conversation: the LE1 look showed with the game's words ("PAUSE", "Continuer",
+"Mode photo", all three "used" in the log), and the menu swish was heard as the pause started and as Space resumed.
+The gamepad prompts (A and Y discs) showed too. The final v14 build has not run in the game yet.
 
 | Area | Result |
 |---|---|

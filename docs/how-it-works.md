@@ -35,7 +35,7 @@ shared hook manager, which MeleBridge and other ASIs use too. The sources:
 | `ProcessEvent`: `ShowMenuGui` on `SFXGameModePhoto` | Dropped while MelePause's photo mode is on: photo mode's own Esc and Start binds would hide it and open the pause menu over the conversation. |
 | Native: `BioPlayerInput::InputKey`, `UPlayerInput::InputAxis`, `UBioSFManager::Tick` (`Photo.cpp`; RVAs LE1 0xc6de70, 0x68bc40, 0x193bc0; LE2 0xa62e00, 0x541790, 0x1a07c0) | While photo mode is on, a call on the controller's `PlayerInput` or on the GUI manager runs with `WorldInfo.Pauser` cleared, and the `Pauser` is put back after. The engine drops input and stops the GUI under the world pause. |
 | Native (LE3): `BioPlayerInput::InputKey`, `UPlayerInput::InputAxis` (RVAs 0xa5a040, 0x54ac90) and the GFx movies' `Tick` (0x92d7a0) (`Photo.cpp`) | The input hooks as in LE1 and LE2. The GFx movies' `Tick` checks no `Pauser` but advances most movies on `WorldInfo.TimeSeconds`, which stands still under the pause: while photo mode is on, `GfxClock` moves `TimeSeconds` by the real time around each call, then puts it and the movies' stamps back ([games/LE3.md](games/LE3.md#photo-mode)). |
-| Native: `UBioSFManager::PlayGuiSound` (RVA 0x191ee0), `UAudioDevice::CreateComponent` (RVA 0x2ff470) (LE1, `Photo.cpp`) | While photo mode is on, the sound the GUI manager's `PlayGuiSound` makes is marked `bNonRealtime`: under the world pause the audio device starts only those. LE2's GUI sounds are Wwise events, which play under the world pause: no hook. |
+| Native: `UBioSFManager::PlayGuiSound` (RVA 0x191ee0), `UAudioDevice::CreateComponent` (RVA 0x2ff470) (LE1, `Photo.cpp`) | While photo mode is on, and while MelePause plays the pause's own sound (`PhotoMode::PlayGuiSound`), the sound the GUI manager's `PlayGuiSound` makes is marked `bNonRealtime`: under the world pause the audio device starts only those. LE2's GUI sounds are Wwise events, which play under the world pause: no hook. |
 | `dxgi`: `IDXGISwapChain::Present`, `IDXGISwapChain1::Present1`, `IDXGISwapChain::ResizeBuffers` (`Overlay.cpp`) | Draws the pause screen into the back buffer before the frame is shown, once per frame, whichever of the two presents it. Releases its views of the back buffer before a resize. The methods' addresses come from a throwaway device and swap chain made at start. |
 | `bink2w64_original.dll`: `BinkOpen`, `BinkOpenWithOptions`, `BinkClose`, `BinkWait`, `BinkDoFrame`, `BinkDoFrameAsync` (`Bink.cpp`) | Tracks the open movies (from a file or from memory) and logs who plays them. `BinkWait` also reads Esc, toggles the movie pause on its press and applies a pause; reads Space, which only resumes; and, while the movie stays paused, presents the pause screen. `BinkDoFrame` and `BinkDoFrameAsync` count calls and apply a resume, never a pause. |
 
@@ -163,6 +163,23 @@ is silent, each frame is copied before anything is drawn on it. While the movie 
 nothing for 0.1 s, the movie's `BinkWait` hook puts that frame back and presents it with the pause screen over it, 60
 times a second at most. It does this only on the thread that presents the game's frames, which in LE1 is the movie's
 thread. A window resized while the movie is paused keeps its frame until the movie resumes.
+
+The look is the game's (`Game::Look` in `game/LE<n>.hpp`). LE2 and LE3 have MelePause's own: "PAUSE" in a bracketed
+frame, each key over its label. LE1 has the colours of its menus: the title on a band (a blue gradient at 55 % opacity
+with a #3199C6 rule along each edge, both fading out over 120 px at each end) in #CCFFFF, each key left of its label in
+#3199C6, the gamepad's buttons as discs in the colours of the game's own button icons, the keys as translucent grey
+keycaps, and the blur tinted toward blue. Nothing of the game's files is drawn or shipped: the colours were read from
+them.
+
+In LE1 the words come from the game's string table (`MELEPAUSE_GAME_TEXTS`). On the first frame whose world has a
+`BioSPGame`, `Pause.cpp` calls the static native `BioSPGame.GetSimpleString` for the ids in `Game::PauseTexts` (170645,
+157151, 184397), tried again on the next two frames while all three come back empty, under its own access violation
+guard. It hands them to the overlay as UTF-8 (`Overlay::UseGameTexts`), which takes each one whose every letter is in the
+embedded font (`ImFont::IsGlyphInFont`) and keeps its own for the others. The pause, and a key's resume, then play
+the GUI manager's `PlayGuiSound` with the rows in `Game::PauseSound` and `Game::ResumeSound` (`InGameGuiEnter` and
+`InGameGuiExit`, both `snd_gui.c_snd_guiswish`). The GUI sound hooks mark the sound `bNonRealtime`, so the pause's is
+heard at once under the world pause; the resume's plays once the world is unpaused. The movie pause plays none: its keys are read on the movie's thread, which cannot call
+the game.
 
 Exo 2 is compiled into `LE<n>MelePause.asi` as resources (`src/MelePause.rc`), Latin and Cyrillic only, about 68 KB a
 weight. The shaders compile at the game's first frame with Windows' own `d3dcompiler_47.dll`. Dear ImGui's import of it

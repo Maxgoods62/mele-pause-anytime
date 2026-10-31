@@ -35,4 +35,8 @@ namespace MelePause::PhotoMode
 
     /// Each frame, after Check: what the game may have set again, and the camera when no PlayerTick drove it.
     void Frame();
+
+    /// One of the controller's GUI manager's sounds (a GuiSounds 2DA row), played at once also under the world pause: the
+    /// GUI sound hooks make its component bNonRealtime. False, nothing played, without those hooks or a GUI manager.
+    bool PlayGuiSound(ABioPlayerController* pc, wchar_t const* row);
 }

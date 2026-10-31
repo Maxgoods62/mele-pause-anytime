@@ -11,6 +11,8 @@
 /// The Bink movie pause: on, for a Kismet movie whose sound we know (Game::Movies). Of the 334 .bik in BioGame\Movies and
 /// the DLC, only StartupLoop_a carries a Bink audio track: every other movie's sound is a Wwise event.
 #define MELEPAUSE_MOVIES 1
+/// The pause screen's texts are ours (Overlay.cpp), in the language the launcher passes.
+#define MELEPAUSE_GAME_TEXTS 0
 
 namespace MelePause::Game
 {
@@ -135,6 +137,13 @@ namespace MelePause::Game
     // ending's memorial flashbacks. A Matinee, music, a conversation, a sound loop or a nested sequence runs beside the 8 others: the Mars
     // arrival, the Citadel DLC's two Normandy movies, Device_Reveal, the Kro001 animatic, Hackett's speech intro,
     // Lev002_Asteroid_Depart and Lev004_WW_ArrivalCrash4.
+
+    /// Our own pause screen, as in LE2: only LE1's wears its game's colours so far.
+    inline constexpr OverlayLook Look = OverlayLook::Own;
+
+    /// No GUI sound as our world pause starts or ends: only LE1's plays one so far.
+    inline constexpr wchar_t const* PauseSound = nullptr;
+    inline constexpr wchar_t const* ResumeSound = nullptr;
 }
 
 #include "MelePause/game/KismetMovie.hpp"

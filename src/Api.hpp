@@ -15,6 +15,11 @@ namespace MelePause
     /// MovieSound pauses beside BinkPause; only a few movies carry Bink audio (LE2, LE3).
     enum class MoviePolicy : unsigned char { Bink, BinkAndEvent };
 
+    /// How a game's pause screen looks (game/LE<n>.hpp's Game::Look). Own: ours, the same in every game, "PAUSE" in a
+    /// bracketed frame and each key over its label (LE2, LE3). LE1: the colours of LE1's menus, the title on a blue band,
+    /// each key left of its label as the game draws its buttons, the blur a little cooler.
+    enum class OverlayLook : unsigned char { Own, LE1 };
+
     /// Where a game's fullscreen movie player keeps what Bink.cpp's movie lines show of it (game/LE<n>.hpp's MoviePlayer),
     /// read raw, for the logs only: the exe's RVA of the pointer to the player (GFullScreenMovie), and the offsets in the
     /// player of its flags and of its skippable flag. Rva 0: nothing read.
@@ -53,9 +58,14 @@ namespace MelePause
 
     namespace Overlay
     {
-        /// Hooks the swap chain's Present, Present1 and ResizeBuffers: the pause screen is drawn into the back buffer. Without
-        /// them (logged) Pause.cpp draws its Canvas banner.
-        void Install(::LESDK::Initializer& Init);
+        /// Hooks the swap chain's Present, Present1 and ResizeBuffers: the pause screen is drawn into the back buffer, in
+        /// <paramref name="look"/>. Without them (logged) Pause.cpp draws its Canvas banner.
+        void Install(::LESDK::Initializer& Init, OverlayLook look);
+
+        /// The title and the two labels in the game's own words, read from its string table (UTF-8). Each one replaces ours
+        /// only if the embedded font has every letter of it (not Japanese); an empty one keeps ours. The first call counts,
+        /// later ones are ignored. Any thread.
+        void UseGameTexts(std::string title, std::string resume, std::string photo);
 
         /// Game thread, each frame and at once when photo mode starts: the world pause screen shows (the HUD drawing), with
         /// photo mode's key where it opens; or it goes at once, with no fade (photo mode, the console).

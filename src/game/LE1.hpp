@@ -10,6 +10,9 @@
 #define MELEPAUSE_PHOTO_GFX 0
 /// The Bink movie pause: the galaxy map's travel movie carries its own sound track.
 #define MELEPAUSE_MOVIES 1
+/// The pause screen's title and labels come from the game's string table (Game::PauseTexts), through
+/// BioSPGame.GetSimpleString.
+#define MELEPAUSE_GAME_TEXTS 1
 
 namespace MelePause::Game
 {
@@ -91,4 +94,22 @@ namespace MelePause::Game
 
     /// Under MoviePolicy::Bink no Kismet movie action is read: none (LE1's BioSeqAct_MovieBink has no Wwise event).
     inline bool MovieActionOf(UObject*, MovieAction&) { return false; }
+
+    /// The pause screen in the colours of LE1's menus.
+    inline constexpr OverlayLook Look = OverlayLook::LE1;
+
+    /// The pause screen's words in the game's string table, in every language it ships: the title (170645, "PAUSED"; the
+    /// game's own unused paused box shows it), resume (157151, "Resume") and photo mode (184397, "Photo Mode").
+    struct PauseTextIds
+    {
+        int Title;
+        int Resume;
+        int Photo;
+    };
+    inline constexpr PauseTextIds PauseTexts{ 170645, 157151, 184397 };
+
+    /// The GUI manager's sounds (GuiSounds 2DA rows, both snd_gui.c_snd_guiswish) our world pause plays as it starts and as
+    /// a key ends it: the game's menus play them as they open and close. Null: none.
+    inline constexpr wchar_t const* PauseSound = L"InGameGuiEnter";
+    inline constexpr wchar_t const* ResumeSound = L"InGameGuiExit";
 }

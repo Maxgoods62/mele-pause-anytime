@@ -7,7 +7,7 @@ key resumes it. While the game is paused, the picture is blurred and darkened un
 conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot. Everywhere else these keys
 do what they always did.
 
-Version 13 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
+Version 14 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
 it from source and copy it into the game ([Install](#install)).
 
 ## Games
@@ -19,6 +19,7 @@ it from source and copy it into the game ([Install](#install)).
 | Start on a gamepad pauses what Esc pauses | since v3 | since v8 | since v11 |
 | Photo mode on the paused shot (Y or F7) | since v4 | since v10 | since v12 |
 | Pause screen; Space and A resume | since v5 | since v8 | since v11 |
+| Pause screen in the game's menu colours, with its words and its menu sound | since v14 | no | no |
 
 Each game has its own file, for its own ASI folder: `LE1MelePause.asi` for ME1, `LE2MelePause.asi` for ME2,
 `LE3MelePause.asi` for ME3. The sections below describe LE1; [In LE2](#in-le2) and [In LE3](#in-le3) say what differs
@@ -49,8 +50,8 @@ lighter pause, under which a conversation's clock and the music keep running.
 
 ## In LE2
 
-- Esc or Start pauses a conversation or an in-engine cutscene, with the same world pause and pause screen as in LE1.
-  Esc, Start, Space or A resumes it.
+- Esc or Start pauses a conversation or an in-engine cutscene, with the same world pause as in LE1, under MelePause's
+  own pause screen ([Pause screen](#pause-screen)). Esc, Start, Space or A resumes it.
 - LE2 lets Esc skip a skippable cutscene. With MelePause, Esc pauses it instead; Space, or a gamepad's X, still skips it
   when nothing is paused.
 - A fullscreen movie pauses when MelePause knows its sound. LE2's movies play their sound through a Wwise event that
@@ -68,8 +69,8 @@ The details, and the open questions: [docs/games/LE2.md](docs/games/LE2.md).
 
 ## In LE3
 
-- Esc or Start pauses a conversation or an in-engine cutscene, with the same world pause and pause screen as in LE1.
-  Esc, Start, Space or A resumes it.
+- Esc or Start pauses a conversation or an in-engine cutscene, with the same world pause as in LE1, under MelePause's
+  own pause screen ([Pause screen](#pause-screen)). Esc, Start, Space or A resumes it.
 - LE3 lets Esc skip a skippable cutscene. With MelePause, Esc pauses it instead; Space, or a gamepad's X, still skips it
   when nothing is paused.
 - A fullscreen movie that a level starts pauses when MelePause knows its sound, as in LE2: MelePause pauses the Wwise
@@ -104,10 +105,11 @@ pause menu is unchanged.
 
 | Part | How it looks |
 |---|---|
-| The picture | Blurred (about 24 pixels of radius at 1080p, and the same share of the screen at any resolution), half as bright, a little desaturated, darker in the corners. It fades in over 0.2 s and out over 0.15 s. The wheel and the subtitle are blurred with it. |
-| The centre | "PAUSE" set wide in Exo 2 Light, in a thin frame with bracketed corners. |
-| The bottom left | Each key over its label: "Resume" (A, or Space; Start and Esc resume too), and "Photo mode" (Y, or F7) where photo mode opens. The keys are gamepad icons (a green A, a yellow Y, in rings) or keycaps (a wide space bar named in the game's language, F7), for whichever device pressed one of those keys last. |
-| The language | The text language the game's launcher passes: English, French, German, Italian, Spanish, Polish or Russian. English for Japanese (Exo 2 has no kana) and when the game starts without the launcher's language switch. |
+| The picture | Blurred (about 24 pixels of radius at 1080p, and the same share of the screen at any resolution), half as bright, a little desaturated, darker in the corners; in LE1 a little bluer. It fades in over 0.2 s and out over 0.15 s. The wheel and the subtitle are blurred with it. |
+| The centre | LE1: the title set wide in the game's pale cyan, on a band like the game's menu bars (dark blue, a light blue rule along each edge, fading out at both ends). LE2 and LE3: "PAUSE" set wide in Exo 2 Light, in a thin frame with bracketed corners. |
+| The bottom left | "Resume" (A, or Space; Start and Esc resume too), and "Photo mode" (Y, or F7) where photo mode opens, with the keys of whichever device pressed one of those keys last. LE1: each key left of its label, the labels in the game's label blue; the gamepad's keys drawn as the game draws them (green A and yellow Y discs with a dark letter), the keyboard's as grey keycaps (a wide space bar named in the game's language, F7). LE2 and LE3: each key over its label; gamepad icons in rings (a green A, a yellow Y) or white keycaps. |
+| The words | LE1: the game's own, from its string table, in its text language ("PAUSED", "Resume", "Photo Mode" in English; "PAUSE", "Continuer", "Mode photo" in French). LE2 and LE3: MelePause's, in the text language the game's launcher passes: English, French, German, Italian, Spanish, Polish or Russian. In every game, English for Japanese (Exo 2 has no kana), and in LE2 and LE3 when the game starts without the launcher's language switch. |
+| The sound | LE1: the game's menu sound as the pause starts, and as a key resumes. None for the movie pause, nor in LE2 and LE3. |
 
 The pause screen goes away at once, with no fade, when photo mode starts, so photo mode's screenshots never contain it.
 It also hides while the console is open. It comes back three frames after photo mode ends.

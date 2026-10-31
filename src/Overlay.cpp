@@ -18,13 +18,16 @@
 #include <exception>
 #include <string>
 #include <string_view>
+#include <utility>
 
 // The pause screen, drawn into the game's back buffer from a hooked IDXGISwapChain::Present on the render thread: over our
 // world pause and our movie pause the frame is blurred and darkened (Blur.cpp), "PAUSE" stands in a bracketed frame at the
 // centre, and the keys are named at the bottom left (resume, and photo mode where it opens), for the gamepad or the keyboard,
-// whichever pressed our keys last. The game thread says what to show (Publish, UsePadPrompts); nothing here touches a game
-// object. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the language the
-// game's launcher passes. Without the hook or after a fault the Canvas banner of Pause.cpp is drawn instead (Drawing).
+// whichever pressed our keys last. In LE1 it wears the game's menu colours instead (OverlayLook::LE1): the title on a blue
+// band, each key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts); nothing here
+// touches a game object. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the
+// language the game's launcher passes, or in the game's own words where it gives them. Without the hook or after a fault the
+// Canvas banner of Pause.cpp is drawn instead (Drawing).
 namespace MelePause::Overlay
 {
     namespace
@@ -61,6 +64,17 @@ namespace MelePause::Overlay
         std::atomic<bool> Pad{ false };
         /// The overlay started on the game's swap chain and hasn't failed since.
         std::atomic<bool> Live{ false };
+        /// Install's, set before the hooks go live.
+        std::atomic<OverlayLook> Look{ OverlayLook::Own };
+
+        /// UseGameTexts', UTF-8. Never freed: the render thread draws from it.
+        struct GameTexts
+        {
+            std::string Title;
+            std::string Resume;
+            std::string Photo;
+        };
+        std::atomic<GameTexts const*> GameText{ nullptr };
 
         // ! Text
         // ========================================
@@ -165,7 +179,11 @@ namespace MelePause::Overlay
             IDXGISwapChain* LastChain = nullptr;
             bool IdleLogged = false;
             bool CleanLogged = false;
+            OverlayLook Look = OverlayLook::Own;
             Texts const* Text = &English;
+            /// The language's texts with the game's words in place of ours (Text points here once they came).
+            Texts Mixed = English;
+            bool GameTextsSeen = false;
             Fonts Font;
         };
         /// Leaked on purpose: no D3D Release from DllMain at process exit, after d3d11.dll may have cleaned up.
@@ -208,6 +226,42 @@ namespace MelePause::Overlay
             LEASI_WARN("overlay: the embedded Exo 2 fonts did not load: ImGui's default font instead");
             auto const fallback = ImGui::GetIO().Fonts->AddFontDefault();
             R.Font = { fallback, fallback, fallback, false };
+        }
+
+        ImFont* TitleFont() { return R.Look == OverlayLook::LE1 ? R.Font.Regular : R.Font.Light; }
+
+        /// The font has every letter of a text that has some.
+        bool Drawable(ImFont* font, std::string const& text)
+        {
+            if (text.empty()) return false;
+            for (auto p = text.data(), end = text.data() + text.size(); p < end;)
+            {
+                unsigned c = 0;
+                p += ImTextCharFromUtf8(&c, p, end);
+                if (c < 0x20 || c > IM_UNICODE_CODEPOINT_MAX || !font->IsGlyphInFont(static_cast<ImWchar>(c))) return false;
+            }
+            return true;
+        }
+
+        /// Once UseGameTexts gave them: the game's words in place of ours, each one its font can draw.
+        void TakeGameTexts()
+        {
+            if (R.GameTextsSeen) return;
+            auto const game = GameText.load(std::memory_order_acquire);
+            if (game == nullptr) return;
+            R.GameTextsSeen = true;
+            R.Mixed = *R.Text;
+            auto const take = [](ImFont* font, std::string const& text, char const*& slot) {
+                if (!Drawable(font, text)) return "kept ours";
+                slot = text.c_str();
+                return "used";
+            };
+            auto const title = take(TitleFont(), game->Title, R.Mixed.Title);
+            auto const resume = take(R.Font.Regular, game->Resume, R.Mixed.Resume);
+            auto const photo = take(R.Font.Regular, game->Photo, R.Mixed.Photo);
+            R.Text = &R.Mixed;
+            LEASI_INFO("overlay: the game's texts: title \"{}\" {}, resume \"{}\" {}, photo mode \"{}\" {}", game->Title, title, game->Resume, resume,
+                       game->Photo, photo);
         }
 
         // ! Drawing
@@ -388,6 +442,148 @@ namespace MelePause::Overlay
             }
         }
 
+        // ! LE1's look
+        // ========================================
+
+        // The colours of LE1's menus (the GUI_SF movies): titles #CCFFFF, labels and rules #3199C6, panels a gradient from
+        // #174868 to #226E8F at about half opacity. The gamepad's buttons are drawn as GUI_SF_SharedAssets' XBox_ControllerIcons
+        // look (a disc in the button's colour, a dark rim, a dark letter), the keys as GUI_SF_PhotoMode's translucent grey
+        // keycaps. Colours read from the game's files; nothing of them is shipped.
+
+        struct Rgb
+        {
+            int R, G, B;
+        };
+
+        constexpr Rgb Le1Title{ 0xCC, 0xFF, 0xFF };
+        constexpr Rgb Le1Line{ 0x31, 0x99, 0xC6 };
+        constexpr Rgb Le1PanelTop{ 0x17, 0x48, 0x68 };
+        constexpr Rgb Le1PanelBottom{ 0x22, 0x6E, 0x8F };
+        constexpr Rgb Le1PadA{ 0x7B, 0x9E, 0x3F };
+        constexpr Rgb Le1PadY{ 0xFC, 0xD3, 0x05 };
+        constexpr Rgb Le1PadStart{ 0xCB, 0xFF, 0xFF };
+        constexpr Rgb Le1KeyTop{ 0x47, 0x49, 0x47 };
+        constexpr Rgb Le1KeyBottom{ 0x9C, 0x9A, 0x9C };
+
+        /// A cooler cast over the blurred frame, toward the game's blue menus.
+        Blur::Settings const Le1Blur{ .Tint = { 0.88f, 0.97f, 1.06f } };
+
+        ImU32 Colour(Rgb c, float alpha, float shade = 1)
+        {
+            return Colour(static_cast<int>(static_cast<float>(c.R) * shade), static_cast<int>(static_cast<float>(c.G) * shade),
+                          static_cast<int>(static_cast<float>(c.B) * shade), alpha);
+        }
+
+        /// A strip coloured from top to bottom, its opacity rising from 0 over <paramref name="fade"/> at each end, as the
+        /// game's menu bars fade out.
+        void FadedStrip(ImDrawList* list, ImVec2 min, ImVec2 max, float fade, Rgb top, Rgb bottom, float alpha)
+        {
+            auto const inner = std::min(fade, (max.x - min.x) * 0.5f);
+            auto const solidTop = Colour(top, alpha);
+            auto const solidBottom = Colour(bottom, alpha);
+            auto const clearTop = Colour(top, 0);
+            auto const clearBottom = Colour(bottom, 0);
+            // The corners: upper left, upper right, bottom right, bottom left.
+            list->AddRectFilledMultiColor(min, { min.x + inner, max.y }, clearTop, solidTop, solidBottom, clearBottom);
+            list->AddRectFilledMultiColor({ min.x + inner, min.y }, { max.x - inner, max.y }, solidTop, solidTop, solidBottom, solidBottom);
+            list->AddRectFilledMultiColor({ max.x - inner, min.y }, max, solidTop, clearTop, clearBottom, solidBottom);
+        }
+
+        /// The centre: the title set wide on a band like the game's menu bars, a rule along each edge, a short rule beyond
+        /// each end.
+        void DrawBandTitle(ImDrawList* list, float width, float height, float alpha, float k)
+        {
+            auto const font = TitleFont();
+            auto const size = 58 * k;
+            auto const spacing = 18 * k;
+            auto const text = R.Text->Title;
+            auto const textWidth = SpacedWidth(font, size, text, spacing);
+            ImVec2 const centre{ width * 0.5f, height * 0.47f };
+
+            auto const halfWidth = std::min(textWidth * 0.5f + 150 * k, width * 0.5f - 48 * k);
+            auto const halfHeight = 62 * k;
+            ImVec2 const min{ centre.x - halfWidth, centre.y - halfHeight };
+            ImVec2 const max{ centre.x + halfWidth, centre.y + halfHeight };
+            auto const fade = 120 * k;
+            auto const rule = std::max(1.f, 2 * k);
+            FadedStrip(list, min, max, fade, Le1PanelTop, Le1PanelBottom, 0.55f * alpha);
+            FadedStrip(list, min, { max.x, min.y + rule }, fade, Le1Line, Le1Line, 0.95f * alpha);
+            FadedStrip(list, { min.x, max.y - rule }, max, fade, Le1Line, Le1Line, 0.95f * alpha);
+            for (auto const side : { -1.f, 1.f })
+            {
+                auto const from = centre.x + side * (halfWidth + 14 * k);
+                list->AddLine({ from, centre.y }, { from + side * 26 * k, centre.y }, Colour(Le1Line, 0.9f * alpha), rule);
+            }
+
+            ImVec2 const at{ centre.x - textWidth * 0.5f, CapsTop(font, size, centre.y) };
+            DrawSpaced(list, font, size, { at.x + 3 * k, at.y + 4 * k }, Colour(0, 0, 0, 0.25f * alpha), text, spacing);
+            DrawSpaced(list, font, size, { at.x + 2 * k, at.y + 3 * k }, Colour(0, 0, 0, 0.4f * alpha), text, spacing);
+            DrawSpaced(list, font, size, at, Colour(Le1Title, alpha), text, spacing);
+        }
+
+        /// A key as the game draws it, centred on c: a gamepad button (a disc in its colour, darker toward a black rim, its
+        /// letter dark; Start pale with three dark lines), or a keycap (translucent grey, lighter toward the bottom).
+        void DrawGameIcon(ImDrawList* list, Icon icon, ImVec2 c, float radius, float alpha, float k)
+        {
+            if (IsPad(icon))
+            {
+                auto const fill = icon == Icon::PadA ? Le1PadA : icon == Icon::PadY ? Le1PadY : Le1PadStart;
+                list->AddCircleFilled(c, radius, Colour(0, 0, 0, 0.5f * alpha));
+                list->AddCircleFilled(c, 0.95f * radius, Colour(fill, alpha, 0.3f));
+                list->AddCircleFilled(c, 0.9f * radius, Colour(fill, alpha, 0.55f));
+                list->AddCircleFilled(c, 0.86f * radius, Colour(fill, alpha, 0.75f));
+                list->AddCircleFilled(c, 0.82f * radius, Colour(fill, alpha));
+                auto const ink = Colour(0, 0, 0, 0.75f * alpha);
+                if (icon == Icon::PadStart)
+                {
+                    for (int row = -1; row <= 1; row++)
+                    {
+                        auto const y = c.y + static_cast<float>(row) * 0.28f * radius;
+                        list->AddLine({ c.x - 0.4f * radius, y }, { c.x + 0.4f * radius, y }, ink, std::max(1.5f, 2.6f * k));
+                    }
+                    return;
+                }
+                auto const letter = icon == Icon::PadA ? "A" : "Y";
+                auto const size = 1.6f * radius;
+                auto const width = R.Font.SemiBold->CalcTextSizeA(size, FLT_MAX, 0, letter).x;
+                list->AddText(R.Font.SemiBold, size, { c.x - width * 0.5f, CapsTop(R.Font.SemiBold, size, c.y) }, ink, letter);
+                return;
+            }
+            auto const label = KeyLabel(icon);
+            auto const half = IconWidth(icon, radius, k) * 0.5f;
+            ImVec2 const min{ c.x - half, c.y - radius };
+            ImVec2 const max{ c.x + half, c.y + radius };
+            auto const rounding = 5 * k;
+            list->AddRectFilled({ min.x + k, min.y + 2 * k }, { max.x + k, max.y + 2 * k }, Colour(0, 0, 0, 0.35f * alpha), rounding);
+            auto const first = list->VtxBuffer.Size;
+            list->AddRectFilled(min, max, Colour(Le1KeyBottom, 0.62f * alpha), rounding);
+            ImGui::ShadeVertsLinearColorGradientKeepAlpha(list, first, list->VtxBuffer.Size, min, { min.x, max.y }, Colour(Le1KeyTop, 1), Colour(Le1KeyBottom, 1));
+            list->AddRect(min, max, Colour(0xBD, 0xBE, 0xBD, 0.45f * alpha), rounding, std::max(1.f, k));
+            auto const size = 0.85f * radius;
+            auto const width = R.Font.SemiBold->CalcTextSizeA(size, FLT_MAX, 0, label).x;
+            list->AddText(R.Font.SemiBold, size, { c.x - width * 0.5f, CapsTop(R.Font.SemiBold, size, c.y) }, Colour(238, 238, 238, 0.95f * alpha), label);
+        }
+
+        /// The bottom left: each key with its label to its right, in the game's label colour, side by side.
+        void DrawGamePrompts(ImDrawList* list, float height, float alpha, float k, bool pad)
+        {
+            Prompt const prompts[] = { { pad ? Icon::PadA : Icon::KeySpace, R.Text->Resume }, { pad ? Icon::PadY : Icon::KeyF7, R.Text->Photo } };
+            auto const count = R.Photo ? 2 : 1;
+            auto const radius = 23 * k;
+            auto const labelSize = 28 * k;
+            auto const y = height - 119 * k;
+            auto x = 88 * k;
+            for (int i = 0; i < count; i++)
+            {
+                auto const& p = prompts[i];
+                auto const iconWidth = IconWidth(p.What, radius, k);
+                DrawGameIcon(list, p.What, { x + iconWidth * 0.5f, y }, radius, alpha, k);
+                auto const labelX = x + iconWidth + 14 * k;
+                DrawShadowed(list, R.Font.Regular, labelSize, { labelX, CapsTop(R.Font.Regular, labelSize, y) }, Colour(Le1Line, alpha), alpha, k, p.Label);
+                x = labelX + R.Font.Regular->CalcTextSizeA(labelSize, FLT_MAX, 0, p.Label).x + 52 * k;
+            }
+        }
+
         // ! Frame
         // ========================================
 
@@ -497,11 +693,12 @@ namespace MelePause::Overlay
             auto const blur = Blur::Init(R.Device);
 
             R.GameChain = chain;
+            R.Look = Look.load(std::memory_order_relaxed);
             R.Text = &LanguageTexts();
             QueryPerformanceCounter(&R.LastFrame);
-            LEASI_INFO("overlay ready: back buffer {}x{} format {}, present thread {}, text in {}, {}, {}", desc.BufferDesc.Width, desc.BufferDesc.Height,
-                       static_cast<int>(desc.BufferDesc.Format), GetCurrentThreadId(), R.Text->Language,
-                       R.Font.Embedded ? "Exo 2 embedded" : "default font", blur ? "blur ready" : "NO blur (plain darkening)");
+            LEASI_INFO("overlay ready: back buffer {}x{} format {}, present thread {}, {} look, text in {}, {}, {}", desc.BufferDesc.Width,
+                       desc.BufferDesc.Height, static_cast<int>(desc.BufferDesc.Format), GetCurrentThreadId(), R.Look == OverlayLook::LE1 ? "LE1" : "our own",
+                       R.Text->Language, R.Font.Embedded ? "Exo 2 embedded" : "default font", blur ? "blur ready" : "NO blur (plain darkening)");
             LEASI_FLUSH();
             return true;
         }
@@ -642,7 +839,8 @@ namespace MelePause::Overlay
             auto const height = static_cast<float>(desc.BufferDesc.Height);
             auto const alpha = Blur::Ease(R.Fade);
 
-            auto const blurred = Blur::Draw(R.Context, R.Back, R.Target, alpha);
+            auto const le1 = R.Look == OverlayLook::LE1;
+            auto const blurred = Blur::Draw(R.Context, R.Back, R.Target, alpha, le1 ? Le1Blur : Blur::Settings{});
             if (!R.BlurLogged && !blurred)
             {
                 R.BlurLogged = true;
@@ -656,10 +854,20 @@ namespace MelePause::Overlay
             ImGui::NewFrame();
             auto const list = ImGui::GetForegroundDrawList();
             if (!blurred) list->AddRectFilled({ 0, 0 }, { width, height }, Colour(0, 0, 0, 0.6f * alpha));
+            TakeGameTexts();
             // Laid out for 1080 lines, like the game's HUD.
             auto const k = height / 1080.f;
-            DrawTitle(list, width, height, alpha, k);
-            DrawPrompts(list, height, alpha, k, Pad.load(std::memory_order_relaxed));
+            auto const pad = Pad.load(std::memory_order_relaxed);
+            if (le1)
+            {
+                DrawBandTitle(list, width, height, alpha, k);
+                DrawGamePrompts(list, height, alpha, k, pad);
+            }
+            else
+            {
+                DrawTitle(list, width, height, alpha, k);
+                DrawPrompts(list, height, alpha, k, pad);
+            }
             ImGui::Render();
 
             ID3D11RenderTargetView* saved[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
@@ -798,8 +1006,9 @@ namespace MelePause::Overlay
         }
     }
 
-    void Install(::LESDK::Initializer& Init)
+    void Install(::LESDK::Initializer& Init, OverlayLook look)
     {
+        Look.store(look, std::memory_order_relaxed);
         // The swap chain methods' addresses, from a throwaway device on a hidden window: every swap chain shares them.
         WNDCLASSEXW windowClass{};
         windowClass.cbSize = sizeof windowClass;
@@ -873,6 +1082,13 @@ namespace MelePause::Overlay
     }
 
     void UsePadPrompts(bool pad) { Pad.store(pad, std::memory_order_relaxed); }
+
+    void UseGameTexts(std::string title, std::string resume, std::string photo)
+    {
+        auto const texts = new GameTexts{ std::move(title), std::move(resume), std::move(photo) };
+        GameTexts const* none = nullptr;
+        if (!GameText.compare_exchange_strong(none, texts, std::memory_order_acq_rel)) delete texts;
+    }
 
     void MovieIdle()
     {
