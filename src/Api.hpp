@@ -63,14 +63,20 @@ namespace MelePause
         void Install(::LESDK::Initializer& Init, OverlayLook look);
 
         /// The title and the two labels in the game's own words, read from its string table (UTF-8). Each one replaces ours
-        /// only if the embedded font has every letter of it (not Japanese); an empty one keeps ours. The first call counts,
-        /// later ones are ignored. Any thread.
+        /// only if the font it is set in has every letter of it (Exo 2 has no Japanese); an empty one keeps ours. The first
+        /// call counts, later ones are ignored. Any thread.
         void UseGameTexts(std::string title, std::string resume, std::string photo);
 
         /// The game's own gamepad buttons, as the views its renderer holds of their textures (ID3D11ShaderResourceView):
         /// pointers read raw from the game, which the render thread checks before it calls them. Both show or neither, and
         /// the drawn buttons stay without them. The first call counts, later ones are ignored. Any thread.
         void UseGameIcons(void* padA, void* padY);
+
+        /// LE1's look: the game's own fonts in place of Exo 2, from the GFx movie that holds them. They are turned into TrueType
+        /// here, in memory, with only the letters of the pause screen: call it after UseGameTexts. Both show or neither, and
+        /// Exo 2 stays with a movie that isn't the one we know (logged). The first good call counts. Game thread, under a guard:
+        /// the bytes are read in this call, and not after it.
+        void UseGameFonts(std::span<unsigned char const> movie);
 
         /// Game thread, each frame and at once when photo mode starts: the world pause screen shows (the HUD drawing), with
         /// photo mode's key where it opens; or it goes at once, with no fade (photo mode, the console).

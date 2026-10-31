@@ -15,6 +15,9 @@
 #define MELEPAUSE_GAME_TEXTS 1
 /// The pause screen's gamepad buttons are the game's own textures (Game::PauseIcons), as its renderer holds them.
 #define MELEPAUSE_GAME_ICONS 1
+/// The pause screen's text is set in the game's own fonts, read from the GFx movie that holds them (Game::PauseFonts), once
+/// MELEPAUSE_GAME_TEXTS has given the words they are cut to.
+#define MELEPAUSE_GAME_FONTS 1
 
 namespace MelePause::Game
 {
@@ -132,6 +135,15 @@ namespace MelePause::Game
         unsigned View;
     };
     inline constexpr TextureViewFields TextureView{ 0x10247A8, 0x24, 0x1211D20, 0xC, 0x10 };
+
+    /// The GFx movie that holds the game's GUI fonts: in Startup_<lang>.pcc, the same in every language but for its order in
+    /// Japanese, loaded with the game and kept for good (RootSet), its bytes in memory as in the package.
+    struct PauseFontNames
+    {
+        wchar_t const* Package;
+        wchar_t const* Movie;
+    };
+    inline constexpr PauseFontNames PauseFonts{ L"GUI_SF_Fonts", L"Fonts" };
 
     /// The GUI manager's sounds (GuiSounds 2DA rows, both snd_gui.c_snd_guiswish) our world pause plays as it starts and as
     /// a key ends it: the game's menus play them as they open and close. Null: none.

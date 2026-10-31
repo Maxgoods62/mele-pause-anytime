@@ -120,6 +120,8 @@ namespace MelePause
             unsigned GameTextTries = 0;
             /// Frames on which ReadGameIcons tried (MaxGameIconTries once it is done).
             unsigned GameIconTries = 0;
+            /// Frames on which ReadGameFonts tried (MaxGameFontTries once it is done).
+            unsigned GameFontTries = 0;
         };
         State G;
 
@@ -921,24 +923,27 @@ namespace MelePause
         void ReadGameTextsEntry(void* context) { ReadGameTexts(static_cast<ABioPlayerController*>(context)); }
 #endif
 
-#if MELEPAUSE_GAME_ICONS
-        /// Frames on which ReadGameIcons may try: the textures load with the game, before the first HUD.
-        constexpr unsigned MaxGameIconTries = 3;
-
-        /// The 2D texture of that name right under that package, from the object list, or null. Names are compared first:
+#if MELEPAUSE_GAME_ICONS || MELEPAUSE_GAME_FONTS
+        /// The object of that class and name right under that package, from the object list, or null. Names are compared first:
         /// the list holds nearly 200,000 objects.
-        UTexture2D* FindTexture(SFXName const& package, SFXName const& name)
+        template <class T>
+        T* FindObject(SFXName const& package, SFXName const& name)
         {
             auto& objects = *UObject::GObjObjects;
             for (UINT i = 0; i < objects.Count(); i++)
             {
                 auto const object = objects.GetData()[i];
                 if (object != nullptr && object->Name == name && object->Outer != nullptr && object->Outer->Name == package
-                    && object->IsA(UTexture2D::StaticClass()))
-                    return static_cast<UTexture2D*>(object);
+                    && object->IsA(T::StaticClass()))
+                    return static_cast<T*>(object);
             }
             return nullptr;
         }
+#endif
+
+#if MELEPAUSE_GAME_ICONS
+        /// Frames on which ReadGameIcons may try: the textures load with the game, before the first HUD.
+        constexpr unsigned MaxGameIconTries = 3;
 
         /// The texture's D3D11 view, read raw (Game::TextureView), or null where a method table isn't the expected one
         /// (another build of the game) or nothing is there yet. Overlay.cpp checks the view itself.
@@ -959,8 +964,8 @@ namespace MelePause
         {
             G.GameIconTries++;
             SFXName const package{ PauseIcons.Package, 0 };
-            auto const padA = FindTexture(package, SFXName{ PauseIcons.PadA, 0 });
-            auto const padY = FindTexture(package, SFXName{ PauseIcons.PadY, 0 });
+            auto const padA = FindObject<UTexture2D>(package, SFXName{ PauseIcons.PadA, 0 });
+            auto const padY = FindObject<UTexture2D>(package, SFXName{ PauseIcons.PadY, 0 });
             auto const viewA = padA != nullptr ? ViewOf(padA) : nullptr;
             auto const viewY = padY != nullptr ? ViewOf(padY) : nullptr;
             if (viewA == nullptr || viewY == nullptr)
@@ -975,6 +980,29 @@ namespace MelePause
         }
 
         void ReadGameIconsEntry(void*) { ReadGameIcons(); }
+#endif
+
+#if MELEPAUSE_GAME_FONTS
+        /// Frames on which ReadGameFonts may try: the movie loads with the game, before the first HUD.
+        constexpr unsigned MaxGameFontTries = 3;
+
+        /// The bytes of the movie that holds the game's fonts (game/LE<n>.hpp's PauseFonts), which Overlay.cpp converts in this
+        /// call. Tried again on the next frames while there are none; a fault ends the tries (AfterPostRender).
+        void ReadGameFonts()
+        {
+            G.GameFontTries++;
+            auto const movie = FindObject<UGFxMovieInfo>(SFXName{ PauseFonts.Package, 0 }, SFXName{ PauseFonts.Movie, 0 });
+            auto const count = movie != nullptr ? movie->RawData.Count() : 0;
+            if (count == 0)
+            {
+                if (G.GameFontTries >= MaxGameFontTries) LEASI_WARN("no bytes from the game's fonts movie ({}): the pause screen keeps Exo 2", PathOf(movie));
+                return;
+            }
+            G.GameFontTries = MaxGameFontTries;
+            Overlay::UseGameFonts({ movie->RawData.GetData(), static_cast<std::size_t>(count) });
+        }
+
+        void ReadGameFontsEntry(void*) { ReadGameFonts(); }
 #endif
 
         /// The checks of each frame. The banner is drawn apart, under its own guard: a fault while drawing must not stop them.
@@ -1022,6 +1050,14 @@ namespace MelePause
             {
                 G.GameIconTries = MaxGameIconTries;
                 LEASI_ERROR("access violation while reading the game's gamepad icons: the pause screen draws its own");
+            }
+#endif
+#if MELEPAUSE_GAME_FONTS
+            // After the texts: the fonts are cut to their letters.
+            if (G.GameTextTries >= MaxGameTextTries && G.GameFontTries < MaxGameFontTries && !Guarded(ReadGameFontsEntry, nullptr))
+            {
+                G.GameFontTries = MaxGameFontTries;
+                LEASI_ERROR("access violation while reading the game's fonts: the pause screen keeps Exo 2");
             }
 #endif
         }

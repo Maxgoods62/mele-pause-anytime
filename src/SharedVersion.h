@@ -12,9 +12,9 @@
 
 // One version for every game. The log and the loader print it as a plain number, and package.sh checks that the two
 // strings are ASI_VERSION.
-#define ASI_VERSION 15
-#define VERSION_STRING_A "15"
-#define VERSION_STRING_W L"15"
+#define ASI_VERSION 16
+#define VERSION_STRING_A "16"
+#define VERSION_STRING_W L"16"
 
 // The game this build is for: its file name prefix, and the game and group ids of ME3Tweaks' tooling. Group 0 until
 // ME3Tweaks assigns one.

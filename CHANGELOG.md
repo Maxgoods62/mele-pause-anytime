@@ -3,6 +3,22 @@
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## v16 (unreleased)
+
+Games: LE1, LE2, LE3
+
+LE1's pause screen is set in the game's own fonts. In LE2 and LE3 the ASI does the same as v15, apart from the title's
+letters, which sit under a pixel differently at heights other than 1080 lines.
+
+- In LE1 the title is in the game's Aero Light, as its unused paused box sets this word, with kerning and no more wide
+  letter spacing. The labels are in its BioMass, as its pause wheel sets "Resume" and "Photo Mode", and the keycaps in Aero
+  Light, as its key bindings set a key's name. The colours and the band stay.
+- The fonts are read from the game's memory as it runs and turned into a small TrueType font in memory, with only the
+  letters the screen needs. Nothing of them is in the ASI, and nothing is written to disk. If they can't be read, Exo 2 stays
+  and the log says so.
+- In LE1 in Japanese the title and the labels are now the game's words, which Exo 2 could not draw.
+- `package.sh` writes `dist/LE1MelePause-v16.zip`, `dist/LE2MelePause-v16.zip` and `dist/LE3MelePause-v16.zip`.
+
 ## v15 (unreleased)
 
 Games: LE1, LE2, LE3

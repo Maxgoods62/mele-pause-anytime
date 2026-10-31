@@ -29,6 +29,8 @@ asi_target (MelePause
     "Engine.cpp"
     "Engine.hpp"
     "Entry.cpp"
+    "GameFont.cpp"
+    "GameFont.hpp"
     "MelePause.rc"
     "MovieInput.cpp"
     "MovieSound.cpp"

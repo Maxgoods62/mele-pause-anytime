@@ -1,5 +1,6 @@
 #include "MelePause/Api.hpp"
 #include "MelePause/Blur.hpp"
+#include "MelePause/GameFont.hpp"
 #include "MelePause/Resources.h"
 
 #include <d3d11.h>
@@ -16,18 +17,22 @@
 #include <cfloat>
 #include <cwctype>
 #include <exception>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 // The pause screen, drawn into the game's back buffer from a hooked IDXGISwapChain::Present on the render thread: over our
 // world pause and our movie pause the frame is blurred and darkened (Blur.cpp), "PAUSE" stands in a bracketed frame at the
 // centre, and the keys are named at the bottom left (resume, and photo mode where it opens), for the gamepad or the keyboard,
 // whichever pressed our keys last. In LE1 it wears the game's menu colours instead (OverlayLook::LE1): the title on a blue
-// band, each key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons);
-// nothing here touches a game object, only the D3D11 views of two of its textures. The text is set in Exo 2 (SIL OFL 1.1,
-// fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the language the game's launcher passes, or in the game's own words
-// where it gives them. Without the hook or after a fault the Canvas banner of Pause.cpp is drawn instead (Drawing).
+// band, each key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons,
+// UseGameFonts); nothing here touches a game object, only the D3D11 views of two of its textures and, on the game thread, the
+// bytes of its fonts' movie. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the
+// language the game's launcher passes, or in the game's own words where it gives them, and in LE1 in the game's own fonts,
+// turned into TrueType in memory (GameFont.cpp) and never written anywhere. Without the hook or after a fault the Canvas banner
+// of Pause.cpp is drawn instead (Drawing).
 namespace MelePause::Overlay
 {
     namespace
@@ -84,6 +89,21 @@ namespace MelePause::Overlay
         };
         std::atomic<GameIcons const*> GameIcon{ nullptr };
 
+        /// One of the game's fonts as TrueType, with what that file can't give ImGui.
+        struct GameFontFile
+        {
+            std::vector<unsigned char> Ttf;
+            GameFont::Layout Layout;
+        };
+
+        /// UseGameFonts'. Never freed: ImGui reads the files for as long as its atlas lives.
+        struct GameFonts
+        {
+            GameFontFile AeroLight;
+            GameFontFile BioMass;
+        };
+        std::atomic<GameFonts const*> GameFontFiles{ nullptr };
+
         // ! Text
         // ========================================
 
@@ -131,6 +151,34 @@ namespace MelePause::Overlay
             return English;
         }
 
+        /// Every letter the pause screen may set, ours and the game's, and ImGui's two fallbacks: the game's fonts are cut to these.
+        std::vector<char32_t> ScreenLetters()
+        {
+            std::vector<char32_t> letters{ U' ', U'?' };
+            auto const add = [&letters](std::string_view text) {
+                for (auto p = text.data(), end = text.data() + text.size(); p < end;)
+                {
+                    unsigned c = 0;
+                    p += ImTextCharFromUtf8(&c, p, end);
+                    letters.push_back(static_cast<char32_t>(c));
+                }
+            };
+            auto const& ours = LanguageTexts();
+            for (auto const text : { ours.Title, ours.Resume, ours.Photo, ours.Space, "Esc", "F7" }) add(text);
+            if (auto const game = GameText.load(std::memory_order_acquire); game != nullptr)
+            {
+                add(game->Title);
+                add(game->Resume);
+                add(game->Photo);
+            }
+            return letters;
+        }
+
+        GameFontFile ReadGameFont(std::span<unsigned char const> movie, std::string_view name, std::span<char32_t const> letters)
+        {
+            return { GameFont::Build(movie, name, letters), GameFont::ReadLayout(movie, name, letters) };
+        }
+
         // ! Render thread state
         // ========================================
 
@@ -155,6 +203,32 @@ namespace MelePause::Overlay
             ImFont* Regular = nullptr;
             ImFont* SemiBold = nullptr;
             bool Embedded = false;
+        };
+
+        /// Exo 2's capitals stand 690 units above the baseline, and ImGui's font size spans its ascent to its descent (999 +
+        /// 201 units): the capitals are this share of the size.
+        constexpr float CapHeight = 690.f / 1200.f;
+
+        /// How a line of text is set, letter by letter.
+        struct LineStyle
+        {
+            ImFont* Font = nullptr;
+            /// ImGui's size and the space between letters, for 1080 lines.
+            float Size = 0;
+            float Spacing = 0;
+            /// The capitals' height as a share of Size.
+            float Caps = CapHeight;
+            /// ImGui has no kerning: the font's pairs, in EM, and ImGui's size for one EM.
+            std::span<GameFont::KerningPair const> Kerning;
+            float SizePerEm = 1;
+        };
+
+        /// The lines of LE1's screen: in Exo 2 until the game's fonts come (TakeGameFonts).
+        struct Le1Styles
+        {
+            LineStyle Title;
+            LineStyle Label;
+            LineStyle Key;
         };
 
         struct RenderState
@@ -196,7 +270,9 @@ namespace MelePause::Overlay
             ID3D11ShaderResourceView* IconA = nullptr;
             ID3D11ShaderResourceView* IconY = nullptr;
             bool GameIconsSeen = false;
+            bool GameFontsSeen = false;
             Fonts Font;
+            Le1Styles Style;
         };
         /// Leaked on purpose: no D3D Release from DllMain at process exit, after d3d11.dll may have cleaned up.
         RenderState& R = *new RenderState{};
@@ -234,13 +310,16 @@ namespace MelePause::Overlay
             R.Font.Regular = AddEmbedded(MELEPAUSE_FONT_REGULAR);
             R.Font.SemiBold = AddEmbedded(MELEPAUSE_FONT_SEMIBOLD);
             R.Font.Embedded = R.Font.Light != nullptr && R.Font.Regular != nullptr && R.Font.SemiBold != nullptr;
-            if (R.Font.Embedded) return;
-            LEASI_WARN("overlay: the embedded Exo 2 fonts did not load: ImGui's default font instead");
-            auto const fallback = ImGui::GetIO().Fonts->AddFontDefault();
-            R.Font = { fallback, fallback, fallback, false };
+            if (!R.Font.Embedded)
+            {
+                LEASI_WARN("overlay: the embedded Exo 2 fonts did not load: ImGui's default font instead");
+                auto const fallback = ImGui::GetIO().Fonts->AddFontDefault();
+                R.Font = { fallback, fallback, fallback, false };
+            }
+            R.Style = { { R.Font.Regular, 58, 18 }, { R.Font.Regular, 28, 0 }, { R.Font.SemiBold, 19.55f, 0 } };
         }
 
-        ImFont* TitleFont() { return R.Look == OverlayLook::LE1 ? R.Font.Regular : R.Font.Light; }
+        ImFont* TitleFont() { return R.Look == OverlayLook::LE1 ? R.Style.Title.Font : R.Font.Light; }
 
         /// The font has every letter of a text that has some.
         bool Drawable(ImFont* font, std::string const& text)
@@ -269,11 +348,71 @@ namespace MelePause::Overlay
                 return "used";
             };
             auto const title = take(TitleFont(), game->Title, R.Mixed.Title);
-            auto const resume = take(R.Font.Regular, game->Resume, R.Mixed.Resume);
-            auto const photo = take(R.Font.Regular, game->Photo, R.Mixed.Photo);
+            auto const resume = take(R.Style.Label.Font, game->Resume, R.Mixed.Resume);
+            auto const photo = take(R.Style.Label.Font, game->Photo, R.Mixed.Photo);
             R.Text = &R.Mixed;
             LEASI_INFO("overlay: the game's texts: title \"{}\" {}, resume \"{}\" {}, photo mode \"{}\" {}", game->Title, title, game->Resume, resume,
                        game->Photo, photo);
+        }
+
+        // The game's fonts on LE1's screen, set as its own movies set the same words, at 1080 lines (the movies' 720-line stage
+        // times 1.5): the title as the paused box of WindowPop sets it, in $AeroLight (Tigensu_jpn) at 45; the labels as
+        // PC_MainWheel sets these two strings beside its B and Y buttons, in $BioMass (Biomass_jpn) at 15.21, with the 0.585 of
+        // its Resume field for both (its Photo Mode field states none); a key's name as the key bindings of PCOptions set it, in
+        // $AeroLight at 12 with a spacing of 0.5.
+        constexpr float Le1TitleEm = 67.5f;
+        constexpr float Le1LabelEm = 22.8f;
+        constexpr float Le1LabelSpacing = 0.9f;
+        constexpr float Le1KeyEm = 18.f;
+        constexpr float Le1KeySpacing = 0.75f;
+        /// The height of the fonts' H, in EM.
+        constexpr float AeroLightCaps = 0.8018f;
+        constexpr float BioMassCaps = 0.8003f;
+
+        /// Null if ImGui can't read it.
+        ImFont* AddGameFont(GameFontFile const& file)
+        {
+            ImFontConfig config;
+            // Kept for good, as GameFonts says: the atlas must not free it.
+            config.FontDataOwnedByAtlas = false;
+            return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(file.Ttf.data()), static_cast<int>(file.Ttf.size()), 32.f, &config);
+        }
+
+        LineStyle GameStyle(ImFont* font, GameFontFile const& file, float em, float spacing, float caps)
+        {
+            auto const perEm = file.Layout.SizePerEm;
+            return { font, em * perEm, spacing, caps / perEm, file.Layout.Kerning, perEm };
+        }
+
+        /// Once UseGameFonts gave them: the game's fonts in place of Exo 2, both or neither. They must draw our words too, since
+        /// those stand in for any word of the game's they can't. Between ImGui's frames, and ahead of TakeGameTexts.
+        void TakeGameFonts()
+        {
+            if (R.GameFontsSeen) return;
+            auto const game = GameFontFiles.load(std::memory_order_acquire);
+            if (game == nullptr) return;
+            R.GameFontsSeen = true;
+            auto const aeroLight = AddGameFont(game->AeroLight);
+            auto const bioMass = AddGameFont(game->BioMass);
+            if (aeroLight == nullptr || bioMass == nullptr)
+            {
+                LEASI_WARN("overlay: ImGui did not read the game's fonts: Exo 2 stays");
+                return;
+            }
+            auto const& ours = LanguageTexts();
+            if (!Drawable(aeroLight, ours.Title) || !Drawable(bioMass, ours.Resume) || !Drawable(bioMass, ours.Photo) || !Drawable(aeroLight, ours.Space) ||
+                !Drawable(aeroLight, "F7"))
+            {
+                LEASI_WARN("overlay: the game's fonts lack letters of the pause screen: Exo 2 stays");
+                return;
+            }
+            R.Style = { GameStyle(aeroLight, game->AeroLight, Le1TitleEm, 0, AeroLightCaps), GameStyle(bioMass, game->BioMass, Le1LabelEm, Le1LabelSpacing, BioMassCaps),
+                        GameStyle(aeroLight, game->AeroLight, Le1KeyEm, Le1KeySpacing, AeroLightCaps) };
+            // The game's words are judged again, by these fonts.
+            R.Text = &ours;
+            R.GameTextsSeen = false;
+            LEASI_INFO("overlay: the game's fonts: {} and {} bytes of TrueType, {} and {} kerning pairs: used", game->AeroLight.Ttf.size(), game->BioMass.Ttf.size(),
+                       game->AeroLight.Layout.Kerning.size(), game->BioMass.Layout.Kerning.size());
         }
 
         // ! The game's icons
@@ -378,41 +517,59 @@ namespace MelePause::Overlay
             return IM_COL32(r, g, b, static_cast<int>(std::clamp(alpha, 0.f, 1.f) * 255.f + 0.5f));
         }
 
-        /// Exo 2's capitals stand 690 units above the baseline, and ImGui's font size spans its ascent to its descent (999 +
-        /// 201 units): the capitals are this share of the size.
-        constexpr float CapHeight = 690.f / 1200.f;
-
         /// Where a line's top goes for its capitals to centre on y.
-        float CapsTop(ImFont* font, float size, float y)
+        float CapsTop(ImFont* font, float size, float y, float caps = CapHeight)
         {
-            return y - font->GetFontBaked(size)->Ascent + 0.5f * CapHeight * size;
+            return y - font->GetFontBaked(size)->Ascent + 0.5f * caps * size;
         }
 
-        /// A line with extra space between its letters (titles are set wide in the game's menus).
-        float SpacedWidth(ImFont* font, float size, std::string_view text, float spacing)
+        float CapsTop(LineStyle const& style, float k, float y) { return CapsTop(style.Font, style.Size * k, y, style.Caps); }
+
+        /// What the font's kerning adds between two letters, at that size.
+        float KerningOf(LineStyle const& style, float size, unsigned left, unsigned right)
         {
-            auto const baked = font->GetFontBaked(size);
+            for (auto const& pair : style.Kerning)
+            {
+                if (pair.Left == left && pair.Right == right) return pair.Em * size / style.SizePerEm;
+            }
+            return 0;
+        }
+
+        /// A line with its style's space between its letters (titles are set wide in our own look) and its kerning. ImGui bakes
+        /// whole sizes: an advance scales to the size asked for, as in ImGui's own text.
+        float SpacedWidth(LineStyle const& style, float k, std::string_view text)
+        {
+            auto const size = style.Size * k;
+            auto const baked = style.Font->GetFontBaked(size);
+            auto const scale = size / baked->Size;
             float width = 0;
             int letters = 0;
+            unsigned left = 0;
             for (auto p = text.data(), end = text.data() + text.size(); p < end;)
             {
                 unsigned c = 0;
                 p += ImTextCharFromUtf8(&c, p, end);
-                width += baked->GetCharAdvance(static_cast<ImWchar>(c));
+                width += baked->GetCharAdvance(static_cast<ImWchar>(c)) * scale + KerningOf(style, size, left, c);
+                left = c;
                 letters++;
             }
-            return width + spacing * static_cast<float>(std::max(letters - 1, 0));
+            return width + style.Spacing * k * static_cast<float>(std::max(letters - 1, 0));
         }
 
-        void DrawSpaced(ImDrawList* list, ImFont* font, float size, ImVec2 at, ImU32 colour, std::string_view text, float spacing)
+        void DrawSpaced(ImDrawList* list, LineStyle const& style, float k, ImVec2 at, ImU32 colour, std::string_view text)
         {
-            auto const baked = font->GetFontBaked(size);
+            auto const size = style.Size * k;
+            auto const baked = style.Font->GetFontBaked(size);
+            auto const scale = size / baked->Size;
+            unsigned left = 0;
             for (auto p = text.data(), end = text.data() + text.size(); p < end;)
             {
                 unsigned c = 0;
                 auto const next = p + ImTextCharFromUtf8(&c, p, end);
-                list->AddText(font, size, at, colour, p, next);
-                at.x += baked->GetCharAdvance(static_cast<ImWchar>(c)) + spacing;
+                at.x += KerningOf(style, size, left, c);
+                list->AddText(style.Font, size, at, colour, p, next);
+                at.x += baked->GetCharAdvance(static_cast<ImWchar>(c)) * scale + style.Spacing * k;
+                left = c;
                 p = next;
             }
         }
@@ -427,15 +584,13 @@ namespace MelePause::Overlay
         /// The centre: the title set wide in a thin frame, its corners bracketed, a tick on each side.
         void DrawTitle(ImDrawList* list, float width, float height, float alpha, float k)
         {
-            auto const font = R.Font.Light;
-            auto const size = 50 * k;
-            auto const spacing = 14 * k;
+            LineStyle const style{ R.Font.Light, 50, 14 };
             auto const text = R.Text->Title;
-            auto const textWidth = SpacedWidth(font, size, text, spacing);
+            auto const textWidth = SpacedWidth(style, k, text);
             ImVec2 const centre{ width * 0.5f, height * 0.47f };
 
             auto const halfWidth = textWidth * 0.5f + 64 * k;
-            auto const halfHeight = 0.5f * CapHeight * size + 30 * k;
+            auto const halfHeight = 0.5f * CapHeight * style.Size * k + 30 * k;
             ImVec2 const min{ centre.x - halfWidth, centre.y - halfHeight };
             ImVec2 const max{ centre.x + halfWidth, centre.y + halfHeight };
             auto const line = std::max(1.f, k);
@@ -459,9 +614,9 @@ namespace MelePause::Overlay
             list->AddLine({ min.x - 14 * k, centre.y }, { min.x - 4 * k, centre.y }, bracket, line);
             list->AddLine({ max.x + 4 * k, centre.y }, { max.x + 14 * k, centre.y }, bracket, line);
 
-            ImVec2 const at{ centre.x - textWidth * 0.5f, CapsTop(font, size, centre.y) };
-            DrawSpaced(list, font, size, { at.x + 2 * k, at.y + 2 * k }, Colour(0, 0, 0, 0.5f * alpha), text, spacing);
-            DrawSpaced(list, font, size, at, Colour(238, 241, 245, alpha), text, spacing);
+            ImVec2 const at{ centre.x - textWidth * 0.5f, CapsTop(style, k, centre.y) };
+            DrawSpaced(list, style, k, { at.x + 2 * k, at.y + 2 * k }, Colour(0, 0, 0, 0.5f * alpha), text);
+            DrawSpaced(list, style, k, at, Colour(238, 241, 245, alpha), text);
         }
 
         enum class Icon { PadStart, PadA, PadY, KeyEsc, KeySpace, KeyF7 };
@@ -478,7 +633,8 @@ namespace MelePause::Overlay
         float IconWidth(Icon icon, float radius, float k)
         {
             if (IsPad(icon)) return 2 * radius;
-            auto const textWidth = R.Font.SemiBold->CalcTextSizeA(0.85f * radius, FLT_MAX, 0, KeyLabel(icon)).x;
+            auto const textWidth = R.Look == OverlayLook::LE1 ? SpacedWidth(R.Style.Key, k, KeyLabel(icon))
+                                                              : R.Font.SemiBold->CalcTextSizeA(0.85f * radius, FLT_MAX, 0, KeyLabel(icon)).x;
             // The space bar reads as one: wider than a key, whatever its label.
             return std::max(icon == Icon::KeySpace ? 5 * radius : 2 * radius, textWidth + 22 * k);
         }
@@ -599,15 +755,12 @@ namespace MelePause::Overlay
             list->AddRectFilledMultiColor({ max.x - inner, min.y }, max, solidTop, clearTop, clearBottom, solidBottom);
         }
 
-        /// The centre: the title set wide on a band like the game's menu bars, a rule along each edge, a short rule beyond
-        /// each end.
+        /// The centre: the title on a band like the game's menu bars, a rule along each edge, a short rule beyond each end.
         void DrawBandTitle(ImDrawList* list, float width, float height, float alpha, float k)
         {
-            auto const font = TitleFont();
-            auto const size = 58 * k;
-            auto const spacing = 18 * k;
+            auto const& style = R.Style.Title;
             auto const text = R.Text->Title;
-            auto const textWidth = SpacedWidth(font, size, text, spacing);
+            auto const textWidth = SpacedWidth(style, k, text);
             ImVec2 const centre{ width * 0.5f, height * 0.47f };
 
             auto const halfWidth = std::min(textWidth * 0.5f + 150 * k, width * 0.5f - 48 * k);
@@ -625,10 +778,10 @@ namespace MelePause::Overlay
                 list->AddLine({ from, centre.y }, { from + side * 26 * k, centre.y }, Colour(Le1Line, 0.9f * alpha), rule);
             }
 
-            ImVec2 const at{ centre.x - textWidth * 0.5f, CapsTop(font, size, centre.y) };
-            DrawSpaced(list, font, size, { at.x + 3 * k, at.y + 4 * k }, Colour(0, 0, 0, 0.25f * alpha), text, spacing);
-            DrawSpaced(list, font, size, { at.x + 2 * k, at.y + 3 * k }, Colour(0, 0, 0, 0.4f * alpha), text, spacing);
-            DrawSpaced(list, font, size, at, Colour(Le1Title, alpha), text, spacing);
+            ImVec2 const at{ centre.x - textWidth * 0.5f, CapsTop(style, k, centre.y) };
+            DrawSpaced(list, style, k, { at.x + 3 * k, at.y + 4 * k }, Colour(0, 0, 0, 0.25f * alpha), text);
+            DrawSpaced(list, style, k, { at.x + 2 * k, at.y + 3 * k }, Colour(0, 0, 0, 0.4f * alpha), text);
+            DrawSpaced(list, style, k, at, Colour(Le1Title, alpha), text);
         }
 
         /// A key in the game's style, centred on c: a gamepad button (the game's texture of it where we have one, else a disc
@@ -678,9 +831,9 @@ namespace MelePause::Overlay
             list->AddRectFilled(min, max, Colour(Le1KeyBottom, 0.62f * alpha), rounding);
             ImGui::ShadeVertsLinearColorGradientKeepAlpha(list, first, list->VtxBuffer.Size, min, { min.x, max.y }, Colour(Le1KeyTop, 1), Colour(Le1KeyBottom, 1));
             list->AddRect(min, max, Colour(0xBD, 0xBE, 0xBD, 0.45f * alpha), rounding, std::max(1.f, k));
-            auto const size = 0.85f * radius;
-            auto const width = R.Font.SemiBold->CalcTextSizeA(size, FLT_MAX, 0, label).x;
-            list->AddText(R.Font.SemiBold, size, { c.x - width * 0.5f, CapsTop(R.Font.SemiBold, size, c.y) }, Colour(238, 238, 238, 0.95f * alpha), label);
+            auto const& style = R.Style.Key;
+            auto const width = SpacedWidth(style, k, label);
+            DrawSpaced(list, style, k, { c.x - width * 0.5f, CapsTop(style, k, c.y) }, Colour(238, 238, 238, 0.95f * alpha), label);
         }
 
         /// The bottom left: each key with its label to its right, in the game's label colour, side by side.
@@ -689,7 +842,7 @@ namespace MelePause::Overlay
             Prompt const prompts[] = { { pad ? Icon::PadA : Icon::KeySpace, R.Text->Resume }, { pad ? Icon::PadY : Icon::KeyF7, R.Text->Photo } };
             auto const count = R.Photo ? 2 : 1;
             auto const radius = 23 * k;
-            auto const labelSize = 28 * k;
+            auto const& style = R.Style.Label;
             auto const y = height - 119 * k;
             auto x = 88 * k;
             for (int i = 0; i < count; i++)
@@ -698,8 +851,10 @@ namespace MelePause::Overlay
                 auto const iconWidth = IconWidth(p.What, radius, k);
                 DrawGameIcon(list, p.What, { x + iconWidth * 0.5f, y }, radius, alpha, k);
                 auto const labelX = x + iconWidth + 14 * k;
-                DrawShadowed(list, R.Font.Regular, labelSize, { labelX, CapsTop(R.Font.Regular, labelSize, y) }, Colour(Le1Line, alpha), alpha, k, p.Label);
-                x = labelX + R.Font.Regular->CalcTextSizeA(labelSize, FLT_MAX, 0, p.Label).x + 52 * k;
+                ImVec2 const at{ labelX, CapsTop(style, k, y) };
+                DrawSpaced(list, style, k, { at.x + 2 * k, at.y + 2 * k }, Colour(0, 0, 0, 0.55f * alpha), p.Label);
+                DrawSpaced(list, style, k, at, Colour(Le1Line, alpha), p.Label);
+                x = labelX + SpacedWidth(style, k, p.Label) + 52 * k;
             }
         }
 
@@ -975,6 +1130,7 @@ namespace MelePause::Overlay
                 LEASI_WARN("overlay: no blur on this back buffer (see above): plain darkening");
             }
 
+            TakeGameFonts();
             auto& io = ImGui::GetIO();
             io.DisplaySize = { width, height };
             io.DeltaTime = std::max(seconds, 1e-4f);
@@ -1223,6 +1379,21 @@ namespace MelePause::Overlay
         auto const icons = new GameIcons{ padA, padY };
         GameIcons const* none = nullptr;
         if (!GameIcon.compare_exchange_strong(none, icons, std::memory_order_acq_rel)) delete icons;
+    }
+
+    void UseGameFonts(std::span<unsigned char const> movie)
+    {
+        auto const letters = ScreenLetters();
+        auto const fonts = new GameFonts{ ReadGameFont(movie, GameFont::AeroLight, letters), ReadGameFont(movie, GameFont::BioMass, letters) };
+        if (fonts->AeroLight.Ttf.empty() || fonts->BioMass.Ttf.empty())
+        {
+            LEASI_WARN("the game's fonts movie is not what we know ($AeroLight {} bytes of TrueType, $BioMass {}): the pause screen keeps Exo 2", fonts->AeroLight.Ttf.size(),
+                       fonts->BioMass.Ttf.size());
+            delete fonts;
+            return;
+        }
+        GameFonts const* none = nullptr;
+        if (!GameFontFiles.compare_exchange_strong(none, fonts, std::memory_order_acq_rel)) delete fonts;
     }
 
     void MovieIdle()

@@ -14,6 +14,7 @@
 /// The pause screen's texts are ours (Overlay.cpp), in the language the launcher passes.
 #define MELEPAUSE_GAME_TEXTS 0
 #define MELEPAUSE_GAME_ICONS 0
+#define MELEPAUSE_GAME_FONTS 0
 
 namespace MelePause::Game
 {
