@@ -36,11 +36,10 @@ namespace MelePause::Blur
     void Shutdown();
 
     /// Blurs the back buffer into itself through <paramref name="target"/> (a view of <paramref name="backBuffer"/>, the one
-    /// ImGui draws through next). <paramref name="fade"/> 0..1 is the effect's opacity: 0 draws nothing. With
-    /// <paramref name="refresh"/> false the blur of an earlier frame is composited again (a static paused scene), at a third
-    /// of the cost. Every piece of pipeline state it changes is set back. False when nothing was drawn.
+    /// ImGui draws through next). <paramref name="fade"/> 0..1 is the effect's opacity: 0 draws nothing. Every piece of
+    /// pipeline state it changes is set back. False when nothing was drawn.
     bool Draw(ID3D11DeviceContext* context, ID3D11Texture2D* backBuffer, ID3D11RenderTargetView* target, float fade,
-              Settings const& settings = {}, bool refresh = true);
+              Settings const& settings = {});
 
     /// The view format for a TYPELESS back buffer (8-bit: UNORM, not sRGB: UE3 writes gamma-encoded values); any other
     /// format comes back as it is. For the caller's render target view.

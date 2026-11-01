@@ -183,8 +183,6 @@ float4 PSComposite(VSOut i) : SV_Target
             /// The target view is sRGB or float: the composite's colour math is on linear values.
             bool Linear = false;
             float Dither = 0;
-            /// Levels[1] holds a finished blur (refresh = false composites it again).
-            bool HaveBlur = false;
         };
         /// Leaked on purpose: no D3D Release from DllMain at process exit, after d3d11.dll may have cleaned up.
         State& S = *new State{};
@@ -467,7 +465,6 @@ float4 PSComposite(VSOut i) : SV_Target
         {
             for (auto& level : S.Levels) level = {};
             S.HaveSized = false;
-            S.HaveBlur = false;
             S.Direct = false;
         }
 
@@ -624,8 +621,7 @@ float4 PSComposite(VSOut i) : SV_Target
         S.Ready = false;
     }
 
-    bool Draw(ID3D11DeviceContext* context, ID3D11Texture2D* backBuffer, ID3D11RenderTargetView* target, float fade, Settings const& settings,
-              bool refresh)
+    bool Draw(ID3D11DeviceContext* context, ID3D11Texture2D* backBuffer, ID3D11RenderTargetView* target, float fade, Settings const& settings)
     {
         if (S.Failed || context == nullptr || backBuffer == nullptr || target == nullptr) return false;
         fade = std::clamp(fade, 0.f, 1.f);
@@ -701,25 +697,20 @@ float4 PSComposite(VSOut i) : SV_Target
         float const factor[4]{};
 
         bool ok = true;
-        if (refresh || !S.HaveBlur)
+        if (!S.Direct)
         {
-            S.HaveBlur = false;
-            if (!S.Direct)
-            {
-                if (bb.SampleDesc.Count > 1)
-                    context->ResolveSubresource(S.Levels[0].Texture.Get(), 0, backBuffer, 0, key.ViewFormat);
-                else
-                    context->CopyResource(S.Levels[0].Texture.Get(), backBuffer);
-            }
-            context->OMSetBlendState(nullptr, factor, 0xFFFFFFFF);
-            context->PSSetShader(S.Down.Get(), nullptr, 0);
-            for (int i = 1; ok && i <= key.Levels; i++)
-                ok = Pass(context, k, S.Levels[i - 1], S.Levels[i].Target.Get(), S.Levels[i].Width, S.Levels[i].Height);
-            context->PSSetShader(S.Up.Get(), nullptr, 0);
-            for (int i = key.Levels - 1; ok && i >= 1; i--)
-                ok = Pass(context, k, S.Levels[i + 1], S.Levels[i].Target.Get(), S.Levels[i].Width, S.Levels[i].Height);
-            S.HaveBlur = ok;
+            if (bb.SampleDesc.Count > 1)
+                context->ResolveSubresource(S.Levels[0].Texture.Get(), 0, backBuffer, 0, key.ViewFormat);
+            else
+                context->CopyResource(S.Levels[0].Texture.Get(), backBuffer);
         }
+        context->OMSetBlendState(nullptr, factor, 0xFFFFFFFF);
+        context->PSSetShader(S.Down.Get(), nullptr, 0);
+        for (int i = 1; ok && i <= key.Levels; i++)
+            ok = Pass(context, k, S.Levels[i - 1], S.Levels[i].Target.Get(), S.Levels[i].Width, S.Levels[i].Height);
+        context->PSSetShader(S.Up.Get(), nullptr, 0);
+        for (int i = key.Levels - 1; ok && i >= 1; i--)
+            ok = Pass(context, k, S.Levels[i + 1], S.Levels[i].Target.Get(), S.Levels[i].Width, S.Levels[i].Height);
         if (ok)
         {
             // Opaque once faded in (the shader writes alpha 1): the back buffer is written, not read.
