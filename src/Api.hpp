@@ -103,6 +103,17 @@ namespace MelePause
     /// focus change must not keep Space's SkipMovie away). Bink.cpp keeps the guard armed as long for a press it read.
     inline constexpr ULONGLONG GuardMs = 2000;
 
+    /// The skips stay dropped this long after the release of a press we took (GuardMs before it): the OnRelease half of a
+    /// bind may run after Console.InputKey has seen the release.
+    inline constexpr ULONGLONG ReleaseGraceMs = 250;
+
+    /// The press behind <paramref name="tick"/> (Bink::EscSeenDown, Bink::SpaceSeenDown) is down, or was a moment ago. The
+    /// tick comes from the movie's thread, so it can be newer than <paramref name="now"/>.
+    inline bool TakenLately(ULONGLONG tick, ULONGLONG now)
+    {
+        return tick != 0 && (tick >= now || now - tick < ReleaseGraceMs);
+    }
+
     // ! Overlay.cpp
     // ========================================
 

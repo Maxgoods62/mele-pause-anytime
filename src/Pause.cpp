@@ -39,10 +39,6 @@ namespace MelePause
         constexpr unsigned char IE_Pressed = 0;
         constexpr unsigned char IE_Released = 1;
 
-        /// The skips stay dropped this long after the release of a press we took (GuardMs before it): the OnRelease half of a
-        /// bind may run after Console.InputKey has seen the release.
-        constexpr ULONGLONG ReleaseGraceMs = 250;
-
         /// A held gamepad button repeats after 0.2 s, then every 0.1 s: a press of Start with no event for this long is over,
         /// its release lost (focus change)...
         constexpr ULONGLONG StartStaleMs = 500;
@@ -603,7 +599,6 @@ namespace MelePause
             if (ConsoleOpen(function)) return false;
 
             char const* action = nullptr;
-            auto const movieSpace = key == Key::Space ? Bink::SpaceSeenDown() : 0;
             if (Bink::PauseWanted() && Bink::OwnsKeys())
             {
                 auto const space = key == Key::Space;
@@ -611,7 +606,8 @@ namespace MelePause
                                             : (space ? "Space during a fullscreen movie, its press unseen here" : "A during a fullscreen movie, its press unseen here"));
                 action = "resumed the movie";
             }
-            else if (movieSpace != 0 && (movieSpace >= now || now - movieSpace < ReleaseGraceMs))
+            // After the test above: the movie's thread stores this tick before it ends the pause.
+            else if (key == Key::Space && TakenLately(Bink::SpaceSeenDown(), now))
                 action = "taken: the movie's thread resumed the movie on it";
             else if (pressed && G.WorldPaused && !PhotoMode::On())
             {
@@ -673,10 +669,8 @@ namespace MelePause
         /// while it is down.
         char const* KeyGuard(ULONGLONG now)
         {
-            auto const movieEsc = Bink::EscSeenDown();
-            if (movieEsc != 0 && (movieEsc >= now || now - movieEsc < ReleaseGraceMs)) return "Esc";
-            auto const movieSpace = Bink::SpaceSeenDown();
-            if (movieSpace != 0 && (movieSpace >= now || now - movieSpace < ReleaseGraceMs)) return "Space";
+            if (TakenLately(Bink::EscSeenDown(), now)) return "Esc";
+            if (TakenLately(Bink::SpaceSeenDown(), now)) return "Space";
             if (Guarding(G.Esc, now)) return "Esc";
             if (Guarding(G.Start, now)) return "Start";
             if (Guarding(G.Space, now)) return "Space";

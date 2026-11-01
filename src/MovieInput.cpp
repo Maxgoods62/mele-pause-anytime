@@ -17,6 +17,8 @@
 //   Console.InputKey: the movie's thread toggles the pause on Esc, Pause.cpp on Start (only Start's repeats and release got
 //   there before).
 // - Every press while our movie pause is on: not given to it, so no key skips a paused movie. Space and A resume it instead.
+// - A press of Space the movie's thread has just resumed on: not given to it either. That thread reads the key at once and
+//   this one a frame later, so here the pause can already be over (seen in LE2: 4 ms, and CitHub_Arrival closed).
 // - Space and X, the movie playing: given to it as the game's skipKeyAs (LE2: Enter), so they skip what Esc skipped, and
 //   only that; as they are where they are its keys already (LE3).
 // Any other event goes to it as it came. Game thread only; it reads no game object.
@@ -72,6 +74,11 @@ namespace MelePause::MovieInput
             if (Bink::PauseWanted() && Bink::OwnsKeys())
             {
                 LEASI_INFO("{} pressed under our movie pause: kept from the engine's movie input, which would skip the movie", name);
+                return 0;
+            }
+            if (key == Space && TakenLately(Bink::SpaceSeenDown(), GetTickCount64()))
+            {
+                LEASI_INFO("Space pressed as the movie's thread resumed on it: kept from the engine's movie input, which would skip the movie");
                 return 0;
             }
             if (pauseKey)

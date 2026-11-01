@@ -138,6 +138,14 @@ On 2026-10-30 a test build of the LE2 movie pause (v9's code, still numbered 8) 
 | Citadel arrival (`CitHub_Arrival`) | Esc and Start pause and resume it, with no skip. Space and X skip it, and no sound plays on. Under the pause, X and Enter skip nothing; Space and A resume. |
 | Log | "movie input hooked" at start; "kept from the engine's movie input" for each Esc and Start press; "given to the engine's movie input as Enter" for Space and X. |
 
+On 2026-11-01 Space's resume of `CitHub_Arrival` skipped the movie on v18: the movie's thread resumed it, the game thread gave
+the same press to the movie input 4 ms later, and the movie closed at frame 145. The row above had met the other order. A
+test build of the fix, still numbered 18, ran 20 Esc and Space cycles over two arrivals with no skip: 19 in that order, 4 to 5
+ms apart, each kept from the movie input, and one with the game thread first. A resumed 5 times with no skip, one of them held
+for 2 s, and Space with nothing paused skipped the movie. Not run on that build: X with nothing paused. In LE3, 15 Space resumes
+of one relay jump all met the safe order, so the fix did not run there; the relay cannot skip, and it played on. In LE1, which
+has no movie input hook, 11 Space resumes of one relay jump worked, 9 of them with the movie's thread first.
+
 Not covered yet: a movie with no known sound (Esc must skip it as in the vanilla game), the Prologue's FirstFlight
 movie (level music plays beside it) and `visionavi` (Bink audio). The same build passed S3 in LE1 (the travel movie):
 Esc paused it, Start resumed it after 8 s, Start paused it and A resumed it, twice, with no movie-input hook line.

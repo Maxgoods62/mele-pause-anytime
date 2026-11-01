@@ -619,9 +619,11 @@ namespace MelePause::Bink
             if (PollEdge(SpacePoller, space, now, wanted, SpaceDownTick) && wanted && OurForeground())
             {
                 auto const movies = ListMovies(now, hud);
-                ResumeLocked(now);
+                // The tick first: the game thread reads Wanted without Lock, and once it is false only this tick says the
+                // press is ours (MovieInput.cpp's hook, Pause.cpp's TakeResumeKey). Its release store publishes the tick.
                 SpacePoller.Taken = true;
                 SpaceDownTick.store(now, std::memory_order_relaxed);
+                ResumeLocked(now);
                 LEASI_INFO("Space pressed, read on thread {}: movie resume asked, applied at each paused movie's next call; {}; open: {}", ThreadText(thread),
                            HudText(now, hud), movies);
                 LEASI_FLUSH();
