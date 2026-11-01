@@ -6,3 +6,6 @@ dist/
 .mcp.json
 .claude/
 build.env
+*.asi
+*.pdb
+*.zip

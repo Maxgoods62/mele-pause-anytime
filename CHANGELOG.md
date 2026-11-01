@@ -23,6 +23,8 @@ but for the dashes in the last line below.
 - In LE3 the game's menu sound plays as the pause starts, and as a key ends it.
 - `package.sh` writes `dist/LE1MelePause-v18.zip`, `dist/LE2MelePause-v18.zip` and `dist/LE3MelePause-v18.zip`.
 - In all three games, the short dash left and right of the title's band is gone.
+- GitHub now builds the zips: from `main` for the latest page, from a `v<N>` tag for a release, each with its SHA-256
+  hashes ([docs/releasing.md](docs/releasing.md)). `build.sh` also runs in Git Bash, and `package.sh` takes `--label`.
 
 ## v17 (unreleased)
 

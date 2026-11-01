@@ -9,7 +9,7 @@ the Windows build tools through interop.
 
 | What | Notes |
 |---|---|
-| Windows with WSL | `build.sh` is a bash script. In WSL it uses `rsync` and `flock`; it calls `powershell.exe`, `reg.exe`, `tasklist.exe`, `vswhere.exe`, `git.exe` and CMake on the Windows side. |
+| Windows with WSL | `build.sh` is a bash script. In WSL it uses `rsync` and `flock`; it calls `powershell.exe`, `reg.exe`, `tasklist.exe`, `vswhere.exe`, `git.exe` and CMake on the Windows side. Git Bash works too, as on [GitHub's runner](docs/releasing.md): without `rsync` it replaces the whole copy of `src/`, and without `flock` it takes no lock. |
 | Git for Windows | `git.exe` must be on the `PATH` that WSL sees (WSL adds the Windows `PATH` to its own by default). The LExASIs and Dear ImGui checkouts live on the Windows disk, so `build.sh` runs Windows' git on them. |
 | Visual Studio 18 (2026), or its Build Tools | With the C++ x64 build tools (`Microsoft.VisualStudio.Component.VC.Tools.x86.x64`) and the "C++ CMake tools for Windows" component. LExASIs' CMake preset uses the "Visual Studio 18 2026" generator, which older versions do not know. |
 | Network on the first build | `build.sh` clones [ME3Tweaks/LExASIs](https://github.com/ME3Tweaks/LExASIs) with its submodules and fetches [Dear ImGui](https://github.com/ocornut/imgui). |
@@ -35,7 +35,7 @@ The result is `dist/LE1MelePause.asi` and `dist/LE2MelePause.asi`, each with its
 | `./build.sh --game LE1` | The same for the games named, one `--game` each: `LE1`, `LE2`, `LE3` or `all`. It goes with `--install` and `--uninstall` too. |
 | `./build.sh --install` | Checks each game ([Install checks](#install-checks)), builds and stages, checks again, then copies `LE<n>MelePause.asi` into `Game\ME<n>\Binaries\Win64\ASI` of the game. In ME1's folder it then deletes `MelePause.asi`, the file of version 6 and older. |
 | `./build.sh --uninstall` | Removes `LE<n>MelePause.asi` from that folder, and `MelePause.asi` from ME1's. Refuses while the game runs. Builds nothing and needs no Visual Studio. |
-| `./package.sh` | Builds into `dist/stage`, then writes `dist/LE<n>MelePause-v<N>.zip` for each game (the `.asi`, a `README.txt` and the license texts) and `dist/SHA256SUMS` over this version's zips in `dist/`. Takes `--game` as `build.sh` does. Needs `python3`. The zips are not to be published yet (see [THIRD_PARTY.md](THIRD_PARTY.md)). |
+| `./package.sh` | Builds into `dist/stage`, then writes `dist/LE<n>MelePause-v<N>.zip` for each game (the `.asi`, a `README.txt` and the license texts) and `dist/SHA256SUMS` over this version's zips in `dist/`. Takes `--game` as `build.sh` does. `--label latest` names the zips `LE<n>MelePause-latest.zip`; a label like `v18` must be this version. Needs `python3`. [docs/releasing.md](docs/releasing.md) says how the workflow publishes them. |
 
 ## Games
 

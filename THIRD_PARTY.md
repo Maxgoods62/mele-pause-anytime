@@ -13,8 +13,5 @@ Dear ImGui.
 | [LExDialoguePauser](https://github.com/hypermorphicmods/LExDialoguePauser) | v2.1.1 (`DialoguePauser.cpp`), by hypermorphic | GPL-3.0 | No code copied. `src/Pause.cpp` follows its approach: Esc read in a hooked `Console.InputKey`, which still runs while the world is paused; the game's own world pause; text drawn after `BioHUD.PostRender`. |
 | Dual filter blur (Marius Bjørge, "Bandwidth-Efficient Rendering", SIGGRAPH 2015) and interleaved gradient noise (Jorge Jimenez, "Next Generation Post Processing in Call of Duty: Advanced Warfare", SIGGRAPH 2014) | the talks | algorithms, no code copied | `src/Blur.cpp`: the pause screen's blur passes and the dither of its darkened gradients. |
 
-LExASIs and LExSDKv2 publish no license file, so no prebuilt `LE<n>MelePause.asi` is published yet: see
-[Install](README.md#install).
-
 A shared build of `LE<n>MelePause.asi` must come with the GPL-3.0 text (`LICENSE`), the MIT notices of spdlog and Dear
 ImGui, and Exo 2's `OFL.txt`.

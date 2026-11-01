@@ -7,8 +7,8 @@
 #                               lists in GAMES), one --game for each
 #   ./build.sh ... --install    also copy each into its game's ASI folder (the games must be closed)
 #   ./build.sh ... --uninstall  remove each from its game's ASI folder (the games must be closed)
-# Runs in WSL. Settings come from the environment or from build.env (not in git, see build.env.example); a variable the
-# caller set wins over build.env. All are optional:
+# Runs in WSL, or in Git Bash on Windows, as the GitHub workflow does. Settings come from the environment or from build.env
+# (not in git, see build.env.example); a variable the caller set wins over build.env. All are optional:
 #   MELE_GAMES    the games to build when no --game is given, separated by spaces, e.g. 'LE1 LE2' or all
 #                 (default: RELEASED_GAMES)
 #   MELE_LE_DIR   the Legendary Edition folder, as a Windows path; only --install and --uninstall use it
@@ -30,11 +30,17 @@ if [[ -f "$HERE/build.env" ]]; then
     eval "$saved"
 fi
 
-LEXASIS_COMMIT=aaad03a
+LEXASIS_COMMIT=aaad03ab6e5112e27ff5528f7b08c3bcf3870c31
 IMGUI_COMMIT=c1aaac65e896a45f81f47a4d68f9959e0f86c859      # v1.93.0
 
 die() { echo "build.sh: $*" >&2; exit 1; }
 . "$HERE/scripts/games.sh"
+
+# Git Bash has cygpath in place of wslpath, and would turn MSBuild's /m into a path without MSYS_NO_PATHCONV.
+if ! command -v wslpath > /dev/null; then
+    wslpath() { cygpath "$@"; }
+    export MSYS_NO_PATHCONV=1
+fi
 
 USAGE="usage: ./build.sh [--game LE1|LE2|LE3|all]... [--install | --uninstall]"
 names=()
@@ -157,10 +163,12 @@ THIRD_PARTY="$(dirname "$LEXASIS")/third_party"
 STAGE="${MELE_STAGE:-$HERE/dist}"
 
 # One build of the tree at a time (two runs, or two worktrees with the same MELE_LEXASIS, would write the same objects
-# and PDB). Held until the script exits.
+# and PDB). Held until the script exits. Git Bash has no flock, and a GitHub runner builds alone.
 mkdir -p "$(dirname "$LEXASIS")"
-exec 9> "$(dirname "$LEXASIS")/.lexasis-build.lock"
-flock -n 9 || { echo "another build of $LEXASIS is running: waiting for it" >&2; flock 9; }
+if command -v flock > /dev/null; then
+    exec 9> "$(dirname "$LEXASIS")/.lexasis-build.lock"
+    flock -n 9 || { echo "another build of $LEXASIS is running: waiting for it" >&2; flock 9; }
+fi
 
 # LExASIs at the pinned commit with all its submodules, checked on every run: an interrupted first clone or a new pin is
 # repaired here.
@@ -207,9 +215,14 @@ fetch_pinned https://github.com/ocornut/imgui.git "$THIRD_PARTY/imgui" "$IMGUI_C
 # Our sources become one more ASI project of that tree. The project line is guarded, so the tree still configures if
 # LExASIs/MelePause is ever deleted; an unguarded line from an earlier build is replaced.
 # By content, not by time: a changed file gets the current time, so MSBuild never keeps an object compiled from another
-# checkout's newer copy.
+# checkout's newer copy. Git Bash has no rsync, and a GitHub runner has no older objects to keep.
 mkdir -p "$LEXASIS/MelePause"
-rsync -rlc --delete "$HERE/src/" "$LEXASIS/MelePause/"
+if command -v rsync > /dev/null; then
+    rsync -rlc --delete "$HERE/src/" "$LEXASIS/MelePause/"
+else
+    rm -rf "$LEXASIS/MelePause"
+    cp -r "$HERE/src" "$LEXASIS/MelePause"
+fi
 CML="$LEXASIS/CMakeLists.txt"
 if grep -qx 'add_subdirectory ("MelePause")' "$CML"; then sed -i '/^add_subdirectory ("MelePause")$/d' "$CML"; fi
 grep -qF 'EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/MelePause"' "$CML" \

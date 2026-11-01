@@ -7,8 +7,9 @@ key resumes it. While the game is paused, the picture is blurred and darkened un
 conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot. Everywhere else these keys
 do what they always did.
 
-Version 18 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). There is no prebuilt download yet: you build
-it from source and copy it into the game ([Install](#install)).
+Version 18 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). Download it from
+[Releases](https://github.com/Maxgoods62/mele-pause/releases), or build it from source, and copy it into the game
+([Install](#install)).
 
 ## Games
 
@@ -126,19 +127,21 @@ happens when the swap chain cannot be hooked, when the overlay fails to start or
 - Mass Effect Legendary Edition. MelePause supports LE1, LE2 and LE3 ([Games](#games)).
 - An ASI loader: [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy), the `bink2w64.dll` proxy that loads every
   `.asi` file in `Game\ME<n>\Binaries\Win64\ASI`, one per game. ME3Tweaks Mod Manager installs it with any mod.
-- The [Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), 14.50 or newer, and no older
-  than the MSVC tools that built your copy. MelePause is built with Visual Studio 2026 against the shared runtime
+- The latest [Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), no older than the MSVC
+  tools that built your copy. MelePause is built with Visual Studio 2026 against the shared runtime
   (`MSVCP140.dll`, `VCRUNTIME140.dll`), and an older `msvcp140.dll` can make it crash.
 
 MelePause needs no other mod, MeleBridge included.
 
 ## Install
 
-No prebuilt MelePause is published yet. A build compiles in code from LExSDKv2 and LExASIs, which publish no
-license, so a download waits for their authors' permission, or for ME3Tweaks to build MelePause for its ASI Manager.
-Until then, build it yourself: [BUILDING.md](BUILDING.md).
+Download your game's zip from [Releases](https://github.com/Maxgoods62/mele-pause/releases). You can
+[check the download](docs/releasing.md#check-a-download) against the published hash. Close the game, then copy
+`LE<n>MelePause.asi` from the zip into `<LE folder>\Game\ME<n>\Binaries\Win64\ASI\`, LE1's into ME1's, LE2's into ME2's
+and LE3's into ME3's. The newest code on `main` is at <https://maxgoods62.github.io/mele-pause/latest/>, less tested than
+a release.
 
-Close the game, then install it one of two ways:
+Or build it yourself ([BUILDING.md](BUILDING.md)). Close the game, then install it one of two ways:
 
 - `./build.sh --install` builds `LE1MelePause.asi`, `LE2MelePause.asi` and `LE3MelePause.asi` and copies each into its
   game's ASI folder.
@@ -147,8 +150,8 @@ Close the game, then install it one of two ways:
 - A copy by hand does the same: put `LE<n>MelePause.asi` from `dist/` (or your `MELE_STAGE`) into
   `<LE folder>\Game\ME<n>\Binaries\Win64\ASI\`, LE1's into ME1's, LE2's into ME2's and LE3's into ME3's.
 
-`<LE folder>` is the Legendary Edition folder, the one that holds `Game`. To update, build again and install again: the
-file name carries no version, so the new copy replaces the old one.
+`<LE folder>` is the Legendary Edition folder, the one that holds `Game`. To update, install the new version the same
+way: the file name carries no version, so the new copy replaces the old one.
 
 Versions 6 and older, for LE1 only, were called `MelePause.asi`. `./build.sh --install` deletes that file from ME1's ASI
 folder. After a
