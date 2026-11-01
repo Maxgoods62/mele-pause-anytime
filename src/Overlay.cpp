@@ -629,7 +629,7 @@ namespace MelePause::Overlay
             return 0;
         }
 
-        /// A line with its style's space between its letters (titles are set wide) and its kerning. ImGui bakes
+        /// A line with its style's space between its letters and its kerning. ImGui bakes
         /// whole sizes: an advance scales to the size asked for, as in ImGui's own text.
         float SpacedWidth(LineStyle const& style, float k, std::string_view text)
         {
