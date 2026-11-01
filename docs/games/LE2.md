@@ -121,7 +121,7 @@ from the game's files, and none of those files is shipped.
 | Fonts | `GUI_SF_Fonts.AeroLightFont_glyphs` (Myriad Pro+DFGGothicP-W5) and `.BioMassFont_glyphs` (Biomass+DFGSoGei-W7), byte-identical in all 8 languages. `AeroLightFont` and `BioMassFont` hold no outlines | `GUI_SF_Fonts.Fonts`, both in one movie |
 | Words | resume 157151, photo mode 392221, title ours: 170645 is "No Data" (`WindowPop`'s paused box is dead in LE2) and 174771 "Pause" stays English in Russian, Polish and Japanese | 170645, 157151, 184397 |
 | Gamepad buttons | `GUI_SF_Xbox_ControllerIcons.Xbox_ControllerIcons_IA` and `_I1`, 128x128, disc 93 texels across, centred at (61, 55.5): off-centre, so `ButtonArt` places it | `GUI_SF_SharedAssets.XBox_ControllerIcons_I4` and `_I9`, disc 95, centred |
-| Sound | `BioSFManager.PlaySound` with `InGameGuiEnter` and `InGameGuiExit`, as `MassEffectGuiManager.ShowBrowserWheel` and `HideBrowserWheel` | `PlayGuiSound` with the same names, through the GUI sound hooks |
+| Sound | `BioSFManager.PlaySound` with `InGameGuiEnter` and `InGameGuiExit`, as `MassEffectGuiManager.ShowBrowserWheel` and `HideBrowserWheel`: Wwise events that also hold and give back the game's audio ([World pause](../how-it-works.md#world-pause)) | `PlayGuiSound` with the same names, through the GUI sound hooks |
 | `GetSimpleString` | `SFXGame`, which `BioSPGame` extends | `BioSPGame` |
 
 ## Sheet for a first run
@@ -160,6 +160,8 @@ The procedure is in [testing.md](../testing.md), with `--game LE2`. `--install` 
   game's A and Y at the height of their labels, not drawn discs. "overlay ready: ..., LE2 look", "overlay: the game's
   gamepad icons: A fine, Y fine: used", "overlay: the game's fonts: ... used", "overlay: the game's texts: title \"\" kept
   ours, resume ... used, photo mode ... used", and "GUI sound InGameGuiEnter: played" after "world paused".
+- S9, the Steam overlay, as in [testing.md](../testing.md)'s S9. The line goes on to its end. "game audio released: the
+  Steam overlay is open, the world still held" with its "GUI sound InGameGuiExit: played", then "world pause ended".
 
 ## Open questions
 

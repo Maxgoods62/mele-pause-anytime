@@ -141,6 +141,8 @@ namespace MelePause::Game
     /// events, which play under the world pause with no hook.
     inline constexpr wchar_t const* PauseSound = L"InGameGuiEnter";
     inline constexpr wchar_t const* ResumeSound = L"InGameGuiExit";
+    /// The first event's first action is a Wwise Pause All, the second's a Resume All: every end of the pause must post the second.
+    inline constexpr bool PauseSoundHoldsAudio = true;
 }
 
 #include "MelePause/game/KismetMovie.hpp"

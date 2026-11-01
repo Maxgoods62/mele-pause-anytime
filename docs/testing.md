@@ -15,8 +15,8 @@ game; [games/LE2.md](games/LE2.md) and [games/LE3.md](games/LE3.md) have LE2's a
 Before a version is tagged, each game its CHANGELOG entry names (the `Games:` line) passes a sheet, with the build that
 `package.sh` makes:
 
-- the full sheet, S1 to S7, with a gamepad and with keyboard and mouse, in each game the version adds or reworks (a new
-  feature, moved code, a new file name);
+- the full sheet, S1 to S7 and S9 in LE2 and LE3, with a gamepad and with keyboard and mouse, in each game the version
+  adds or reworks (a new feature, moved code, a new file name);
 - the smoke sheet, S1, S3 and S6, in every other game it covers. The code is shared, so a change made for one game can
   break another.
 
@@ -53,6 +53,9 @@ Before a version is tagged, each game its CHANGELOG entry names (the `Games:` li
   Then do the same in an in-engine cutscene, and with Esc and F7 on the keyboard (hold the right mouse button to look).
   Y in gameplay, or in a conversation that is not paused, does what it does in the vanilla game.
 - S7, the log. Read it against the table below, the photo mode counters included.
+- S9, the Steam overlay, LE2 and LE3 (their own sheets have S8, the look). During a long spoken line, press Esc, then Shift+Tab, wait 2 s, and Shift+Tab, with
+  no other key. The game's menu sound plays as the overlay opens. About 2 s after it closes the scene resumes by itself,
+  and the line goes on to its end.
 
 ## What the log should show
 
@@ -61,7 +64,7 @@ Before a version is tagged, each game its CHANGELOG entry names (the `Games:` li
 | At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ..." (LE2 and LE3: "GUI sounds: not hooked in the LE<n> build, ..."), or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>MelePause N ready", where N is the build's `ASI_VERSION`. |
 | At the first frame | "overlay ready: back buffer ..., LE1 look (LE2 look, LE3 look), text in <language>, Exo 2 embedded, blur ready". "first BioHUD.PostRender": the HUD owner and GEngine's controller should be the same. "the game's string table: title ..., resume ..., photo mode ..." with the words in the game's language (LE2 and LE3 have no title there), and "overlay: the game's gamepad icons: A fine, Y fine: used" ("refused" and "ours drawn instead" if a view failed its checks, and "no view of the game's gamepad icons" if the textures gave none). LE3: "the game's fonts: loaded their package in ... ms". A line with "the pause screen keeps Exo 2" if the game's fonts could not be read. |
 | Each press that reaches `Console.InputKey` | One "Esc pressed: mode ..." or "Start pressed: mode ..." line, with what it did. |
-| Each pause | "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts", then "overlay hidden" ("at once" for photo mode). At the first one, "overlay: the game's fonts: ... used" ("Exo 2 stays" if not), then "overlay: the game's texts: ..." with "used" after each word (Japanese without the game's fonts: "kept ours"); after "world paused", "GUI sound InGameGuiEnter: played"; after a key's "world resumed", "GUI sound InGameGuiExit: played". |
+| Each pause | "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts", then "overlay hidden" ("at once" for photo mode). At the first one, "overlay: the game's fonts: ... used" ("Exo 2 stays" if not), then "overlay: the game's texts: ..." with "used" after each word (Japanese without the game's fonts: "kept ours"); after "world paused", "GUI sound InGameGuiEnter: played"; after a key's "world resumed", "GUI sound InGameGuiExit: played". In LE2 and LE3, a Steam overlay opened during a pause: "game audio released: the Steam overlay is open, the world still held", then that sound, and "world pause ended" once it closes. |
 | Photo mode | "photo mode enter, mode ..." (the view target, the shot, the subtitle). "photo mode on: ..." (the camera mode; how far the controller was from the shot, in units and degrees, before it was put on it; and how far the view is: 0 uu and 0 deg expected), with "pad prompts" after Y or "keyboard prompts" after F7. Then "Y pressed ...: left photo mode", "photo mode exit: ignore counters ...", and "photo mode left (Y) after ... s: mode 5 (Conversation), camera mode ...". The last one gives the number of static binds set back, of camera steps, and what got past the pause: "N key and M axis event(s), G GUI tick(s) (0 changed the Pauser: put back), S GUI sound(s)". M is in the thousands after moving a stick or the mouse, G about one per frame, S at least one per screenshot. |
 | A movie | Its open line ("from a file"); "is a fullscreen movie" with the HUD's silence; "Console.InputKey runs while movie #N is open" (the game mode during it); one "Esc pressed, read on thread ..." line per press (movie pause or resume asked); the PAUSED and RESUMED lines and the reports between them; "Esc released during a fullscreen movie ..." lines; its close line. |
 | Start in a movie | "Start held (or released) during a fullscreen movie, its press unseen here on thread ...: movie pause asked" (or resume asked). |
@@ -172,6 +175,11 @@ a build without the texture addresses it had both GUI sounds "played" and, as me
 icons": the drawn discs stayed. A screenshot shows the game's A and Y with the addresses, at the same place as the discs.
 Keycaps, Russian, Japanese, the movie pause and the fall back to Exo 2 were not checked on a screenshot or in the log.
 
+On 2026-11-02, S9 passed on a v18 build in a Normandy conversation, by ear: with Esc, Shift+Tab, 2 s, Shift+Tab, the scene
+resumed by itself and the line went on to its end. The log had "game audio released: the Steam overlay is open, the world
+still held" with one `InGameGuiExit` while the world was held, then "world pause ended", and no second one. Resumes with
+Esc and Space each played one `InGameGuiExit`. Before the fix the same keys lost the rest of the line, in two runs.
+
 ### LE3
 
 On 2026-10-30 the first LE3 build (v10's code, with photo mode and the movie pause off) passed part of the
@@ -214,3 +222,8 @@ well"). The log has "LE3 look", "loaded their package in 31 ms" at the main menu
 both labels "used", with no warning. 7 pauses (6 in conversations, 1 in a cutscene), 5 with gamepad prompts and 2 with
 keyboard prompts, resumed with A, Esc and Start; each played `InGameGuiEnter` and `InGameGuiExit`. Not run with v18: Space as
 the resume key, photo mode under the pause, a movie pause, Russian, Japanese, the Exo 2 fallback.
+
+On 2026-11-02, S9 passed on a v18 build in a Citadel conversation, by ear: the line went on to its end. Each of two pauses
+had "game audio released: the Steam overlay is open, the world still held" with one `InGameGuiExit` while the world was
+held. In the second, Esc with the overlay open logged "still paused by ..." and posted no second one. A plain key resume is
+not in that log: LE2 ran that path on the same build.

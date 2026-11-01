@@ -63,6 +63,15 @@ load, the game itself, the Steam overlay closing: `ClearPause` drops every `CanU
 when that WorldInfo is gone (a map change), or when the mode is no longer Conversation or Cinematic (then it resumes).
 It only pauses a world nobody else paused.
 
+In LE2 and LE3 the pause's sound does more than sound: `InGameGuiEnter` starts with a Wwise Pause All and `InGameGuiExit`
+with a Resume All (`Game::PauseSoundHoldsAudio`). A voice line still held by it when the world runs again is lost, and
+the Resume All no longer brings it back. Tested in LE2 with the Steam overlay ending the pause: `InGameGuiExit` 0.7 s
+after the world resumed lost the line, `InGameGuiExit` during the pause kept it. So a key's resume and the mode's resume
+post it in the frame the world resumes, and while the overlay is open (`bIsExternalUIOpen`), with the world still held,
+`Validate` posts it once: the overlay's close will end the pause with no key of ours. The other ends post it late, which
+gives back the rest of the audio only. It isn't posted at the start of every pause, which would keep the line too: the
+pause wouldn't be silent, ambient sound goes on under it (measured in LE2, 0.018 peak against 0.000).
+
 ## Movie pause
 
 Bink movies keep playing under the world pause, so MelePause pauses the movie itself.

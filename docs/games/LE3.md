@@ -93,7 +93,7 @@ from the game's files, and none of those files is shipped.
 | Fonts | `GUI_SF_Fonts.gfxfonts` of `SFXGUI_Fonts.pcc`, both fonts in one SWF version 15 movie, LE2's two: cut to the pause screen's letters of all 8 languages they come out byte-identical to LE2's. The movie is out of the object list by the first HUD, unlike the GUI movies, so `Pause.cpp` has the game's loader bring it back there, at the main menu, with `DynamicLoadObject` on the file's `ObjectReferencer_448` (`PauseFonts.LoadPath`), 31 ms on the test machine; the next garbage collection drops it. `SFXGUI_FontsJPN.pcc`, which the Japanese game uses (`SFXGUIInteraction.FontMap`), gives the same letters, so one file serves every language. `$BioMass` and `$AeroLight` are "BioMass Shared" and "AeroLight Shared" here | `GUI_SF_Fonts.AeroLightFont_glyphs` and `.BioMassFont_glyphs` |
 | Words | resume 157151, photo mode 817979, title ours: 170645 is not in the table, 174771 stays "Pause" in Russian, Polish and Japanese, and 687508 ("Pause Game") is a sentence in French | resume 157151, photo mode 392221, title ours |
 | Gamepad buttons | `GUI_SF_MainWheel.Xbox_ControllerIcons_ABtn` and `_YBtn`, as the wheel shows them, in `Startup.pcc`, 256x256 DXT5, a ring 108 texels across, centred | `GUI_SF_Xbox_ControllerIcons.Xbox_ControllerIcons_IA` and `_I1` |
-| Sound | `SFXGUIInteraction.PlayGuiSound` with `InGameGuiEnter` and `InGameGuiExit`, as `ShowBrowserWheel` and `HideBrowserWheel` | `BioSFManager.PlaySound` with the same names |
+| Sound | `SFXGUIInteraction.PlayGuiSound` with `InGameGuiEnter` and `InGameGuiExit`, as `ShowBrowserWheel` and `HideBrowserWheel`: Wwise events that also hold and give back the game's audio ([World pause](../how-it-works.md#world-pause)) | `BioSFManager.PlaySound` with the same names |
 | `GetSimpleString` | `SFXGame` | `SFXGame` |
 | `UTexture.Resource` | at +0x60 | at +0xA0 |
 
@@ -150,6 +150,8 @@ The procedure is in [testing.md](../testing.md), with `--game LE3`. `--install` 
   gamepad icons: A fine, Y fine: used", "the game's fonts: loaded their package in ... ms: SFXGUI_Fonts.ObjectReferencer_448",
   "overlay: the game's fonts: ... used", "overlay: the game's texts: title \"\" kept ours, resume ... used, photo mode ...
   used", and "GUI sound InGameGuiEnter: played" after "world paused".
+- S9, the Steam overlay, as in [testing.md](../testing.md)'s S9. The line goes on to its end. "game audio released: the
+  Steam overlay is open, the world still held" with its "GUI sound InGameGuiExit: played", then "world pause ended".
 
 ## Open questions
 

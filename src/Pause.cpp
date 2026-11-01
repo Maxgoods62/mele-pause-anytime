@@ -83,6 +83,8 @@ namespace MelePause
             ULONGLONG PausedAt = 0;
             /// Start paused it: the banner names Start, also before PlayerInput has seen the pad (our press never reaches it).
             bool PausedByStart = false;
+            /// The pause's sound holds the game's audio (Game::PauseSoundHoldsAudio) and its end is not posted yet.
+            bool AudioHeld = false;
 
             /// The first game-thread ProcessEvent after a gap of more than GameStallMs.
             ULONGLONG StallEndedAt = 0;
@@ -216,15 +218,30 @@ namespace MelePause
             G.Controller = nullptr;
             G.ControllerIndex = -1;
             G.PausedMode = NoMode;
+            G.AudioHeld = false;
         }
 
         /// The game's GUI sound for our world pause starting or ending (game/LE<n>.hpp; none for null): the pause's heard at
-        /// once under it, the resume's once the world runs again.
-        void PlayPauseSound(ABioPlayerController* pc, wchar_t const* row)
+        /// once under it, the resume's once the world runs again. True when it played.
+        bool PlayPauseSound(ABioPlayerController* pc, wchar_t const* row)
         {
-            if (row == nullptr) return;
+            if (row == nullptr) return false;
             auto const played = PhotoMode::PlayGuiSound(pc, row);
             LEASI_INFO("GUI sound {}: {}", ToUtf8(row), played ? "played" : "NOT played (no GUI manager, the GUI sound hooks are off, or the game refused it)");
+            return played;
+        }
+
+        /// Posts the end of what the pause's sound holds, once, for what Validate meets: ResumeWorld does it for a resume of
+        /// ours, in the frame the world resumes. Here it is the Steam overlay while it is open and the world is still held, as
+        /// a voice line still held when the world runs again is lost and a posting after that saves it no more
+        /// (docs/how-it-works.md), or a pause already over, which gives back the rest of the audio.
+        void ReleaseAudio(ABioPlayerController* pc, char const* why)
+        {
+            if (!G.AudioHeld) return;
+            G.AudioHeld = false;
+            LEASI_INFO("game audio released: {}", why);
+            if (pc == nullptr && Alive(G.Controller, G.ControllerIndex)) pc = G.Controller;
+            PlayPauseSound(pc, ResumeSound);
         }
 
         bool PauseWorld(ABioPlayerController* pc, unsigned char mode)
@@ -246,13 +263,14 @@ namespace MelePause
             G.PausedAt = GetTickCount64();
             LEASI_INFO("world paused in mode {} ({}): Pauser {} ({}), {}, thread {}", mode, ModeName(mode), PathOf(world->Pauser),
                        static_cast<void const*>(world->Pauser), PathOf(world), GetCurrentThreadId());
-            PlayPauseSound(pc, PauseSound);
+            G.AudioHeld = PlayPauseSound(pc, PauseSound) && PauseSoundHoldsAudio;
             return true;
         }
 
         /// Toggles the pause back through the controller that paused, only while the world is still paused: Pause on an
         /// unpaused world would pause it again. Our state ends before the call, so a fault inside it can't leave it armed. A
-        /// key's resume (<paramref name="byKey"/>) plays the game's sound for it.
+        /// key's resume (<paramref name="byKey"/>) plays the game's sound for it, and so does any resume while its pause's
+        /// sound holds the game's audio.
         void ResumeWorld(char const* why, bool byKey = false)
         {
             if (!G.WorldPaused) return;
@@ -260,17 +278,21 @@ namespace MelePause
             auto const since = G.PausedAt;
             auto const world = G.World;
             auto const controller = G.Controller;
+            auto const audioHeld = G.AudioHeld;
             auto const worldAlive = Alive(G.World, G.WorldIndex);
             auto const controllerAlive = Alive(G.Controller, G.ControllerIndex);
+            auto const giveAudioBack = [&] { if (audioHeld) PlayPauseSound(controllerAlive ? controller : LocalController(nullptr), ResumeSound); };
             EndWorldPause();
             if (!worldAlive || world->Pauser == nullptr)
             {
                 LEASI_INFO("world resume ({}): nothing to do, the world is gone or no longer paused", why);
+                giveAudioBack();
                 return;
             }
             if (!controllerAlive || controller->WorldInfo != world)
             {
                 LEASI_WARN("world resume ({}): the controller that paused is gone, the world stays paused by {}", why, PathOf(world->Pauser));
+                giveAudioBack();
                 return;
             }
             CallPause(controller);
@@ -279,11 +301,9 @@ namespace MelePause
                 LEASI_WARN("world resume ({}) after {:.1f} s: still paused by {} ({}): another pause holds the world (Steam overlay?)", why,
                            HeldFor(since), PathOf(pauser), static_cast<void const*>(pauser));
             else
-            {
                 LEASI_INFO("world resumed ({}) after {:.1f} s, paused in mode {} ({}), thread {}", why, HeldFor(since), mode, ModeName(mode),
                            GetCurrentThreadId());
-                if (byKey) PlayPauseSound(controller, ResumeSound);
-            }
+            if (PauseSoundHoldsAudio ? audioHeld : byKey && pauser == nullptr) PlayPauseSound(controller, ResumeSound);
         }
 
         // ! World pause: checks
@@ -293,7 +313,8 @@ namespace MelePause
         /// the Steam overlay closing clears every CanUnpause that agrees), when its WorldInfo is gone, or when the mode left
         /// Conversation and Cinematic under it (Photo is ours while our photo session runs). Our photo session ends first,
         /// with the world or the mode it stands on. The movie pause isn't checked here: Bink.cpp ends it (close, Esc, its
-        /// movie gone silent), and SkipMovie and the HUD drawing again do.
+        /// movie gone silent), and SkipMovie and the HUD drawing again do. An open Steam overlay will end the pause when it
+        /// closes, with no key of ours: the audio goes back first, while the world is held.
         void Validate(ABioPlayerController* pc, char const* where)
         {
             PhotoMode::Check(G.WorldPaused, G.World);
@@ -302,6 +323,7 @@ namespace MelePause
                 if (!Alive(G.World, G.WorldIndex))
                 {
                     LEASI_INFO("world pause ended ({}): the WorldInfo we paused is gone (map change or load), thread {}", where, GetCurrentThreadId());
+                    ReleaseAudio(pc, "our world pause ended with its world");
                     EndWorldPause();
                     LEASI_FLUSH();
                 }
@@ -309,17 +331,26 @@ namespace MelePause
                 {
                     LEASI_INFO("world pause ended ({}) after {:.1f} s: WorldInfo.Pauser became None without us, thread {}", where, HeldFor(G.PausedAt),
                                GetCurrentThreadId());
+                    ReleaseAudio(pc, "our world pause ended without us");
                     EndWorldPause();
                     LEASI_FLUSH();
                 }
-                else if (!PhotoMode::On() && pc != nullptr && pc->WorldInfo == G.World)
+                else
                 {
-                    auto const mode = ModeOf(pc);
-                    if (mode != ModeConversation && mode != ModeCinematic)
+                    if (G.AudioHeld && pc != nullptr && pc->bIsExternalUIOpen)
                     {
-                        LEASI_WARN("mode is {} ({}) under our world pause ({}): resuming", mode, ModeName(mode), where);
-                        ResumeWorld("mode changed");
+                        ReleaseAudio(pc, "the Steam overlay is open, the world still held");
                         LEASI_FLUSH();
+                    }
+                    if (!PhotoMode::On() && pc != nullptr && pc->WorldInfo == G.World)
+                    {
+                        auto const mode = ModeOf(pc);
+                        if (mode != ModeConversation && mode != ModeCinematic)
+                        {
+                            LEASI_WARN("mode is {} ({}) under our world pause ({}): resuming", mode, ModeName(mode), where);
+                            ResumeWorld("mode changed");
+                            LEASI_FLUSH();
+                        }
                     }
                 }
             }

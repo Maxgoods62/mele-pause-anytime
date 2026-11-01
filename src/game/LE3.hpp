@@ -159,6 +159,8 @@ namespace MelePause::Game
     /// What ShowBrowserWheel and HideBrowserWheel play as the game's wheel opens and closes (SFXGUIInteraction.PlayGuiSound).
     inline constexpr wchar_t const* PauseSound = L"InGameGuiEnter";
     inline constexpr wchar_t const* ResumeSound = L"InGameGuiExit";
+    /// The first event's first action is a Wwise Pause All, the second's a Resume All: every end of the pause must post the second.
+    inline constexpr bool PauseSoundHoldsAudio = true;
 }
 
 #include "MelePause/game/KismetMovie.hpp"

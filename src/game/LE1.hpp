@@ -116,4 +116,6 @@ namespace MelePause::Game
     /// a key ends it: the game's menus play them as they open and close. Null: none.
     inline constexpr wchar_t const* PauseSound = L"InGameGuiEnter";
     inline constexpr wchar_t const* ResumeSound = L"InGameGuiExit";
+    /// Only sounds here: nothing to give back when the pause ends without a key.
+    inline constexpr bool PauseSoundHoldsAudio = false;
 }
