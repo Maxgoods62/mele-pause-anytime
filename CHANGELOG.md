@@ -7,7 +7,8 @@ published release yet. The first line of each entry names the games it covers. E
 
 Games: LE1, LE2, LE3
 
-LE3's pause screen takes the look of the game's menus, as LE1's and LE2's did. In LE1 and LE2 the ASI does the same as v17.
+LE3's pause screen takes the look of the game's menus, as LE1's and LE2's did. In LE1 and LE2 the ASI does the same as v17,
+but for the dashes in the last line below.
 
 - In LE3 the title sits on a band in the game's menu blue, with a bright blue rule along each edge, in its Biomass and
   white, and each key stands left of its label, in Biomass and pale cyan. The blur leans blue. The keycaps stay grey, in
@@ -21,6 +22,7 @@ LE3's pause screen takes the look of the game's menus, as LE1's and LE2's did. I
   Exo 2 stays and the log says so.
 - In LE3 the game's menu sound plays as the pause starts, and as a key ends it.
 - `package.sh` writes `dist/LE1MelePause-v18.zip`, `dist/LE2MelePause-v18.zip` and `dist/LE3MelePause-v18.zip`.
+- In all three games, the short dash left and right of the title's band is gone.
 
 ## v17 (unreleased)
 

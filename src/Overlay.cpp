@@ -261,7 +261,7 @@ namespace MelePause::Overlay
             char const* Name;
             Rgb Title;
             Rgb Label;
-            /// The band's rules and short ticks.
+            /// The band's rules.
             Rgb Line;
             Rgb PanelTop;
             Rgb PanelBottom;
@@ -721,7 +721,7 @@ namespace MelePause::Overlay
             list->AddRectFilledMultiColor({ max.x - inner, min.y }, max, solidTop, clearTop, clearBottom, solidBottom);
         }
 
-        /// The centre: the title on a band like the game's menu bars, a rule along each edge, a short rule beyond each end.
+        /// The centre: the title on a band like the game's menu bars, a rule along each edge.
         void DrawBandTitle(ImDrawList* list, float width, float height, float alpha, float k)
         {
             auto const& look = *R.Native;
@@ -739,11 +739,6 @@ namespace MelePause::Overlay
             FadedStrip(list, min, max, fade, look.PanelTop, look.PanelBottom, 0.55f * alpha);
             FadedStrip(list, min, { max.x, min.y + rule }, fade, look.Line, look.Line, 0.95f * alpha);
             FadedStrip(list, { min.x, max.y - rule }, max, fade, look.Line, look.Line, 0.95f * alpha);
-            for (auto const side : { -1.f, 1.f })
-            {
-                auto const from = centre.x + side * (halfWidth + 14 * k);
-                list->AddLine({ from, centre.y }, { from + side * 26 * k, centre.y }, Colour(look.Line, 0.9f * alpha), rule);
-            }
 
             ImVec2 const at{ centre.x - textWidth * 0.5f, CapsTop(style, k, centre.y) };
             DrawSpaced(list, style, k, { at.x + 3 * k, at.y + 4 * k }, Colour(0, 0, 0, 0.25f * alpha), text);
