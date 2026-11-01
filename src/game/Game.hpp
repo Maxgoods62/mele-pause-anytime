@@ -6,10 +6,8 @@
 #include <array>
 
 // What differs from one game to the next, picked by the SDK target this build is for. Each game's header holds the same
-// names (namespace MelePause::Game) and the switches: MELEPAUSE_PHOTO (photo mode under the pause), with
-// MELEPAUSE_PHOTO_GUI_SOUNDS (its GUI sounds need our hooks) and MELEPAUSE_PHOTO_GFX (its panel is a GFx movie),
-// MELEPAUSE_MOVIES (the Bink movie pause), MELEPAUSE_GAME_TEXTS (the pause screen's words from the game's string table),
-// MELEPAUSE_GAME_ICONS (its gamepad buttons from the game's textures) and MELEPAUSE_GAME_FONTS (its text in the game's fonts).
+// names (namespace MelePause::Game) and two switches for photo mode: MELEPAUSE_PHOTO_GUI_SOUNDS (its GUI sounds need our
+// hooks) and MELEPAUSE_PHOTO_GFX (its panel is a GFx movie).
 namespace MelePause::Game
 {
     /// What Game::MovieActionOf reads of a Kismet movie action (BioSeqAct_MovieBink), for MovieSound's latch.
@@ -39,7 +37,6 @@ namespace MelePause::Game
     #error "MelePause: no game/LE<n>.hpp for this SDK target"
 #endif
 
-#if !defined(MELEPAUSE_PHOTO) || !defined(MELEPAUSE_PHOTO_GUI_SOUNDS) || !defined(MELEPAUSE_PHOTO_GFX) || !defined(MELEPAUSE_MOVIES) \
-    || !defined(MELEPAUSE_GAME_TEXTS) || !defined(MELEPAUSE_GAME_ICONS) || !defined(MELEPAUSE_GAME_FONTS)
-    #error "MelePause: game/LE<n>.hpp must define MELEPAUSE_PHOTO, MELEPAUSE_PHOTO_GUI_SOUNDS, MELEPAUSE_PHOTO_GFX, MELEPAUSE_MOVIES, MELEPAUSE_GAME_TEXTS, MELEPAUSE_GAME_ICONS and MELEPAUSE_GAME_FONTS"
+#if !defined(MELEPAUSE_PHOTO_GUI_SOUNDS) || !defined(MELEPAUSE_PHOTO_GFX)
+    #error "MelePause: game/LE<n>.hpp must define MELEPAUSE_PHOTO_GUI_SOUNDS and MELEPAUSE_PHOTO_GFX"
 #endif

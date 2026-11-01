@@ -2,22 +2,10 @@
 
 // LE2's facts. Include game/Game.hpp, not this file.
 
-/// Photo mode under the pause: three MassEffect2.exe natives get past it.
-#define MELEPAUSE_PHOTO 1
 /// Photo mode's GUI sounds under the pause: no hook. They are Wwise events, and AudioComponent has no bNonRealtime.
 #define MELEPAUSE_PHOTO_GUI_SOUNDS 0
 /// Photo mode's panel is a ScaleForm panel of the GUI manager (PhotoGuiSF.cpp), not a GFx movie (PhotoGuiGFx.cpp).
 #define MELEPAUSE_PHOTO_GFX 0
-/// The Bink movie pause: on, for a movie whose sound we know (Game::Movies). 164 of the 166 movies in BioGame\Movies
-/// have no Bink audio track (nor do the DLC's): their sound is a Wwise event that BinkPause does not stop.
-#define MELEPAUSE_MOVIES 1
-/// The pause screen's labels come from the game's string table (Game::PauseTexts), through SFXGame.GetSimpleString.
-#define MELEPAUSE_GAME_TEXTS 1
-/// The pause screen's gamepad buttons are the game's own textures (Game::PauseIcons), as its renderer holds them.
-#define MELEPAUSE_GAME_ICONS 1
-/// The pause screen's text is set in the game's own fonts, read from the GFx movies that hold them (Game::PauseFonts), once
-/// MELEPAUSE_GAME_TEXTS has given the words they are cut to.
-#define MELEPAUSE_GAME_FONTS 1
 
 namespace MelePause::Game
 {

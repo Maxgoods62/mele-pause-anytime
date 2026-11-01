@@ -14,9 +14,9 @@ look ([Pause screen](#pause-screen)) came with v17, which passed in a conversati
 | Part | LE2 build | LE1 build |
 |---|---|---|
 | Esc and Start pause a conversation or an in-engine cutscene; skip guard; Space and A resume | compiled in | on |
-| Pause screen, and the Canvas banner where it cannot draw | on, from v17 in the game's menu colours, with its words for the labels (`MELEPAUSE_GAME_TEXTS` on), its menu sound, its gamepad buttons (`MELEPAUSE_GAME_ICONS` on) and its fonts (`MELEPAUSE_GAME_FONTS` on) | on, from v14 in the game's menu colours, with the game's words (`MELEPAUSE_GAME_TEXTS` on) and its menu sound, from v15 with its gamepad buttons (`MELEPAUSE_GAME_ICONS` on), from v16 in its fonts (`MELEPAUSE_GAME_FONTS` on) |
-| Movie pause (`MELEPAUSE_MOVIES`) | on for a movie whose sound MelePause knows (below); Esc and Start in any other movie stay the game's. Space and X skip a movie the game lets skip | on |
-| Photo mode under the pause (`MELEPAUSE_PHOTO`) | on, with three MassEffect2.exe natives ([Photo mode](#photo-mode)) | on |
+| Pause screen, and the Canvas banner where it cannot draw | on, from v17 in the game's menu colours, with its words for the labels, its menu sound, its gamepad buttons and its fonts | on, from v14 in the game's menu colours, with the game's words and its menu sound, from v15 with its gamepad buttons, from v16 in its fonts |
+| Movie pause | on for a movie whose sound MelePause knows (below); Esc and Start in any other movie stay the game's. Space and X skip a movie the game lets skip | on |
+| Photo mode under the pause | on, with three MassEffect2.exe natives ([Photo mode](#photo-mode)) | on |
 | Photo mode's GUI sounds made realtime (`MELEPAUSE_PHOTO_GUI_SOUNDS`) | off: they are Wwise events and play under the world pause as they are | on |
 | File | `LE2MelePause.asi`, Windows version `18.0.5.0`, for `Game\ME2\Binaries\Win64\ASI` | `LE1MelePause.asi`, `18.0.4.0` |
 

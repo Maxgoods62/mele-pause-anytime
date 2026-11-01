@@ -12,9 +12,9 @@ conversations and in an in-engine cutscene, and a test build of the movie pause 
 | Part | LE3 build | LE1 build |
 |---|---|---|
 | Esc and Start pause a conversation or an in-engine cutscene; skip guard; Space and A resume | compiled in | on |
-| Pause screen, and the Canvas banner where it cannot draw | on, from v18 in the game's menu colours, with its words for the labels (`MELEPAUSE_GAME_TEXTS` on), its menu sound, its gamepad buttons (`MELEPAUSE_GAME_ICONS` on) and its fonts (`MELEPAUSE_GAME_FONTS` on) | on, from v14 in the game's menu colours, with the game's words (`MELEPAUSE_GAME_TEXTS` on) and its menu sound, from v15 with its gamepad buttons (`MELEPAUSE_GAME_ICONS` on), from v16 in its fonts (`MELEPAUSE_GAME_FONTS` on) |
-| Movie pause (`MELEPAUSE_MOVIES`) | on from v13 for a movie a level starts whose sound MelePause knows ([Movies](#movies)); Esc and Start in any other movie stay the game's | on |
-| Photo mode under the pause (`MELEPAUSE_PHOTO`) | on from v12, its GUI side in `PhotoGuiGFx.cpp` (`MELEPAUSE_PHOTO_GFX`); its GUI sounds get no hook | on, `PhotoGuiSF.cpp` |
+| Pause screen, and the Canvas banner where it cannot draw | on, from v18 in the game's menu colours, with its words for the labels, its menu sound, its gamepad buttons and its fonts | on, from v14 in the game's menu colours, with the game's words and its menu sound, from v15 with its gamepad buttons, from v16 in its fonts |
+| Movie pause | on from v13 for a movie a level starts whose sound MelePause knows ([Movies](#movies)); Esc and Start in any other movie stay the game's | on |
+| Photo mode under the pause | on from v12, its GUI side in `PhotoGuiGFx.cpp` (`MELEPAUSE_PHOTO_GFX`); its GUI sounds get no hook | on, `PhotoGuiSF.cpp` |
 | File | `LE3MelePause.asi`, Windows version `18.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `18.0.4.0` |
 
 ## Movies

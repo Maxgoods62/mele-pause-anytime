@@ -2,22 +2,10 @@
 
 // LE3's facts. Include game/Game.hpp, not this file.
 
-/// Photo mode under the pause: on.
-#define MELEPAUSE_PHOTO 1
-/// Its GUI sounds: the game's, not hooked (LE3's GFx movies play them through SFXGUIInteraction).
+/// Photo mode's GUI sounds: the game's, not hooked (LE3's GFx movies play them through SFXGUIInteraction).
 #define MELEPAUSE_PHOTO_GUI_SOUNDS 0
 /// Photo mode's panel is a GFx movie of SFXGUIInteraction (PhotoGuiGFx.cpp).
 #define MELEPAUSE_PHOTO_GFX 1
-/// The Bink movie pause: on, for a Kismet movie whose sound we know (Game::Movies). Of the 334 .bik in BioGame\Movies and
-/// the DLC, only StartupLoop_a carries a Bink audio track: every other movie's sound is a Wwise event.
-#define MELEPAUSE_MOVIES 1
-/// The pause screen's labels come from the game's string table (Game::PauseTexts), through SFXGame.GetSimpleString.
-#define MELEPAUSE_GAME_TEXTS 1
-/// The pause screen's gamepad buttons are the game's own textures (Game::PauseIcons), as its renderer holds them.
-#define MELEPAUSE_GAME_ICONS 1
-/// The pause screen's text is set in the game's own fonts, read from the GFx movie that holds them (Game::PauseFonts), once
-/// MELEPAUSE_GAME_TEXTS has given the words they are cut to.
-#define MELEPAUSE_GAME_FONTS 1
 
 namespace MelePause::Game
 {

@@ -8,9 +8,7 @@ starts. Keep the game's window in front for the whole test: in the background, L
 and a pause tested then proves nothing.
 
 The steps name LE1's scenes. In another game, use a conversation, an in-engine cutscene and a fullscreen movie of that
-game; [games/LE2.md](games/LE2.md) and [games/LE3.md](games/LE3.md) have LE2's and LE3's sheets. A feature that the
-game's `src/game/LE<n>.hpp` turns off (`MELEPAUSE_MOVIES` or `MELEPAUSE_PHOTO` at 0) has a "not in the LE<n> build" line
-in the log instead of its hooks, and its step checks that its keys keep their vanilla job.
+game; [games/LE2.md](games/LE2.md) and [games/LE3.md](games/LE3.md) have LE2's and LE3's sheets.
 
 ## Release gate
 

@@ -517,7 +517,6 @@ namespace MelePause
         /// conversation or a cutscene it enters it. Anywhere else, and during a fullscreen movie, the key is the game's.
         char const* PressPhoto(UConsole* console, UFunction* function, Key key)
         {
-            if constexpr (!MELEPAUSE_PHOTO) return nullptr;
             auto const pc = LocalController(console);
             Validate(pc, KeyName(key));
             auto const mode = ModeOf(pc);
@@ -829,11 +828,7 @@ namespace MelePause
             DrawCentered(canvas, L"PAUSE", height * 0.08f, 2.5f * scale, Color(255, 255, 255, 235));
             auto const input = hud->PlayerOwner != nullptr ? hud->PlayerOwner->PlayerInput : nullptr;
             auto const gamepad = G.PausedByStart || (input != nullptr && input->bUsingGamepad != 0);
-#if MELEPAUSE_PHOTO
             auto const keys = gamepad ? L"Start: resume     Y: photo mode" : L"Esc: resume     F7: photo mode";
-#else
-            auto const keys = gamepad ? L"Start: resume" : L"Esc: resume";
-#endif
             DrawCentered(canvas, keys, height * 0.08f + 48.0f * scale, 1.1f * scale, Color(200, 200, 200, 220));
 
             canvas->Font = savedFont;
@@ -875,7 +870,6 @@ namespace MelePause
             Overlay::Publish(G.WorldPaused && !hidden, G.WorldPaused && !hidden && photo, hidden);
         }
 
-#if MELEPAUSE_GAME_TEXTS
         /// Frames on which ReadGameTexts may try, each with a game object: the strings are there from the first.
         constexpr unsigned MaxGameTextTries = 3;
 
@@ -916,9 +910,7 @@ namespace MelePause
         }
 
         void ReadGameTextsEntry(void* context) { ReadGameTexts(static_cast<ABioPlayerController*>(context)); }
-#endif
 
-#if MELEPAUSE_GAME_ICONS || MELEPAUSE_GAME_FONTS
         /// The object of that class and name right under that package, from the object list, or null. Names are compared first:
         /// the list holds nearly 200,000 objects.
         template <class T>
@@ -934,9 +926,7 @@ namespace MelePause
             }
             return nullptr;
         }
-#endif
 
-#if MELEPAUSE_GAME_ICONS
         /// Frames on which ReadGameIcons may try: the textures load with the game, before the first HUD.
         constexpr unsigned MaxGameIconTries = 3;
 
@@ -975,9 +965,7 @@ namespace MelePause
         }
 
         void ReadGameIconsEntry(void*) { ReadGameIcons(); }
-#endif
 
-#if MELEPAUSE_GAME_FONTS
         /// Frames on which ReadGameFonts may try: the movies load with the game, before the first HUD.
         constexpr unsigned MaxGameFontTries = 3;
 
@@ -1029,7 +1017,6 @@ namespace MelePause
         }
 
         void ReadGameFontsEntry(void* context) { ReadGameFonts(static_cast<ABioPlayerController*>(context)); }
-#endif
 
         /// The checks of each frame. The banner is drawn apart, under its own guard: a fault while drawing must not stop them.
         void AfterPostRender(ABioHUD* hud)
@@ -1063,29 +1050,23 @@ namespace MelePause
             PhotoMode::Frame();
             PublishOverlay(pc);
 
-#if MELEPAUSE_GAME_TEXTS
             // Under its own guard: a fault there ends the reading, not the checks above.
             if (G.GameTextTries < MaxGameTextTries && !Guarded(ReadGameTextsEntry, pc))
             {
                 G.GameTextTries = MaxGameTextTries;
                 LEASI_ERROR("access violation while reading the game's string table: the pause screen keeps its own texts");
             }
-#endif
-#if MELEPAUSE_GAME_ICONS
             if (G.GameIconTries < MaxGameIconTries && !Guarded(ReadGameIconsEntry, nullptr))
             {
                 G.GameIconTries = MaxGameIconTries;
                 LEASI_ERROR("access violation while reading the game's gamepad icons: the pause screen draws its own");
             }
-#endif
-#if MELEPAUSE_GAME_FONTS
             // After the texts: the fonts are cut to their letters.
             if (G.GameTextTries >= MaxGameTextTries && G.GameFontTries < MaxGameFontTries && !Guarded(ReadGameFontsEntry, pc))
             {
                 G.GameFontTries = MaxGameFontTries;
                 LEASI_ERROR("access violation while reading the game's fonts: the pause screen keeps Exo 2");
             }
-#endif
         }
 
         // ! Guarded entry points

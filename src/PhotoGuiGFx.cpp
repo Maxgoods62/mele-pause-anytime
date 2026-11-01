@@ -4,7 +4,7 @@
 // EnableMode(Photo) and OpenMovie(MovieTag_PhotoMode); HidePhotoMode(PC) is DisableMode(Photo) and RemoveMovie. The
 // conversation's panel is a movie too (BioSFHandler_Conversation, from GetConversationHandler): its visibility and input
 // live in the native movie, so SetAside and GiveBack go through its natives.
-#if MELEPAUSE_PHOTO && MELEPAUSE_PHOTO_GFX
+#if MELEPAUSE_PHOTO_GFX
 
 #include "MelePause/Engine.hpp"
 

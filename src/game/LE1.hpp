@@ -2,22 +2,10 @@
 
 // LE1's facts. Include game/Game.hpp, not this file.
 
-/// Photo mode under the pause: five MassEffect1.exe natives get past it.
-#define MELEPAUSE_PHOTO 1
 /// Photo mode's GUI sounds under the pause need our hooks: ISACT starts only bNonRealtime sounds while the world is paused.
 #define MELEPAUSE_PHOTO_GUI_SOUNDS 1
 /// Photo mode's panel is a ScaleForm panel of the GUI manager (PhotoGuiSF.cpp), not a GFx movie (PhotoGuiGFx.cpp).
 #define MELEPAUSE_PHOTO_GFX 0
-/// The Bink movie pause: the galaxy map's travel movie carries its own sound track.
-#define MELEPAUSE_MOVIES 1
-/// The pause screen's title and labels come from the game's string table (Game::PauseTexts), through
-/// BioSPGame.GetSimpleString.
-#define MELEPAUSE_GAME_TEXTS 1
-/// The pause screen's gamepad buttons are the game's own textures (Game::PauseIcons), as its renderer holds them.
-#define MELEPAUSE_GAME_ICONS 1
-/// The pause screen's text is set in the game's own fonts, read from the GFx movie that holds them (Game::PauseFonts), once
-/// MELEPAUSE_GAME_TEXTS has given the words they are cut to.
-#define MELEPAUSE_GAME_FONTS 1
 
 namespace MelePause::Game
 {

@@ -11,7 +11,6 @@ shared hook manager, which MeleBridge and other ASIs use too. The sources:
 | `src/Pause.cpp` | The keys, the world pause, the skip guard and the fallback banner. Game thread only. |
 | `src/Photo.hpp`, `src/Photo.cpp` | Photo mode under the pause: the session, the camera, and the natives that let its input, panel and (in LE1) sounds past the pause. The natives' RVAs, the conversation panel and the camera switch gate come from `game/LE<n>.hpp`. |
 | `src/PhotoGui.hpp`, `src/PhotoGuiSF.cpp`, `src/PhotoGuiGFx.cpp` | Photo mode's GUI side, as `Photo.cpp` asks for it: the game's entry and exit to photo mode's panel, and the conversation's panel set aside while it shows. `PhotoGuiSF.cpp` for LE1's and LE2's ScaleForm GUI manager (`BioSFPanel` flags), `PhotoGuiGFx.cpp` for LE3's GFx movies (calls on the native movie), picked by `MELEPAUSE_PHOTO_GFX`. |
-| `src/PhotoOff.cpp` | The same calls for a game whose `game/LE<n>.hpp` turns photo mode off (`MELEPAUSE_PHOTO 0`): Y and F7 stay the game's. |
 | `src/Engine.cpp` | Helpers for calling into the game and reading its objects (`CallGame`, `PathOf`, `Alive`, ...). |
 | `src/game/` | What differs per game: `Game.hpp` picks `LE1.hpp`, `LE2.hpp` or `LE3.hpp` for the build's SDK target (modes, GuiKey events, the photo mode and movie pause switches, ...). `LE2.hpp` leaves photo mode's GUI sounds unhooked and gives the movie pause only the movies whose sound it knows ([games/LE2.md](games/LE2.md)); `LE3.hpp` does the same for movies, gives photo mode its GFx side and the layout `GfxClock` reads ([games/LE3.md](games/LE3.md)). `KismetMovie.hpp`, which `LE2.hpp` and `LE3.hpp` include, reads a Kismet movie action: its movie, its Wwise event, and whether anything beside it may make a sound. |
 | `src/Bink.cpp` | The movie pause, on the thread that plays the movie. |
@@ -173,7 +172,7 @@ with a #3199C6 rule along each edge, both fading out over 120 px at each end) in
 #3199C6, the game's own gamepad buttons and fonts, the keys as translucent grey keycaps, and the blur tinted toward blue.
 The colours were read from the game's files; nothing of those files is shipped.
 
-In LE1 the gamepad's A and Y are the game's textures (`MELEPAUSE_GAME_ICONS`), `XBox_ControllerIcons_I4` and `_I9` of
+In LE1 the gamepad's A and Y are the game's textures, `XBox_ControllerIcons_I4` and `_I9` of
 `GUI_SF_SharedAssets`, which load with `Startup_<lang>.pcc` and stay for good (RootSet). Their CPU copy is freed, so
 the overlay draws the view the renderer already holds, read at the first HUD frame. `Pause.cpp` finds them by name in
 the object list and follows `UTexture.Resource` to the RHI texture and its view (`Game::TextureView`), checking the
@@ -186,7 +185,7 @@ views pass or neither is used: the drawn discs stay, also after a change of devi
 and no sRGB view, so ImGui samples them as they are. The disc is 95 of a texture's 128 texels across, so the texture
 is drawn 128/95 larger than the disc (`NativeLook::Button`).
 
-In LE1 the words come from the game's string table (`MELEPAUSE_GAME_TEXTS`). On the first frame whose world has a
+In LE1 the words come from the game's string table. On the first frame whose world has a
 `BioSPGame`, `Pause.cpp` calls the static native `BioSPGame.GetSimpleString` for the ids in `Game::PauseTexts` (170645,
 157151, 184397), tried again on the next two frames while all three come back empty, under its own access violation
 guard. It hands them to the overlay as UTF-8 (`Overlay::UseGameTexts`), which takes each one whose every letter is in the
@@ -196,7 +195,7 @@ the GUI manager's `PlayGuiSound` with the rows in `Game::PauseSound` and `Game::
 heard at once under the world pause; the resume's plays once the world is unpaused. The movie pause plays none: its keys are read on the movie's thread, which cannot call
 the game.
 
-In LE1 the text is set in the game's own fonts (`MELEPAUSE_GAME_FONTS`), which live in one GFx movie,
+In LE1 the text is set in the game's own fonts, which live in one GFx movie,
 `GUI_SF_Fonts.Fonts` of `Startup_<lang>.pcc`, loaded with the game and kept for good (RootSet). LE2 keeps one in each of
 two movies, LE3 both in its font library, `GUI_SF_Fonts.gfxfonts` (`Game::PauseFonts`). Their bytes stay in memory as `UGFxMovieInfo.RawData`, except LE3's, which is out of the
 object list by the first HUD: there the game's loader brings it back once (`PauseFonts.LoadPath`), on the game thread, and the

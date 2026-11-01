@@ -3,7 +3,7 @@
 // Photo mode's GUI in LE1 and LE2: the ScaleForm GUI manager (MassEffectGuiManager, a BioSFManager), whose ShowPhotoMode and
 // HidePhotoMode open and close the photo panel, and whose conversation panel (game/LE<n>.hpp ConversationPanelOf) is a
 // BioSFPanel with its own input and visibility flags.
-#if MELEPAUSE_PHOTO && !MELEPAUSE_PHOTO_GFX
+#if !MELEPAUSE_PHOTO_GFX
 
 #include "MelePause/Engine.hpp"
 

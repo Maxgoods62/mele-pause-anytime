@@ -1,10 +1,9 @@
 #include "MelePause/Photo.hpp"
 
-// The game's photo mode under the world pause, where game/LE<n>.hpp turns it on (MELEPAUSE_PHOTO). What differs from one
-// game to the next comes from there: the natives' addresses and first bytes, the camera switch, and whether the GUI
+// The game's photo mode under the world pause. What differs from one game to the next comes from game/LE<n>.hpp: the
+// natives' addresses and first bytes, the camera switch, and whether the GUI
 // sounds need our hooks (MELEPAUSE_PHOTO_GUI_SOUNDS). The GUI side, photo mode's panel and the conversation's, is
 // PhotoGui's.
-#if MELEPAUSE_PHOTO
 
 #include "MelePause/Engine.hpp"
 #include "MelePause/PhotoGui.hpp"
@@ -987,5 +986,3 @@ namespace MelePause::PhotoMode
 #endif
     }
 }
-
-#endif
