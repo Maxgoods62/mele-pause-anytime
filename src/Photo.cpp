@@ -71,8 +71,6 @@ namespace MelePause::PhotoMode
         {
             bool On = false;
             unsigned Done = 0;
-            /// The mode under it: Conversation or Cinematic.
-            unsigned char Mode = NoMode;
             Kept<ABioPlayerController> Pc;
             Kept<ASFXPlayerCamera> Camera;
             Kept<USFXGameModeManager> Manager;
@@ -90,7 +88,6 @@ namespace MelePause::PhotoMode
             unsigned char OldIgnoreMove = 0;
             bool OldAlwaysTick = false;
             bool OldPlayersOnly = false;
-            bool OldCamDisabled = false;
             float OldTether = 0.0f;
             float OldVehicleTether = 0.0f;
             FVector OldPcLocation{};
@@ -338,7 +335,6 @@ namespace MelePause::PhotoMode
             s = {};
             PhotoGui::Clear();
             s.On = true;
-            s.Mode = mode;
             s.EnteredAt = GetTickCount64();
             s.Pc.Set(pc);
             s.Camera.Set(camera);
@@ -396,7 +392,6 @@ namespace MelePause::PhotoMode
             // A frozen camera (BioConversation.DisableCamera) answers CameraCache and never runs the photo camera.
             if (camera->bDisabled)
             {
-                s.OldCamDisabled = true;
                 s.OldAspectRatio = camera->m_fLastAspectRatio;
                 s.OldConstrainAspect = camera->m_bLastConstrainAspect != 0;
                 camera->bDisabled = 0;
