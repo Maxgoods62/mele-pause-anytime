@@ -16,10 +16,9 @@ namespace MelePause
     /// MovieSound pauses beside BinkPause; only a few movies carry Bink audio (LE2, LE3).
     enum class MoviePolicy : unsigned char { Bink, BinkAndEvent };
 
-    /// How a game's pause screen looks (game/LE<n>.hpp's Game::Look). Own: ours, "PAUSE" in a bracketed frame and each key
-    /// over its label (no game has it now). LE1, LE2 and LE3: the colours of that game's menus, the title on a band, blue or
-    /// brown, each key left of its label as the game draws its buttons, the blur a little cooler or warmer.
-    enum class OverlayLook : unsigned char { Own, LE1, LE2, LE3 };
+    /// How a game's pause screen looks (game/LE<n>.hpp's Game::Look): the colours of that game's menus, the title on a band,
+    /// blue or brown, each key left of its label as the game draws its buttons, the blur a little cooler or warmer.
+    enum class OverlayLook : unsigned char { LE1, LE2, LE3 };
 
     /// The pause screen's words in a game's string table (game/LE<n>.hpp's PauseTexts). 0: that word stays ours.
     struct PauseTextIds

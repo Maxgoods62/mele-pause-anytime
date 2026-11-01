@@ -24,15 +24,14 @@
 #include <vector>
 
 // The pause screen, drawn into the game's back buffer from a hooked IDXGISwapChain::Present on the render thread: over our
-// world pause and our movie pause the frame is blurred and darkened (Blur.cpp), "PAUSE" stands in a bracketed frame at the
-// centre, and the keys are named at the bottom left (resume, and photo mode where it opens), for the gamepad or the keyboard,
-// whichever pressed our keys last. Each game wears its menu colours instead (OverlayLook, NativeLook): the title on a band, each
-// key left of its label. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons,
-// UseGameFonts); nothing here touches a game object, only the D3D11 views of two of its textures and, on the game thread, the
-// bytes of its fonts' movies. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the
-// language the game's launcher passes, or in the game's own words where it gives them, and in the game's own fonts, turned
-// into TrueType in memory (GameFont.cpp) and never written anywhere. Without the hook or after a fault the Canvas
-// banner of Pause.cpp is drawn instead (Drawing).
+// world pause and our movie pause the frame is blurred and darkened (Blur.cpp), in the game's menu colours (OverlayLook,
+// NativeLook): the title on a band at the centre, and at the bottom left each key left of its label (resume, and photo mode
+// where it opens), for the gamepad or the keyboard, whichever pressed our keys last. The game thread says what to show
+// (Publish, UsePadPrompts, UseGameTexts, UseGameIcons, UseGameFonts); nothing here touches a game object, only the D3D11 views
+// of two of its textures and, on the game thread, the bytes of its fonts' movies. The text is set in Exo 2 (SIL OFL 1.1,
+// fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the language the game's launcher passes, or in the game's own
+// words where it gives them, and in the game's own fonts, turned into TrueType in memory (GameFont.cpp) and never written
+// anywhere. Without the hook or after a fault the Canvas banner of Pause.cpp is drawn instead (Drawing).
 namespace MelePause::Overlay
 {
     namespace
@@ -70,7 +69,7 @@ namespace MelePause::Overlay
         /// The overlay started on the game's swap chain and hasn't failed since.
         std::atomic<bool> Live{ false };
         /// Install's, set before the hooks go live.
-        std::atomic<OverlayLook> Look{ OverlayLook::Own };
+        std::atomic<OverlayLook> Look{ OverlayLook::LE1 };
 
         /// UseGameTexts', UTF-8. Never freed: the render thread draws from it.
         struct GameTexts
@@ -164,7 +163,7 @@ namespace MelePause::Overlay
                 }
             };
             auto const& ours = LanguageTexts();
-            for (auto const text : { ours.Title, ours.Resume, ours.Photo, ours.Space, "Esc", "F7" }) add(text);
+            for (auto const text : { ours.Title, ours.Resume, ours.Photo, ours.Space, "F7" }) add(text);
             if (auto const game = GameText.load(std::memory_order_acquire); game != nullptr)
             {
                 add(game->Title);
@@ -199,7 +198,6 @@ namespace MelePause::Overlay
 
         struct Fonts
         {
-            ImFont* Light = nullptr;
             ImFont* Regular = nullptr;
             ImFont* SemiBold = nullptr;
             bool Embedded = false;
@@ -333,13 +331,11 @@ namespace MelePause::Overlay
                                   .BoldCaps = 0.8003f,
                                   .Button = { 256, 128, 128, 108 } };
 
-        /// Null for our own look.
-        NativeLook const* NativeLookOf(OverlayLook look)
+        NativeLook const& NativeLookOf(OverlayLook look)
         {
-            if (look == OverlayLook::LE1) return &Le1Look;
-            if (look == OverlayLook::LE2) return &Le2Look;
-            if (look == OverlayLook::LE3) return &Le3Look;
-            return nullptr;
+            if (look == OverlayLook::LE2) return Le2Look;
+            if (look == OverlayLook::LE3) return Le3Look;
+            return Le1Look;
         }
 
         struct RenderState
@@ -356,7 +352,6 @@ namespace MelePause::Overlay
             LARGE_INTEGER LastFrame{};
             float Fade = 0;
             /// What the screen shows, kept while it fades out.
-            bool Movie = false;
             bool Photo = false;
             bool WasShown = false;
             bool BlurLogged = false;
@@ -372,7 +367,7 @@ namespace MelePause::Overlay
             IDXGISwapChain* LastChain = nullptr;
             bool IdleLogged = false;
             bool CleanLogged = false;
-            /// Null for our own look.
+            /// Set when the overlay starts, before any draw.
             NativeLook const* Native = nullptr;
             Texts const* Text = &English;
             /// The language's texts with the game's words in place of ours (Text points here once they came).
@@ -418,20 +413,17 @@ namespace MelePause::Overlay
 
         void LoadFonts()
         {
-            R.Font.Light = AddEmbedded(MELEPAUSE_FONT_LIGHT);
             R.Font.Regular = AddEmbedded(MELEPAUSE_FONT_REGULAR);
             R.Font.SemiBold = AddEmbedded(MELEPAUSE_FONT_SEMIBOLD);
-            R.Font.Embedded = R.Font.Light != nullptr && R.Font.Regular != nullptr && R.Font.SemiBold != nullptr;
+            R.Font.Embedded = R.Font.Regular != nullptr && R.Font.SemiBold != nullptr;
             if (!R.Font.Embedded)
             {
                 LEASI_WARN("overlay: the embedded Exo 2 fonts did not load: ImGui's default font instead");
                 auto const fallback = ImGui::GetIO().Fonts->AddFontDefault();
-                R.Font = { fallback, fallback, fallback, false };
+                R.Font = { fallback, fallback, false };
             }
             R.Style = { { R.Font.Regular, 58, 18 }, { R.Font.Regular, 28, 0 }, { R.Font.SemiBold, 19.55f, 0 } };
         }
-
-        ImFont* TitleFont() { return R.Native != nullptr ? R.Style.Title.Font : R.Font.Light; }
 
         /// The font has every letter of a text that has some.
         bool Drawable(ImFont* font, std::string const& text)
@@ -459,7 +451,7 @@ namespace MelePause::Overlay
                 slot = text.c_str();
                 return "used";
             };
-            auto const title = take(TitleFont(), game->Title, R.Mixed.Title);
+            auto const title = take(R.Style.Title.Font, game->Title, R.Mixed.Title);
             auto const resume = take(R.Style.Label.Font, game->Resume, R.Mixed.Resume);
             auto const photo = take(R.Style.Label.Font, game->Photo, R.Mixed.Photo);
             R.Text = &R.Mixed;
@@ -488,7 +480,7 @@ namespace MelePause::Overlay
         {
             if (R.GameFontsSeen) return;
             auto const game = GameFontFiles.load(std::memory_order_acquire);
-            if (game == nullptr || R.Native == nullptr) return;
+            if (game == nullptr) return;
             R.GameFontsSeen = true;
             auto const light = AddGameFont(game->Light);
             auto const bold = AddGameFont(game->Bold);
@@ -637,7 +629,7 @@ namespace MelePause::Overlay
             return 0;
         }
 
-        /// A line with its style's space between its letters (titles are set wide in our own look) and its kerning. ImGui bakes
+        /// A line with its style's space between its letters (titles are set wide) and its kerning. ImGui bakes
         /// whole sizes: an advance scales to the size asked for, as in ImGui's own text.
         float SpacedWidth(LineStyle const& style, float k, std::string_view text)
         {
@@ -676,105 +668,18 @@ namespace MelePause::Overlay
             }
         }
 
-        /// Text with a soft drop shadow, its top left at <paramref name="at"/>.
-        void DrawShadowed(ImDrawList* list, ImFont* font, float size, ImVec2 at, ImU32 colour, float alpha, float k, char const* text)
-        {
-            list->AddText(font, size, { at.x + 2 * k, at.y + 2 * k }, Colour(0, 0, 0, 0.55f * alpha), text);
-            list->AddText(font, size, at, colour, text);
-        }
+        enum class Icon { PadA, PadY, KeySpace, KeyF7 };
 
-        /// The centre: the title set wide in a thin frame, its corners bracketed, a tick on each side.
-        void DrawTitle(ImDrawList* list, float width, float height, float alpha, float k)
-        {
-            LineStyle const style{ R.Font.Light, 50, 14 };
-            auto const text = R.Text->Title;
-            auto const textWidth = SpacedWidth(style, k, text);
-            ImVec2 const centre{ width * 0.5f, height * 0.47f };
+        bool IsPad(Icon icon) { return icon == Icon::PadA || icon == Icon::PadY; }
 
-            auto const halfWidth = textWidth * 0.5f + 64 * k;
-            auto const halfHeight = 0.5f * CapHeight * style.Size * k + 30 * k;
-            ImVec2 const min{ centre.x - halfWidth, centre.y - halfHeight };
-            ImVec2 const max{ centre.x + halfWidth, centre.y + halfHeight };
-            auto const line = std::max(1.f, k);
-            auto const thick = std::max(1.5f, 2 * k);
-            auto const frame = Colour(205, 225, 245, 0.35f * alpha);
-            auto const bracket = Colour(205, 225, 245, 0.95f * alpha);
-
-            list->AddRectFilled(min, max, Colour(0, 0, 0, 0.18f * alpha));
-            list->AddRect(min, max, frame, 0, line);
-            auto const arm = 18 * k;
-            for (int corner = 0; corner < 4; corner++)
-            {
-                auto const right = (corner & 1) != 0;
-                auto const bottom = (corner & 2) != 0;
-                ImVec2 const at{ right ? max.x : min.x, bottom ? max.y : min.y };
-                auto const dx = right ? -arm : arm;
-                auto const dy = bottom ? -arm : arm;
-                list->AddLine(at, { at.x + dx, at.y }, bracket, thick);
-                list->AddLine(at, { at.x, at.y + dy }, bracket, thick);
-            }
-            list->AddLine({ min.x - 14 * k, centre.y }, { min.x - 4 * k, centre.y }, bracket, line);
-            list->AddLine({ max.x + 4 * k, centre.y }, { max.x + 14 * k, centre.y }, bracket, line);
-
-            ImVec2 const at{ centre.x - textWidth * 0.5f, CapsTop(style, k, centre.y) };
-            DrawSpaced(list, style, k, { at.x + 2 * k, at.y + 2 * k }, Colour(0, 0, 0, 0.5f * alpha), text);
-            DrawSpaced(list, style, k, at, Colour(238, 241, 245, alpha), text);
-        }
-
-        enum class Icon { PadStart, PadA, PadY, KeyEsc, KeySpace, KeyF7 };
-
-        bool IsPad(Icon icon) { return icon == Icon::PadStart || icon == Icon::PadA || icon == Icon::PadY; }
-
-        char const* KeyLabel(Icon icon)
-        {
-            if (icon == Icon::KeyEsc) return "Esc";
-            if (icon == Icon::KeySpace) return R.Text->Space;
-            return "F7";
-        }
+        char const* KeyLabel(Icon icon) { return icon == Icon::KeySpace ? R.Text->Space : "F7"; }
 
         float IconWidth(Icon icon, float radius, float k)
         {
             if (IsPad(icon)) return 2 * radius;
-            auto const textWidth = R.Native != nullptr ? SpacedWidth(R.Style.Key, k, KeyLabel(icon))
-                                                       : R.Font.SemiBold->CalcTextSizeA(0.85f * radius, FLT_MAX, 0, KeyLabel(icon)).x;
+            auto const textWidth = SpacedWidth(R.Style.Key, k, KeyLabel(icon));
             // The space bar reads as one: wider than a key, whatever its label.
             return std::max(icon == Icon::KeySpace ? 5 * radius : 2 * radius, textWidth + 22 * k);
-        }
-
-        /// A gamepad button (a ring: Start's three lines, or A's or Y's letter in its colour) or a keycap, centred on c.
-        void DrawIcon(ImDrawList* list, Icon icon, ImVec2 c, float radius, float alpha, float k)
-        {
-            auto const ring = Colour(226, 229, 233, 0.92f * alpha);
-            auto const thick = std::max(1.5f, 2 * k);
-            if (IsPad(icon))
-            {
-                list->AddCircleFilled(c, radius, Colour(0, 0, 0, 0.25f * alpha));
-                list->AddCircle(c, radius, ring, 0, thick);
-                if (icon == Icon::PadStart)
-                {
-                    for (int row = -1; row <= 1; row++)
-                    {
-                        auto const y = c.y + static_cast<float>(row) * 0.3f * radius;
-                        list->AddLine({ c.x - 0.42f * radius, y }, { c.x + 0.42f * radius, y }, Colour(240, 242, 245, alpha), std::max(1.5f, 2.2f * k));
-                    }
-                    return;
-                }
-                auto const letter = icon == Icon::PadA ? "A" : "Y";
-                auto const colour = icon == Icon::PadA ? Colour(108, 190, 69, alpha) : Colour(241, 196, 15, alpha);
-                auto const size = 1.1f * radius;
-                auto const width = R.Font.SemiBold->CalcTextSizeA(size, FLT_MAX, 0, letter).x;
-                list->AddText(R.Font.SemiBold, size, { c.x - width * 0.5f, CapsTop(R.Font.SemiBold, size, c.y) }, colour, letter);
-                return;
-            }
-            auto const label = KeyLabel(icon);
-            auto const half = IconWidth(icon, radius, k) * 0.5f;
-            ImVec2 const min{ c.x - half, c.y - radius };
-            ImVec2 const max{ c.x + half, c.y + radius };
-            list->AddRectFilled(min, max, Colour(0, 0, 0, 0.25f * alpha), 6 * k);
-            list->AddRect(min, max, ring, 6 * k, thick);
-            auto const size = 0.85f * radius;
-            auto const width = R.Font.SemiBold->CalcTextSizeA(size, FLT_MAX, 0, label).x;
-            list->AddText(R.Font.SemiBold, size, { c.x - width * 0.5f, CapsTop(R.Font.SemiBold, size, c.y) }, Colour(240, 242, 245, alpha), label);
         }
 
         struct Prompt
@@ -782,29 +687,6 @@ namespace MelePause::Overlay
             Icon What;
             char const* Label;
         };
-
-        /// The bottom left: each key's icon over its label, side by side.
-        void DrawPrompts(ImDrawList* list, float height, float alpha, float k, bool pad)
-        {
-            // Resume names A and the space bar; Start and Esc, which paused, resume too.
-            Prompt const prompts[] = { { pad ? Icon::PadA : Icon::KeySpace, R.Text->Resume }, { pad ? Icon::PadY : Icon::KeyF7, R.Text->Photo } };
-            auto const count = R.Photo ? 2 : 1;
-            auto const radius = 22 * k;
-            auto const labelSize = 25 * k;
-            auto const labelTop = height - 84 * k - labelSize;
-            auto const iconY = labelTop - 12 * k - radius;
-            auto x = 88 * k;
-            for (int i = 0; i < count; i++)
-            {
-                auto const& p = prompts[i];
-                auto const labelWidth = R.Font.Regular->CalcTextSizeA(labelSize, FLT_MAX, 0, p.Label).x;
-                auto const column = std::max(IconWidth(p.What, radius, k), labelWidth);
-                auto const middle = x + column * 0.5f;
-                DrawIcon(list, p.What, { middle, iconY }, radius, alpha, k);
-                DrawShadowed(list, R.Font.Regular, labelSize, { middle - labelWidth * 0.5f, labelTop }, Colour(232, 234, 238, alpha), alpha, k, p.Label);
-                x += column + 40 * k;
-            }
-        }
 
         // ! A game's look
         // ========================================
@@ -815,7 +697,6 @@ namespace MelePause::Overlay
 
         constexpr Rgb DiscA{ 0x7B, 0x9E, 0x3F };
         constexpr Rgb DiscY{ 0xFC, 0xD3, 0x05 };
-        constexpr Rgb DiscStart{ 0xCB, 0xFF, 0xFF };
         constexpr Rgb KeyTop{ 0x47, 0x49, 0x47 };
         constexpr Rgb KeyBottom{ 0x9C, 0x9A, 0x9C };
 
@@ -871,13 +752,13 @@ namespace MelePause::Overlay
         }
 
         /// A key in the game's style, centred on c: a gamepad button (the game's texture of it where we have one, else a disc
-        /// in its colour, darker toward a black rim, its letter dark; Start pale with three dark lines), or a keycap (translucent
-        /// grey as the art is stored, lighter toward the bottom).
+        /// in its colour, darker toward a black rim, its letter dark), or a keycap (translucent grey as the art is stored, lighter
+        /// toward the bottom).
         void DrawGameIcon(ImDrawList* list, Icon icon, ImVec2 c, float radius, float alpha, float k)
         {
             if (IsPad(icon))
             {
-                auto const texture = icon == Icon::PadA ? R.IconA : icon == Icon::PadY ? R.IconY : nullptr;
+                auto const texture = icon == Icon::PadA ? R.IconA : R.IconY;
                 if (texture != nullptr)
                 {
                     auto const& art = R.Native->Button;
@@ -887,22 +768,13 @@ namespace MelePause::Overlay
                                    Colour(255, 255, 255, alpha));
                     return;
                 }
-                auto const fill = icon == Icon::PadA ? DiscA : icon == Icon::PadY ? DiscY : DiscStart;
+                auto const fill = icon == Icon::PadA ? DiscA : DiscY;
                 list->AddCircleFilled(c, radius, Colour(0, 0, 0, 0.5f * alpha));
                 list->AddCircleFilled(c, 0.95f * radius, Colour(fill, alpha, 0.3f));
                 list->AddCircleFilled(c, 0.9f * radius, Colour(fill, alpha, 0.55f));
                 list->AddCircleFilled(c, 0.86f * radius, Colour(fill, alpha, 0.75f));
                 list->AddCircleFilled(c, 0.82f * radius, Colour(fill, alpha));
                 auto const ink = Colour(0, 0, 0, 0.75f * alpha);
-                if (icon == Icon::PadStart)
-                {
-                    for (int row = -1; row <= 1; row++)
-                    {
-                        auto const y = c.y + static_cast<float>(row) * 0.28f * radius;
-                        list->AddLine({ c.x - 0.4f * radius, y }, { c.x + 0.4f * radius, y }, ink, std::max(1.5f, 2.6f * k));
-                    }
-                    return;
-                }
                 auto const letter = icon == Icon::PadA ? "A" : "Y";
                 auto const size = 1.6f * radius;
                 auto const width = R.Font.SemiBold->CalcTextSizeA(size, FLT_MAX, 0, letter).x;
@@ -927,6 +799,7 @@ namespace MelePause::Overlay
         /// The bottom left: each key with its label to its right, in the game's label colour, side by side.
         void DrawGamePrompts(ImDrawList* list, float height, float alpha, float k, bool pad)
         {
+            // Resume names A and the space bar; Start and Esc, which paused, resume too.
             Prompt const prompts[] = { { pad ? Icon::PadA : Icon::KeySpace, R.Text->Resume }, { pad ? Icon::PadY : Icon::KeyF7, R.Text->Photo } };
             auto const count = R.Photo ? 2 : 1;
             auto const radius = 23 * k;
@@ -1055,11 +928,11 @@ namespace MelePause::Overlay
             auto const blur = Blur::Init(R.Device);
 
             R.GameChain = chain;
-            R.Native = NativeLookOf(Look.load(std::memory_order_relaxed));
+            R.Native = &NativeLookOf(Look.load(std::memory_order_relaxed));
             R.Text = &LanguageTexts();
             QueryPerformanceCounter(&R.LastFrame);
             LEASI_INFO("overlay ready: back buffer {}x{} format {}, present thread {}, {} look, text in {}, {}, {}", desc.BufferDesc.Width,
-                       desc.BufferDesc.Height, static_cast<int>(desc.BufferDesc.Format), GetCurrentThreadId(), R.Native != nullptr ? R.Native->Name : "our own",
+                       desc.BufferDesc.Height, static_cast<int>(desc.BufferDesc.Format), GetCurrentThreadId(), R.Native->Name,
                        R.Text->Language, R.Font.Embedded ? "Exo 2 embedded" : "default font", blur ? "blur ready" : "NO blur (plain darkening)");
             LEASI_FLUSH();
             return true;
@@ -1166,11 +1039,7 @@ namespace MelePause::Overlay
                     ReleaseMovie();
             }
             auto const shown = world || movie;
-            if (shown)
-            {
-                R.Movie = movie;
-                R.Photo = world && (flags & OfferPhoto) != 0;
-            }
+            if (shown) R.Photo = world && (flags & OfferPhoto) != 0;
             R.Fade = (flags & HideNow) != 0 ? 0.f : Blur::Step(R.Fade, shown, seconds, shown ? FadeInSeconds : FadeOutSeconds);
             if (shown != R.WasShown)
             {
@@ -1210,7 +1079,7 @@ namespace MelePause::Overlay
             auto const height = static_cast<float>(desc.BufferDesc.Height);
             auto const alpha = Blur::Ease(R.Fade);
 
-            auto const blurred = Blur::Draw(R.Context, R.Back, R.Target, alpha, R.Native != nullptr ? R.Native->Blur : Blur::Settings{});
+            auto const blurred = Blur::Draw(R.Context, R.Back, R.Target, alpha, R.Native->Blur);
             if (!R.BlurLogged && !blurred)
             {
                 R.BlurLogged = true;
@@ -1229,16 +1098,8 @@ namespace MelePause::Overlay
             // Laid out for 1080 lines, like the game's HUD.
             auto const k = height / 1080.f;
             auto const pad = Pad.load(std::memory_order_relaxed);
-            if (R.Native != nullptr)
-            {
-                DrawBandTitle(list, width, height, alpha, k);
-                DrawGamePrompts(list, height, alpha, k, pad);
-            }
-            else
-            {
-                DrawTitle(list, width, height, alpha, k);
-                DrawPrompts(list, height, alpha, k, pad);
-            }
+            DrawBandTitle(list, width, height, alpha, k);
+            DrawGamePrompts(list, height, alpha, k, pad);
             ImGui::Render();
 
             ID3D11RenderTargetView* saved[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
