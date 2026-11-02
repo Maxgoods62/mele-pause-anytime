@@ -30,7 +30,9 @@ fix, all below.
   menu, and the ASI reads it there. Nothing of them is in the ASI, and nothing is written to disk. If they can't be read,
   Exo 2 stays and the log says so.
 - In LE3 the game's menu sound plays as the pause starts, and as a key ends it.
-- `package.sh` writes `dist/LE1PauseAnytime-v18.zip`, `dist/LE2PauseAnytime-v18.zip` and `dist/LE3PauseAnytime-v18.zip`.
+- `package.sh` writes one zip for the three games, `dist/PauseAnytime-v18.zip`: one `README.txt`, the folders `LE1`,
+  `LE2` and `LE3` with each game's `.asi`, and a `LICENSE` folder with the license texts. A `v<N>` zip needs every
+  released game.
 - In all three games, the short dash left and right of the title's band is gone.
 - In LE2 and LE3, a pause ended by closing the Steam overlay no longer loses the rest of the voice line: the game's audio
   goes back as the overlay opens, with the scene still held, and the game's menu sound plays then.

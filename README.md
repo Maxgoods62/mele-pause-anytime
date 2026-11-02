@@ -136,11 +136,11 @@ Pause Anytime needs no other mod, MeleBridge included.
 
 ## Install
 
-Download your game's zip from [Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases). You can
-[check the download](docs/releasing.md#check-a-download) against the published hash. Close the game, then copy
-`LE<n>PauseAnytime.asi` from the zip into `<LE folder>\Game\ME<n>\Binaries\Win64\ASI\`, LE1's into ME1's, LE2's into ME2's
-and LE3's into ME3's. The newest code on `main` is at <https://maxgoods62.github.io/mele-pause-anytime/latest/>, less tested than
-a release.
+Download the zip from [Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases). It holds all three games,
+each in its own folder. You can [check the download](docs/releasing.md#check-a-download) against the published hash.
+Close the game, then copy `LE<n>PauseAnytime.asi` from the zip's `LE<n>` folder into
+`<LE folder>\Game\ME<n>\Binaries\Win64\ASI\`, LE1's into ME1's, LE2's into ME2's and LE3's into ME3's. The newest code on
+`main` is at <https://maxgoods62.github.io/mele-pause-anytime/latest/>, less tested than a release.
 
 Or build it yourself ([BUILDING.md](BUILDING.md)). Close the game, then install it one of two ways:
 

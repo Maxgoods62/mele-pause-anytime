@@ -35,7 +35,7 @@ The result is `dist/LE1PauseAnytime.asi`, `dist/LE2PauseAnytime.asi` and `dist/L
 | `./build.sh --game LE1` | The same for the games named, one `--game` each: `LE1`, `LE2`, `LE3` or `all`. It goes with `--install` and `--uninstall` too. |
 | `./build.sh --install` | Checks each game ([Install checks](#install-checks)), builds and stages, checks again, then copies `LE<n>PauseAnytime.asi` into `Game\ME<n>\Binaries\Win64\ASI` of the game. It then deletes the files of older versions there: `LE<n>MelePause.asi` (versions 17 and older), and in ME1's `MelePause.asi` (version 6 and older). |
 | `./build.sh --uninstall` | Removes `LE<n>PauseAnytime.asi` from that folder, and the older `LE<n>MelePause.asi` and ME1's `MelePause.asi`. Refuses while the game runs. Builds nothing and needs no Visual Studio. |
-| `./package.sh` | Builds into `dist/stage`, then writes `dist/LE<n>PauseAnytime-v<N>.zip` for each game (the `.asi`, a `README.txt` and the license texts) and `dist/SHA256SUMS` over this version's zips in `dist/`. Takes `--game` as `build.sh` does. `--label latest` names the zips `LE<n>PauseAnytime-latest.zip`; a label like `v18` must be this version. Needs `python3`. [docs/releasing.md](docs/releasing.md) says how the workflow publishes them. |
+| `./package.sh` | Builds into `dist/stage`, then writes one zip that holds every game picked, `dist/PauseAnytime-v<N>.zip`, and `dist/SHA256SUMS` over it. The zip holds a single `README.txt` for all the games, a folder per game with its `.asi` (`LE1\LE1PauseAnytime.asi`, ...) and a `LICENSE` folder with the license texts. Takes `--game` as `build.sh` does, but a label like `v18` needs every released game. `--label latest` names the zip `PauseAnytime-latest.zip`; a label like `v18` must be this version. Needs `python3`. [docs/releasing.md](docs/releasing.md) says how the workflow publishes it. |
 
 ## Games
 
@@ -53,7 +53,7 @@ target; it has LE1's, LE2's and LE3's branches and stops the build for any other
 once it has its `LE<n>.hpp`, defining the names `LE1.hpp` defines (`LegacyModules` included: the file names its older
 versions had), and its branch in `Game.hpp`: the tree's `VisualStudio` preset turns every `LEASI_BUILD_LE<n>` on, so a
 listed game that does not compile breaks the whole tree's build in Visual Studio.
-`package.sh` packs a game only once `game_readme` in `scripts/games.sh` has its `README.txt` text.
+`package.sh` packs a game only once `game_readme` in `scripts/games.sh` has its paragraph of `README.txt`.
 
 LE1, LE2 and LE3 are the released games, so a plain `./build.sh --install` copies into ME1, ME2 and ME3, and stops
 before it builds anything when any of them has no ASI loader or is running: name `--game LE1` (or `LE2`, `LE3`), or set

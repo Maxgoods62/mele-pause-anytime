@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Build LE<n>PauseAnytime.asi for each game picked with build.sh and pack it for a release: dist/LE<n>PauseAnytime-<label>.zip,
-# where the label is v<N> and N is ASI_VERSION in src/SharedVersion.h, and dist/SHA256SUMS over every
-# LE<n>PauseAnytime-<label>.zip in dist/. A zip holds LE<n>PauseAnytime.asi, README.txt, LICENSE, THIRD_PARTY.md, OFL.txt and the
-# MIT license texts of spdlog and Dear ImGui. No .pdb: it stays in dist/stage with the build's ASI.
+# Build LE<n>PauseAnytime.asi for each game picked with build.sh and pack them for a release in one zip,
+# dist/PauseAnytime-<label>.zip, where the label is v<N> and N is ASI_VERSION in src/SharedVersion.h, and write
+# dist/SHA256SUMS over it. The zip holds a single README.txt that covers all the games, a folder per game
+# (LE1\LE1PauseAnytime.asi, ...) and a LICENSE folder: LICENSE, THIRD_PARTY.md, OFL.txt and the MIT license texts of spdlog
+# and Dear ImGui. No .pdb: it stays in dist/stage with the build's ASI.
 #
 #   ./package.sh [--game LE1|LE2|LE3|all]...   the games as build.sh picks them (default: MELE_GAMES, else the released
-#                                              games)
-#   ./package.sh ... --label latest            another label for the file names; a label like v18 must be this version
+#                                              games); a v<N> label needs every released game
+#   ./package.sh ... --label latest            another label for the file name; a label like v18 must be this version
 # Runs where build.sh runs, with python and the same settings (the environment, then build.env); it sets MELE_STAGE to
 # dist/stage itself. It builds only: nothing is installed into the game.
 set -euo pipefail
@@ -64,11 +65,13 @@ for var in MELE_GAMES MELE_LEXASIS; do
     fi
 done
 
-# The games, passed to build.sh as --game. Each one needs its README.txt text.
+# The games, passed to build.sh as --game. Each one needs its README.txt text. A release is one zip, so it holds them all.
 pick_games "${names[@]}"
 for g in "${GAMES[@]}"; do
     game_readme "$g" > /dev/null || die "no README.txt text for $g in scripts/games.sh (game_readme)"
 done
+[[ ! "$LABEL" =~ ^v[0-9]+$ || "${GAMES[*]}" == "${RELEASED_GAMES[*]}" ]] \
+    || die "label $LABEL packs ${GAMES[*]}: a release zip needs every released game (${RELEASED_GAMES[*]})"
 
 # The LExASIs checkout (build.sh's default under %LOCALAPPDATA% when it is not set), exported so build.sh builds in that
 # same tree: the spdlog and Dear ImGui license texts come from there.
@@ -83,36 +86,62 @@ fi
 export MELE_LEXASIS MELE_STAGE="$STAGE"
 THIRD_PARTY="$(dirname "$MELE_LEXASIS")/third_party"
 
-# A fresh stage, so a failed build can never leave an older ASI to pack.
+ZIP="PauseAnytime-$LABEL.zip"
+# A fresh stage, so a failed build can never leave an older ASI to pack. This label's zip and SHA256SUMS go, and so do
+# the per-game zips an earlier v18 package.sh wrote under this label (LE<n>PauseAnytime-<label>.zip). Zips of other labels
+# stay: SHA256SUMS lists only this label's zip.
 rm -rf "$STAGE" "$PKG"
-for g in "${GAMES[@]}"; do rm -f "$DIST/${g}PauseAnytime-$LABEL.zip"; done
-rm -f "$DIST/SHA256SUMS"
+rm -f "$DIST/$ZIP" "$DIST"/LE[0-9]PauseAnytime-"$LABEL".zip "$DIST/SHA256SUMS"
 trap 'rm -rf "$PKG"' EXIT
 build_args=()
 for g in "${GAMES[@]}"; do build_args+=(--game "$g"); done
 "$HERE/build.sh" "${build_args[@]}"
 
+# and_list A B C prints "A, B and C".
+and_list() {
+    local out="$1"
+    shift
+    while (( $# > 1 )); do out+=", $1"; shift; done
+    if (( $# == 1 )); then out+=" and $1"; fi
+    printf '%s' "$out"
+}
+
 add() { [[ -f "$1" ]] || die "missing $1"; cp "$1" "$PKG/$2"; }
+mkdir -p "$PKG/LICENSE"
+legacy=()
 for g in "${GAMES[@]}"; do
     game_info "$g"
-    ZIP="${g}PauseAnytime-$LABEL.zip"
-    rm -rf "$PKG"
-    mkdir -p "$PKG"
-    add "$STAGE/$GAME_ASI"                      "$GAME_ASI"
-    add "$HERE/LICENSE"                         LICENSE
-    add "$HERE/THIRD_PARTY.md"                  THIRD_PARTY.md
-    add "$HERE/src/fonts/OFL.txt"               OFL.txt
-    add "$MELE_LEXASIS/External/spdlog/LICENSE" LICENSE-spdlog.txt
-    add "$THIRD_PARTY/imgui/LICENSE.txt"        LICENSE-imgui.txt
+    mkdir -p "$PKG/$g"
+    add "$STAGE/$GAME_ASI" "$g/$GAME_ASI"
+    if (( ${#GAME_LEGACY[@]} > 0 )); then
+        old="${GAME_LEGACY[*]}"
+        legacy+=("- $GAME_ME: ${old// / or }")
+    fi
+done
+add "$HERE/LICENSE"                         LICENSE/LICENSE
+add "$HERE/THIRD_PARTY.md"                  LICENSE/THIRD_PARTY.md
+add "$HERE/src/fonts/OFL.txt"               LICENSE/OFL.txt
+add "$MELE_LEXASIS/External/spdlog/LICENSE" LICENSE/LICENSE-spdlog.txt
+add "$THIRD_PARTY/imgui/LICENSE.txt"        LICENSE/LICENSE-imgui.txt
 
-    {
-        printf '%s\nBuilt from commit %s\n\n' "${g}PauseAnytime $VERSION" "$COMMIT"
+{
+    printf 'Pause Anytime %s\nBuilt from commit %s\n\n' "$VERSION" "$COMMIT"
+    if (( ${#GAMES[@]} > 1 )); then
+        printf 'Each game has its own file, in the folder named after the game: %s.\n' "$(and_list "${GAMES[@]}")"
+    else
+        printf 'This zip holds the file for %s only, in the folder named after the game.\n' "${GAMES[0]}"
+    fi
+    printf 'The LICENSE folder holds the license texts.\n'
+    for g in "${GAMES[@]}"; do
+        printf '\n'
         game_readme "$g"
-        cat <<EOF
+    done
+    cat <<EOF
 
 Requirements
 
-- Mass Effect Legendary Edition. $GAME_ASI is for $GAME_ME only.
+- Mass Effect Legendary Edition. Each file runs in its own game only: LE<n>PauseAnytime.asi in
+  ME<n>.
 - An ASI loader: LEBinkProxy (https://github.com/ME3Tweaks/LEBinkProxy). ME3Tweaks Mod Manager
   installs it with any mod.
 - The latest Microsoft Visual C++ x64 Redistributable:
@@ -120,27 +149,34 @@ Requirements
 
 Install
 
-Close the game, then copy $GAME_ASI into <LE folder>\\Game\\$GAME_ME\\Binaries\\Win64\\ASI,
-where <LE folder> is the Legendary Edition folder, the one that holds Game. To update, copy the
-new $GAME_ASI over the old one.
-EOF
-        if (( ${#GAME_LEGACY[@]} > 0 )); then
-            old="${GAME_LEGACY[*]}"
-            cat <<EOF
+Close the game, then copy the file of each game you play into that game's ASI folder:
 
-Older versions were called ${old// / or }. Delete it from the ASI folder:
-while an old copy is there, it runs, and $GAME_ASI stays off and writes no log.
 EOF
-        fi
-        cat <<EOF
+    for g in "${GAMES[@]}"; do
+        game_info "$g"
+        printf '  %s\\%s  into  <LE folder>\\Game\\%s\\Binaries\\Win64\\ASI\n' "$g" "$GAME_ASI" "$GAME_ME"
+    done
+    cat <<EOF
+
+<LE folder> is the Legendary Edition folder, the one that holds Game. Copy the .asi file, not its
+folder. To update, copy the new file over the old one.
+EOF
+    if (( ${#legacy[@]} > 0 )); then
+        printf '\nOlder versions had other names. Delete these from the game'"'"'s ASI folder:\n'
+        printf '%s\n' "${legacy[@]}"
+        printf 'While an old copy is there, it runs, and the new file stays off and writes no log.\n'
+    fi
+    cat <<'EOF'
 
 To check that it loaded, start the game and open
-<LE folder>\\Game\\$GAME_ME\\Binaries\\Win64\\Logs\\PauseAnytime.log. It has a line that ends in
-"${g}PauseAnytime $VERSION_A ready".
+<LE folder>\Game\ME<n>\Binaries\Win64\Logs\PauseAnytime.log, where <n> is the game's number.
+EOF
+    cat <<EOF
+It has a line that ends in "LE<n>PauseAnytime $VERSION_A ready".
 
 Uninstall
 
-Close the game and delete $GAME_ASI from that ASI folder. You can delete
+Close the game and delete LE<n>PauseAnytime.asi from that game's ASI folder. You can delete
 Logs\\PauseAnytime.log too.
 
 Problems
@@ -151,19 +187,16 @@ game again. The source code and the known issues: https://github.com/Maxgoods62/
 
 License
 
-Pause Anytime is GPL-3.0 (LICENSE). The Exo 2 font is under the SIL Open Font License 1.1 (OFL.txt),
-spdlog and Dear ImGui under the MIT license (LICENSE-spdlog.txt, LICENSE-imgui.txt).
-THIRD_PARTY.md lists all the third-party code and fonts.
+Pause Anytime is GPL-3.0 (LICENSE\\LICENSE). The Exo 2 font is under the SIL Open Font License 1.1
+(LICENSE\\OFL.txt), spdlog and Dear ImGui under the MIT license (LICENSE\\LICENSE-spdlog.txt,
+LICENSE\\LICENSE-imgui.txt). LICENSE\\THIRD_PARTY.md lists all the third-party code and fonts.
 EOF
-    } > "$PKG/README.txt"
+} > "$PKG/README.txt"
 
-    FILES=("$GAME_ASI" README.txt LICENSE THIRD_PARTY.md OFL.txt LICENSE-spdlog.txt LICENSE-imgui.txt)
-    # Relative paths: Windows' python can't read Git Bash's /d/... paths.
-    (cd "$PKG" && "$PYTHON" -I -m zipfile -c "../$ZIP" "${FILES[@]}")
-    (cd "$DIST" && "$PYTHON" -I -m zipfile -l "$ZIP")
-    echo "packed $DIST/$ZIP"
-done
+# Relative paths: Windows' python can't read Git Bash's /d/... paths. A folder goes in with all its files.
+(cd "$PKG" && "$PYTHON" -I -m zipfile -c "../$ZIP" README.txt "${GAMES[@]}" LICENSE)
+(cd "$DIST" && "$PYTHON" -I -m zipfile -l "$ZIP")
+echo "packed $DIST/$ZIP"
 
-# One SHA256SUMS for this label's zips of every game, the ones packed now and any packed before.
-(cd "$DIST" && sha256sum LE[0-9]PauseAnytime-"$LABEL".zip > SHA256SUMS)
+(cd "$DIST" && sha256sum "$ZIP" > SHA256SUMS)
 echo "wrote $DIST/SHA256SUMS"

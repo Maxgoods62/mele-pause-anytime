@@ -7,11 +7,12 @@ with the same `package.sh` and `build.sh` you run at home.
 
 | Push | Build | Published at |
 |---|---|---|
-| `main` | `LE<n>PauseAnytime-latest.zip`, `SHA256SUMS` | <https://maxgoods62.github.io/mele-pause-anytime/latest/>, replaced by each push |
-| tag `v<N>` | `LE<n>PauseAnytime-v<N>.zip`, `SHA256SUMS` | [Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases), never replaced |
+| `main` | `PauseAnytime-latest.zip`, `SHA256SUMS` | <https://maxgoods62.github.io/mele-pause-anytime/latest/>, replaced by each push |
+| tag `v<N>` | `PauseAnytime-v<N>.zip`, `SHA256SUMS` | [Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases), never replaced |
 
-Each run's summary shows the hashes. The run also keeps the `.pdb` files for 90 days, as the `pdb` artifact: only these
-match that build's ASI.
+The zip holds one `README.txt`, a folder per game with that game's files (`LE1`, `LE2`, `LE3`; a mod for one game has none)
+and a `LICENSE` folder with the license texts. Each run's summary shows the hashes. The run also keeps the `.pdb` files
+for 90 days, as the `pdb` artifact: only these match that build's ASI.
 
 ## First setup
 
@@ -32,7 +33,7 @@ N is `ASI_VERSION`.
 1. In the toolkit, run `tools/release-kit/kit.sh check`.
 2. Set `ASI_VERSION` and its two strings in `src/SharedVersion.h`, and date its entry in `CHANGELOG.md`:
    `## v<N> (YYYY-MM-DD)`.
-3. Push `main`, and test the zips from the latest page in the game.
+3. Push `main`, and test the zip from the latest page in the game.
 4. Tag that commit and push the tag:
 
    ```bash
@@ -51,8 +52,8 @@ With the [GitHub CLI](https://cli.github.com), signed in to a free GitHub accoun
 that release's, then that this repo's workflow built it from that tag:
 
 ```bash
-gh release verify-asset v<N> LE1PauseAnytime-v<N>.zip -R Maxgoods62/mele-pause-anytime
-gh attestation verify LE1PauseAnytime-v<N>.zip -R Maxgoods62/mele-pause-anytime --source-ref refs/tags/v<N>
+gh release verify-asset v<N> PauseAnytime-v<N>.zip -R Maxgoods62/mele-pause-anytime
+gh attestation verify PauseAnytime-v<N>.zip -R Maxgoods62/mele-pause-anytime --source-ref refs/tags/v<N>
 ```
 
 On a latest zip, `gh attestation verify` works without `--source-ref`.
@@ -60,7 +61,7 @@ On a latest zip, `gh attestation verify` works without `--source-ref`.
 Without the CLI, compare the SHA-256 hash in PowerShell with `SHA256SUMS`. It shows that the file matches the list:
 
 ```powershell
-Get-FileHash .\LE1PauseAnytime-v<N>.zip -Algorithm SHA256
+Get-FileHash .\PauseAnytime-v<N>.zip -Algorithm SHA256
 ```
 
 ## What stops a rebuilt tag

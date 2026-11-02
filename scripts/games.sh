@@ -44,8 +44,8 @@ pick_games() {
     done
 }
 
-# game_readme LE<n> prints what README.txt in that game's zip says the ASI does (package.sh). A game gets its text when
-# it is released.
+# game_readme LE<n> prints the paragraph of the zip's README.txt that says what that game's ASI does (package.sh). A game
+# gets its text when it is released.
 game_readme() {
     case "$1" in
         LE1) cat <<'EOF'
