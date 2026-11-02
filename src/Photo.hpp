@@ -1,11 +1,11 @@
 #pragma once
 
 #include <LESDK/Init.hpp>
-#include "MelePause/game/Game.hpp"
+#include "PauseAnytime/game/Game.hpp"
 
 // The game's photo mode over our world pause, as Pause.cpp asks for it. Game thread only. Photo.cpp, with the facts of
 // game/LE<n>.hpp.
-namespace MelePause::PhotoMode
+namespace PauseAnytime::PhotoMode
 {
     /// The natives that let photo mode's input, panel and sounds past the world pause. Each one missing is logged.
     void InstallHooks(::LESDK::Initializer& Init);

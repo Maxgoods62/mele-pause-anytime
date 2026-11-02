@@ -1,7 +1,7 @@
 #pragma once
 
-#include "MelePause/Pause.hpp"
-#include "MelePause/game/Game.hpp"
+#include "PauseAnytime/Pause.hpp"
+#include "PauseAnytime/game/Game.hpp"
 
 #include <iterator>
 #include <string>
@@ -9,7 +9,7 @@
 
 // Helpers for calling into the game and reading its objects, shared by the world pause (Pause.cpp) and photo mode. Game
 // thread only, unless a comment says otherwise.
-namespace MelePause
+namespace PauseAnytime
 {
     // ! Modes
     // ========================================

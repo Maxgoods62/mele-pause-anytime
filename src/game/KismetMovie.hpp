@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace MelePause::Game
+namespace PauseAnytime::Game
 {
     /// An op that may make a sound when it runs: a voice line, a conversation, a vocalization, a remote event (the levels'
     /// music cues are remote events), a sound, music or FaceFX cue, a Wwise trigger, state, switch or audio object, music

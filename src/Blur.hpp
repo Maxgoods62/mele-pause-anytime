@@ -4,7 +4,7 @@
 
 // The pause backdrop: the whole frame blurred (dual Kawase), darkened, a little desaturated, with a soft vignette, drawn into the
 // back buffer from the IDXGISwapChain::Present detour, before the ImGui text and icons. Render thread only: nothing is locked.
-namespace MelePause::Blur
+namespace PauseAnytime::Blur
 {
     struct Settings
     {

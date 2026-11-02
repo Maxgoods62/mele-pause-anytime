@@ -120,7 +120,7 @@ jobs:
       - name: Publish the release
         run: >
           gh release create "$TAG" dist/*.zip dist/SHA256SUMS --verify-tag
-          --title "MelePause $TAG" --notes-file dist/release-notes.md
+          --title "Pause Anytime $TAG" --notes-file dist/release-notes.md
 
       - name: Check what was published against the build's hashes
         run: |
@@ -163,7 +163,7 @@ jobs:
           mkdir -p site/latest
           cp dist/*.zip dist/SHA256SUMS site/latest/
           {
-            echo '<!doctype html><meta charset="utf-8"><title>MelePause latest</title><h1>MelePause latest</h1>'
+            echo '<!doctype html><meta charset="utf-8"><title>Pause Anytime latest</title><h1>Pause Anytime latest</h1>'
             echo "<p>Built from <a href=\"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA\">$GITHUB_SHA</a>."
             echo 'Newest code on main, less tested than a release.</p><ul>'
             for zip in dist/*.zip; do

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build LE<n>MelePause.asi for each game picked with build.sh and pack it for a release: dist/LE<n>MelePause-<label>.zip,
+# Build LE<n>PauseAnytime.asi for each game picked with build.sh and pack it for a release: dist/LE<n>PauseAnytime-<label>.zip,
 # where the label is v<N> and N is ASI_VERSION in src/SharedVersion.h, and dist/SHA256SUMS over every
-# LE<n>MelePause-<label>.zip in dist/. A zip holds LE<n>MelePause.asi, README.txt, LICENSE, THIRD_PARTY.md, OFL.txt and the
+# LE<n>PauseAnytime-<label>.zip in dist/. A zip holds LE<n>PauseAnytime.asi, README.txt, LICENSE, THIRD_PARTY.md, OFL.txt and the
 # MIT license texts of spdlog and Dear ImGui. No .pdb: it stays in dist/stage with the build's ASI.
 #
 #   ./package.sh [--game LE1|LE2|LE3|all]...   the games as build.sh picks them (default: MELE_GAMES, else the released
@@ -36,8 +36,8 @@ while (( $# > 0 )); do
     esac
 done
 
-# ASI_VERSION, VERSION_STRING_A (the number the log's "LE<n>MelePause N ready" line prints) and VERSION_STRING_W (the
-# one the ASI loader logs) must agree. MelePause.rc's four-part version is made from ASI_VERSION.
+# ASI_VERSION, VERSION_STRING_A (the number the log's "LE<n>PauseAnytime N ready" line prints) and VERSION_STRING_W (the
+# one the ASI loader logs) must agree. PauseAnytime.rc's four-part version is made from ASI_VERSION.
 VER_H="$HERE/src/SharedVersion.h"
 VERSION="$(sed -n 's/^#define ASI_VERSION \([0-9][0-9]*\)[[:space:]]*$/\1/p' "$VER_H")"
 [[ -n "$VERSION" ]] || die "no ASI_VERSION in $VER_H"
@@ -78,14 +78,14 @@ if [[ -z "${MELE_LEXASIS:-}" ]]; then
         2>/dev/null | tr -d '\r' || true)"
     [[ -n "$LOCAL" ]] && LOCAL="$(wslpath -u "$LOCAL" 2>/dev/null || true)"
     [[ -n "$LOCAL" ]] || die "no %LOCALAPPDATA% from PowerShell: set MELE_LEXASIS to a folder on the Windows disk"
-    MELE_LEXASIS="$LOCAL/mele-asi-build/MelePause/LExASIs"
+    MELE_LEXASIS="$LOCAL/mele-asi-build/PauseAnytime/LExASIs"
 fi
 export MELE_LEXASIS MELE_STAGE="$STAGE"
 THIRD_PARTY="$(dirname "$MELE_LEXASIS")/third_party"
 
 # A fresh stage, so a failed build can never leave an older ASI to pack.
 rm -rf "$STAGE" "$PKG"
-for g in "${GAMES[@]}"; do rm -f "$DIST/${g}MelePause-$LABEL.zip"; done
+for g in "${GAMES[@]}"; do rm -f "$DIST/${g}PauseAnytime-$LABEL.zip"; done
 rm -f "$DIST/SHA256SUMS"
 trap 'rm -rf "$PKG"' EXIT
 build_args=()
@@ -95,7 +95,7 @@ for g in "${GAMES[@]}"; do build_args+=(--game "$g"); done
 add() { [[ -f "$1" ]] || die "missing $1"; cp "$1" "$PKG/$2"; }
 for g in "${GAMES[@]}"; do
     game_info "$g"
-    ZIP="${g}MelePause-$LABEL.zip"
+    ZIP="${g}PauseAnytime-$LABEL.zip"
     rm -rf "$PKG"
     mkdir -p "$PKG"
     add "$STAGE/$GAME_ASI"                      "$GAME_ASI"
@@ -106,7 +106,7 @@ for g in "${GAMES[@]}"; do
     add "$THIRD_PARTY/imgui/LICENSE.txt"        LICENSE-imgui.txt
 
     {
-        printf '%s\nBuilt from commit %s\n\n' "${g}MelePause $VERSION" "$COMMIT"
+        printf '%s\nBuilt from commit %s\n\n' "${g}PauseAnytime $VERSION" "$COMMIT"
         game_readme "$g"
         cat <<EOF
 
@@ -124,33 +124,34 @@ Close the game, then copy $GAME_ASI into <LE folder>\\Game\\$GAME_ME\\Binaries\\
 where <LE folder> is the Legendary Edition folder, the one that holds Game. To update, copy the
 new $GAME_ASI over the old one.
 EOF
-        if [[ -n "$GAME_LEGACY" ]]; then
+        if (( ${#GAME_LEGACY[@]} > 0 )); then
+            old="${GAME_LEGACY[*]}"
             cat <<EOF
 
-Versions 6 and older were called $GAME_LEGACY. Delete that file from the ASI folder: while
-it is there, the old version runs and $GAME_ASI stays off.
+Older versions were called ${old// / or }. Delete it from the ASI folder:
+while an old copy is there, it runs, and $GAME_ASI stays off and writes no log.
 EOF
         fi
         cat <<EOF
 
 To check that it loaded, start the game and open
-<LE folder>\\Game\\$GAME_ME\\Binaries\\Win64\\Logs\\MelePause.log. It has a line that ends in
-"${g}MelePause $VERSION_A ready".
+<LE folder>\\Game\\$GAME_ME\\Binaries\\Win64\\Logs\\PauseAnytime.log. It has a line that ends in
+"${g}PauseAnytime $VERSION_A ready".
 
 Uninstall
 
 Close the game and delete $GAME_ASI from that ASI folder. You can delete
-Logs\\MelePause.log too.
+Logs\\PauseAnytime.log too.
 
 Problems
 
-Open an issue at https://github.com/Maxgoods62/mele-pause/issues with Logs\\MelePause.log
-attached. MelePause rewrites the log each time the game starts, so copy it before you start the
-game again. The source code and the known issues: https://github.com/Maxgoods62/mele-pause
+Open an issue at https://github.com/Maxgoods62/pause-anytime/issues with Logs\\PauseAnytime.log
+attached. Pause Anytime rewrites the log each time the game starts, so copy it before you start the
+game again. The source code and the known issues: https://github.com/Maxgoods62/pause-anytime
 
 License
 
-MelePause is GPL-3.0 (LICENSE). The Exo 2 font is under the SIL Open Font License 1.1 (OFL.txt),
+Pause Anytime is GPL-3.0 (LICENSE). The Exo 2 font is under the SIL Open Font License 1.1 (OFL.txt),
 spdlog and Dear ImGui under the MIT license (LICENSE-spdlog.txt, LICENSE-imgui.txt).
 THIRD_PARTY.md lists all the third-party code and fonts.
 EOF
@@ -164,5 +165,5 @@ EOF
 done
 
 # One SHA256SUMS for this label's zips of every game, the ones packed now and any packed before.
-(cd "$DIST" && sha256sum LE[0-9]MelePause-"$LABEL".zip > SHA256SUMS)
+(cd "$DIST" && sha256sum LE[0-9]PauseAnytime-"$LABEL".zip > SHA256SUMS)
 echo "wrote $DIST/SHA256SUMS"

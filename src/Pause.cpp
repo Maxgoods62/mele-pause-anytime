@@ -1,7 +1,7 @@
-#include "MelePause/Pause.hpp"
-#include "MelePause/Engine.hpp"
-#include "MelePause/Photo.hpp"
-#include "MelePause/game/Game.hpp"
+#include "PauseAnytime/Pause.hpp"
+#include "PauseAnytime/Engine.hpp"
+#include "PauseAnytime/Photo.hpp"
+#include "PauseAnytime/game/Game.hpp"
 #include "Common/Objects.hpp"
 
 #include <algorithm>
@@ -25,7 +25,7 @@
 // or F7 opens the game's photo mode over it, and closes it again (so do Esc and Start). Anywhere else these keys keep their
 // vanilla behavior. Everything here runs on the game thread, inside the ProcessEvent calls it reacts to. Where a movie's
 // sound is a Wwise event (MoviePolicy::BinkAndEvent), the Kismet movie action that starts it is latched here for Bink.cpp.
-namespace MelePause
+namespace PauseAnytime
 {
     namespace
     {

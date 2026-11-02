@@ -1,14 +1,14 @@
 #pragma once
 
-#include "MelePause/game/Game.hpp"
+#include "PauseAnytime/game/Game.hpp"
 
 #include <cstddef>
 
 // The GUI side of photo mode under the pause, as Photo.cpp asks for it: the panel that shows photo mode, and the
 // conversation's panel set aside while it shows. Per game: LE1's and LE2's ScaleForm GUI manager (PhotoGuiSF.cpp), LE3's
-// GFx interaction (PhotoGuiGFx.cpp), picked by game/LE<n>.hpp's MELEPAUSE_PHOTO_GFX. One session at a time, game thread
+// GFx interaction (PhotoGuiGFx.cpp), picked by game/LE<n>.hpp's PAUSEANYTIME_PHOTO_GFX. One session at a time, game thread
 // only; what it set aside it keeps itself, until GiveBack or Clear.
-namespace MelePause::PhotoGui
+namespace PauseAnytime::PhotoGui
 {
     /// The controller's GUI: the object whose native tick runs photo mode's panel, which the GUI tick hook lets past the
     /// world pause. Null when there is none.

@@ -1,4 +1,4 @@
-#include "MelePause/Blur.hpp"
+#include "PauseAnytime/Blur.hpp"
 #include "Common/Base.hpp"
 
 #include <d3d11_1.h>
@@ -17,7 +17,7 @@
 //   down       level i-1 -> level i, i = 1..N, each half the size of the one before
 //   up         level i+1 -> level i, i = N-1..1
 //   composite  level 1 -> back buffer: last tent upsample, desaturate, darken, vignette, dither; blended by the fade.
-namespace MelePause::Blur
+namespace PauseAnytime::Blur
 {
     namespace
     {
@@ -385,7 +385,7 @@ float4 PSComposite(VSOut i) : SV_Target
         bool Compile(pD3DCompile compile, char const* entry, char const* profile, ComPtr<ID3DBlob>& code)
         {
             ComPtr<ID3DBlob> errors;
-            HRESULT const hr = compile(Source, sizeof Source - 1, "MelePauseBlur.hlsl", nullptr, nullptr, entry, profile,
+            HRESULT const hr = compile(Source, sizeof Source - 1, "PauseAnytimeBlur.hlsl", nullptr, nullptr, entry, profile,
                                        D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code, &errors);
             if (SUCCEEDED(hr)) return true;
             LEASI_ERROR("pause blur: {} ({}) does not compile (0x{:08X}): {}", entry, profile, static_cast<unsigned>(hr),
@@ -679,7 +679,7 @@ float4 PSComposite(VSOut i) : SV_Target
 
         SavedState saved;
         saved.Capture(context);
-        if (S.Annotation) S.Annotation->BeginEvent(L"MelePause blur");
+        if (S.Annotation) S.Annotation->BeginEvent(L"Pause Anytime blur");
 
         context->SetPredication(nullptr, FALSE);
         context->IASetInputLayout(nullptr);

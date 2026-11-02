@@ -3,11 +3,11 @@
 // LE3's facts. Include game/Game.hpp, not this file.
 
 /// Photo mode's GUI sounds: the game's, not hooked (LE3's GFx movies play them through SFXGUIInteraction).
-#define MELEPAUSE_PHOTO_GUI_SOUNDS 0
+#define PAUSEANYTIME_PHOTO_GUI_SOUNDS 0
 /// Photo mode's panel is a GFx movie of SFXGUIInteraction (PhotoGuiGFx.cpp).
-#define MELEPAUSE_PHOTO_GFX 1
+#define PAUSEANYTIME_PHOTO_GFX 1
 
-namespace MelePause::Game
+namespace PauseAnytime::Game
 {
     // SFXGameModeManager.EGameModes (SFXGame_classes.hpp:3210-3239).
     inline constexpr unsigned char ModeConversation = 7;
@@ -31,8 +31,9 @@ namespace MelePause::Game
     /// SFXGameModePhoto's Esc and Start bind, which opens the pause menu.
     inline constexpr wchar_t const* PhotoMenuFunction = L"ShowMenu";
 
-    /// The name an older version had in the ASI folder, or null: LE3 never had one.
-    inline constexpr wchar_t const* LegacyModule = nullptr;
+    /// The names older versions had in the ASI folder: Entry.cpp stays off while one is loaded. LE3MelePause.asi from
+    /// v11 until the rename to Pause Anytime.
+    inline constexpr wchar_t const* LegacyModules[] = { L"LE3MelePause.asi" };
 
     /// The controller's game modes (BioPlayerController.GameModeManager2, SFXGame_classes.hpp:7610).
     inline USFXGameModeManager* ModeManagerOf(ABioPlayerController* pc)
@@ -163,4 +164,4 @@ namespace MelePause::Game
     inline constexpr bool PauseSoundHoldsAudio = true;
 }
 
-#include "MelePause/game/KismetMovie.hpp"
+#include "PauseAnytime/game/KismetMovie.hpp"

@@ -1,8 +1,8 @@
-# MelePause in LE3
+# Pause Anytime in LE3
 
 Status: from v11, LE3 is in `RELEASED_GAMES` (`scripts/games.sh`), so a plain `./build.sh` or `./package.sh` covers it.
-`./build.sh --game LE3` builds `LE3MelePause.asi` from the same sources as LE1 and LE2, against LE3's SDK. From v13 it has
-the movie pause, limited as in LE2 to movies whose sound MelePause knows. On 2026-10-30 the first build passed the pause
+`./build.sh --game LE3` builds `LE3PauseAnytime.asi` from the same sources as LE1 and LE2, against LE3's SDK. From v13 it has
+the movie pause, limited as in LE2 to movies whose sound Pause Anytime knows. On 2026-10-30 the first build passed the pause
 part of the sheet below with keyboard and mouse and with a gamepad, from v12 photo mode under the pause passed in
 conversations and in an in-engine cutscene, and a test build of the movie pause passed S3 in the relay jump
 ([testing.md](../testing.md#le3)). The game's look ([Pause screen](#pause-screen)) came with v18.
@@ -13,9 +13,9 @@ conversations and in an in-engine cutscene, and a test build of the movie pause 
 |---|---|---|
 | Esc and Start pause a conversation or an in-engine cutscene; skip guard; Space and A resume | compiled in | on |
 | Pause screen, and the Canvas banner where it cannot draw | on, from v18 in the game's menu colours, with its words for the labels, its menu sound, its gamepad buttons and its fonts | on, from v14 in the game's menu colours, with the game's words and its menu sound, from v15 with its gamepad buttons, from v16 in its fonts |
-| Movie pause | on from v13 for a movie a level starts whose sound MelePause knows ([Movies](#movies)); Esc and Start in any other movie stay the game's | on |
-| Photo mode under the pause | on from v12, its GUI side in `PhotoGuiGFx.cpp` (`MELEPAUSE_PHOTO_GFX`); its GUI sounds get no hook | on, `PhotoGuiSF.cpp` |
-| File | `LE3MelePause.asi`, Windows version `18.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1MelePause.asi`, `18.0.4.0` |
+| Movie pause | on from v13 for a movie a level starts whose sound Pause Anytime knows ([Movies](#movies)); Esc and Start in any other movie stay the game's | on |
+| Photo mode under the pause | on from v12, its GUI side in `PhotoGuiGFx.cpp` (`PAUSEANYTIME_PHOTO_GFX`); its GUI sounds get no hook | on, `PhotoGuiSF.cpp` |
+| File | `LE3PauseAnytime.asi`, Windows version `18.0.6.0`, for `Game\ME3\Binaries\Win64\ASI` | `LE1PauseAnytime.asi`, `18.0.4.0` |
 
 ## Movies
 
@@ -29,7 +29,7 @@ every fullscreen movie, and starts that event itself once the movie starts, for 
 | Matinee track `SFXInterpTrackMovieBink`, inside an in-engine cutscene or a conversation | 442 tracks, 240 movies: the end of the Prologue, the Mars arrival, the summit videos, most of the ending | The game's: nothing latches them |
 | Loading screens (`SFXLoadMovieManager`) | 45 movies: the Normandy and shuttle rides, the Citadel's transit | The game's: opened by file handle or from memory, nothing latches them |
 
-A movie takes Esc and Start when MelePause knows its sound (`MoviePolicy::BinkAndEvent`): the Wwise event of the Kismet
+A movie takes Esc and Start when Pause Anytime knows its sound (`MoviePolicy::BinkAndEvent`): the Wwise event of the Kismet
 action that plays it, paused with `ExecuteActionOnEvent` right after `BinkPause`, when the action runs nothing else
 beside the movie that may make a sound (`MovieActionOf`, `src/game/KismetMovie.hpp`, shared with LE2). LE3 has no
 `BioSeqAct_StartConversation`: its conversation op is `SFXSeqAct_StartAmbientConv` (`ConversationActionClass`). LE3's
@@ -51,7 +51,7 @@ From a read-only dump of the running MassEffect3.exe. RVAs are the exe's.
 | Which movies skip | `[FullScreenMovie] SkippableMovies` (`BioEngine`): `Device_Reveal`, `ProCit_100_Arrival`, the Cat002 and Cat003 arrivals | Checked when the movie starts (the player's +0x84). `GLO_01_Relay` is not among them. |
 
 `src/MovieInput.cpp` hooks the movie input as in LE2: Esc and Start while the pause keys are the movies', and any key
-under MelePause's movie pause, go on to `Console.InputKey` instead. Space and X reach it as they are
+under Pause Anytime's movie pause, go on to `Console.InputKey` instead. Space and X reach it as they are
 (`MovieSkipKeyAs` is null): they are its keys already. The movie lines in the log add the player's flags and skippable
 flag (`Game::MoviePlayer`).
 
@@ -109,7 +109,7 @@ from the game's files, and none of those files is shipped.
 | The controller's game modes | `BioPlayerController.GameModeManager2` | `GameModeManager` | `SFXGame_classes.hpp:7610` |
 | `GuiKey` events of the always-on Start and Escape binds, pressed and released (`BioPlayerInput.StaticConsoleBinds`, `StaticPCBinds`) | 24, 16, 45, 37: Escape sends `BUTTON_B`, as in LE2 | 21, 24, 43, 46: Escape sends `KEY_ESCAPE` | `SFXGame_classes.hpp:1126` (`BioGuiEvents` is in SFXGame here); binds `:17765-17766` |
 | Photo mode's Esc and Start bind | `SFXGameModePhoto.ShowMenu` | `ShowMenuGui` | `SFXGame_classes.hpp:31027` |
-| An older file of ours in the ASI folder | none (`LegacyModule` is null) | `MelePause.asi` (version 6 and older) | |
+| Older files of ours in the ASI folder (`LegacyModules`) | `LE3MelePause.asi` (versions 17 and older) | `LE1MelePause.asi` (versions 7 to 17), `MelePause.asi` (version 6 and older) | |
 | Cutscene skip binds (`SFXGameModeCinematic`) | Escape and SpaceBar: `PC_CineSkip`; XboxTypeS_X: `Console_CineSkip` | Esc | `Default__SFXGameModeCinematic` in `SFXGame.pcc` |
 
 The rest of the shared code's names (`WorldInfo.Pauser`, `BioHUD`, `SFXConsole`, `SFXPlayerCamera`, the Console's
@@ -119,11 +119,11 @@ The rest of the shared code's names (`WorldInfo.Pauser`, `BioHUD`, `SFXConsole`,
 
 The procedure is in [testing.md](../testing.md), with `--game LE3`. `--install` needs the ASI loader in ME3
 (`bink2w64_original.dll` in `Game\ME3\Binaries\Win64`), which ME3Tweaks Mod Manager installs with any mod. The log is
-`Game\ME3\Binaries\Win64\Logs\MelePause.log`. Run it all, with keyboard and mouse and with a gamepad.
+`Game\ME3\Binaries\Win64\Logs\PauseAnytime.log`. Run it all, with keyboard and mouse and with a gamepad.
 
-- L0, before MelePause is installed. Open the Steam overlay (Shift+Tab) for 15 s during a conversation line, then during
-  an in-engine cutscene. In LE1 and LE2 the overlay sets the world pause MelePause uses (`WorldInfo.Pauser`). Note
-  whether voice, lips and music stop together and resume in sync.
+- L0, before Pause Anytime is installed. Open the Steam overlay (Shift+Tab) for 15 s during a conversation line, then
+  during an in-engine cutscene. In LE1 and LE2 the overlay sets the world pause Pause Anytime uses (`WorldInfo.Pauser`).
+  Note whether voice, lips and music stop together and resume in sync.
 - S1, conversation. Esc pauses: picture, voice, music and lips stop, and the pause screen shows "Space Resume" and "F7
   Photo mode". Esc resumes at the same word, in sync. Then Start, with the A icon on the pause screen; A resumes.
 - S2, in-engine cutscene. The same. Note what Esc, Space and X do in a skippable cutscene with nothing paused (the log
@@ -142,7 +142,7 @@ The procedure is in [testing.md](../testing.md), with `--game LE3`. `--install` 
   screen come back.
 - S7, the log. At start: "movie sound: the exe's AK::SoundEngine::ExecuteActionOnEvent at ...", "Bink:
   bink2w64_original.dll hooked (...), BinkPause true", "movie input hooked: ..."; "input hooked: ..." and "GUI tick
-  hooked: ..."; "overlay: swap chain hooks Present true ..."; a line that ends in "LE3MelePause N ready" (N is
+  hooked: ..."; "overlay: swap chain hooks Present true ..."; a line that ends in "LE3PauseAnytime N ready" (N is
   `ASI_VERSION`). At the first frame, "first BioHUD.PostRender" with the same controller for the HUD owner and GEngine.
   Each press: "Esc pressed: mode 7 (Conversation)" and the like, with LE3's mode names.
 - S8, the look. The title on a blue band in white, the labels in pale cyan, each key left of its label. With a gamepad,

@@ -1,5 +1,5 @@
 #include <LESDK/Headers.hpp>
-#include "MelePause/Api.hpp"
+#include "PauseAnytime/Api.hpp"
 
 #include <atomic>
 #include <cstring>
@@ -22,7 +22,7 @@
 // - Space and X, the movie playing: given to it as the game's skipKeyAs (LE2: Enter), so they skip what Esc skipped, and
 //   only that; as they are where they are its keys already (LE3).
 // Any other event goes to it as it came. Game thread only; it reads no game object.
-namespace MelePause::MovieInput
+namespace PauseAnytime::MovieInput
 {
     namespace
     {

@@ -4,9 +4,9 @@
 #include <LESDK/Init.hpp>
 #include <SPI.h>
 #include "Common/Base.hpp"
-#include "MelePause/Api.hpp"
+#include "PauseAnytime/Api.hpp"
 
-namespace MelePause
+namespace PauseAnytime
 {
     // ! Pause.cpp
     // ========================================

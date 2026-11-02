@@ -1,14 +1,14 @@
 #pragma once
 
 #include <LESDK/Headers.hpp>
-#include "MelePause/Api.hpp"
+#include "PauseAnytime/Api.hpp"
 
 #include <array>
 
 // What differs from one game to the next, picked by the SDK target this build is for. Each game's header holds the same
-// names (namespace MelePause::Game) and two switches for photo mode: MELEPAUSE_PHOTO_GUI_SOUNDS (its GUI sounds need our
-// hooks) and MELEPAUSE_PHOTO_GFX (its panel is a GFx movie).
-namespace MelePause::Game
+// names (namespace PauseAnytime::Game) and two switches for photo mode: PAUSEANYTIME_PHOTO_GUI_SOUNDS (its GUI sounds need our
+// hooks) and PAUSEANYTIME_PHOTO_GFX (its panel is a GFx movie).
+namespace PauseAnytime::Game
 {
     /// What Game::MovieActionOf reads of a Kismet movie action (BioSeqAct_MovieBink), for MovieSound's latch.
     struct MovieAction
@@ -28,15 +28,15 @@ namespace MelePause::Game
 }
 
 #if defined(SDK_TARGET_LE1)
-    #include "MelePause/game/LE1.hpp"
+    #include "PauseAnytime/game/LE1.hpp"
 #elif defined(SDK_TARGET_LE2)
-    #include "MelePause/game/LE2.hpp"
+    #include "PauseAnytime/game/LE2.hpp"
 #elif defined(SDK_TARGET_LE3)
-    #include "MelePause/game/LE3.hpp"
+    #include "PauseAnytime/game/LE3.hpp"
 #else
-    #error "MelePause: no game/LE<n>.hpp for this SDK target"
+    #error "Pause Anytime: no game/LE<n>.hpp for this SDK target"
 #endif
 
-#if !defined(MELEPAUSE_PHOTO_GUI_SOUNDS) || !defined(MELEPAUSE_PHOTO_GFX)
-    #error "MelePause: game/LE<n>.hpp must define MELEPAUSE_PHOTO_GUI_SOUNDS and MELEPAUSE_PHOTO_GFX"
+#if !defined(PAUSEANYTIME_PHOTO_GUI_SOUNDS) || !defined(PAUSEANYTIME_PHOTO_GFX)
+    #error "Pause Anytime: game/LE<n>.hpp must define PAUSEANYTIME_PHOTO_GUI_SOUNDS and PAUSEANYTIME_PHOTO_GFX"
 #endif

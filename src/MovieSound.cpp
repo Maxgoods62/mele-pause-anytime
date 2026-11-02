@@ -1,4 +1,4 @@
-#include "MelePause/Api.hpp"
+#include "PauseAnytime/Api.hpp"
 
 #include <cstdint>
 #include <mutex>
@@ -13,7 +13,7 @@
 // and queued: they apply at the audio thread's next pass. The game object is AK_INVALID_GAME_OBJECT, which the Wwise
 // headers say "may also mean all game objects": the one the native code posted the event on is unknown. Only under
 // MoviePolicy::BinkAndEvent: LE1's movies carry Bink audio, and nothing here runs there.
-namespace MelePause::MovieSound
+namespace PauseAnytime::MovieSound
 {
     namespace
     {

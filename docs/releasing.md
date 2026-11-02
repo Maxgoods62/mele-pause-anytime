@@ -1,14 +1,14 @@
-# Releasing MelePause
+# Releasing Pause Anytime
 
 <!-- Rendered from mele-maxgoods-toolkit tools/release-kit. Change it there; a hand edit here fails kit.sh check. -->
 
-[`.github/workflows/build.yml`](../.github/workflows/build.yml) builds and publishes MelePause on GitHub's Windows runner,
+[`.github/workflows/build.yml`](../.github/workflows/build.yml) builds and publishes Pause Anytime on GitHub's Windows runner,
 with the same `package.sh` and `build.sh` you run at home.
 
 | Push | Build | Published at |
 |---|---|---|
-| `main` | `LE<n>MelePause-latest.zip`, `SHA256SUMS` | <https://maxgoods62.github.io/mele-pause/latest/>, replaced by each push |
-| tag `v<N>` | `LE<n>MelePause-v<N>.zip`, `SHA256SUMS` | [Releases](https://github.com/Maxgoods62/mele-pause/releases), never replaced |
+| `main` | `LE<n>PauseAnytime-latest.zip`, `SHA256SUMS` | <https://maxgoods62.github.io/pause-anytime/latest/>, replaced by each push |
+| tag `v<N>` | `LE<n>PauseAnytime-v<N>.zip`, `SHA256SUMS` | [Releases](https://github.com/Maxgoods62/pause-anytime/releases), never replaced |
 
 Each run's summary shows the hashes. The run also keeps the `.pdb` files for 90 days, as the `pdb` artifact: only these
 match that build's ASI.
@@ -37,7 +37,7 @@ N is `ASI_VERSION`.
 
    ```bash
    scripts/release-notes.sh --check v<N>
-   git tag -a v<N> -m "MelePause v<N>"
+   git tag -a v<N> -m "Pause Anytime v<N>"
    git push origin v<N>
    ```
 
@@ -51,8 +51,8 @@ With the [GitHub CLI](https://cli.github.com), signed in to a free GitHub accoun
 that release's, then that this repo's workflow built it from that tag:
 
 ```bash
-gh release verify-asset v<N> LE1MelePause-v<N>.zip -R Maxgoods62/mele-pause
-gh attestation verify LE1MelePause-v<N>.zip -R Maxgoods62/mele-pause --source-ref refs/tags/v<N>
+gh release verify-asset v<N> LE1PauseAnytime-v<N>.zip -R Maxgoods62/pause-anytime
+gh attestation verify LE1PauseAnytime-v<N>.zip -R Maxgoods62/pause-anytime --source-ref refs/tags/v<N>
 ```
 
 On a latest zip, `gh attestation verify` works without `--source-ref`.
@@ -60,7 +60,7 @@ On a latest zip, `gh attestation verify` works without `--source-ref`.
 Without the CLI, compare the SHA-256 hash in PowerShell with `SHA256SUMS`. It shows that the file matches the list:
 
 ```powershell
-Get-FileHash .\LE1MelePause-v<N>.zip -Algorithm SHA256
+Get-FileHash .\LE1PauseAnytime-v<N>.zip -Algorithm SHA256
 ```
 
 ## What stops a rebuilt tag

@@ -1,11 +1,12 @@
-# Testing MelePause in the game
+# Testing Pause Anytime in the game
 
 Each game is tested with its own build. With the game closed, build and install with
 `./build.sh --game LE<n> --install` ([BUILDING.md](../BUILDING.md)), and check that the game's ASI folder holds
-`LE<n>MelePause.asi` and no `MelePause.asi` (the file of version 6 and older). Then run the sheet below in that game and
-read the log, `<LE folder>\Game\ME<n>\Binaries\Win64\Logs\MelePause.log`. MelePause rewrites the log each time the game
-starts. Keep the game's window in front for the whole test: in the background, LE1 holds the world still every frame,
-and a pause tested then proves nothing.
+`LE<n>PauseAnytime.asi` and no older file: no `LE<n>MelePause.asi` (versions 17 and older), and in ME1's no
+`MelePause.asi` (version 6 and older). Then run the sheet below in that game and
+read the log, `<LE folder>\Game\ME<n>\Binaries\Win64\Logs\PauseAnytime.log`. Pause Anytime rewrites the log each time
+the game starts. Keep the game's window in front for the whole test: in the background, LE1 holds the world still every
+frame, and a pause tested then proves nothing.
 
 The steps name LE1's scenes. In another game, use a conversation, an in-engine cutscene and a fullscreen movie of that
 game; [games/LE2.md](games/LE2.md) and [games/LE3.md](games/LE3.md) have LE2's and LE3's sheets.
@@ -61,7 +62,7 @@ Before a version is tagged, each game its CHANGELOG entry names (the `Games:` li
 
 | When | Lines |
 |---|---|
-| At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ..." (LE2 and LE3: "GUI sounds: not hooked in the LE<n> build, ..."), or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>MelePause N ready", where N is the build's `ASI_VERSION`. |
+| At start | A "Bink: ... hooked" line, with the movie pause "on (Esc read in BinkWait)". "input hooked: ...", "GUI tick hooked: ..." and "GUI sounds hooked: ..." (LE2 and LE3: "GUI sounds: not hooked in the LE<n> build, ..."), or a "not found at RVA" warning instead. "overlay: swap chain hooks Present true ...". A line that ends in "LE<n>PauseAnytime N ready", where N is the build's `ASI_VERSION`. |
 | At the first frame | "overlay ready: back buffer ..., LE1 look (LE2 look, LE3 look), text in <language>, Exo 2 embedded, blur ready". "first BioHUD.PostRender": the HUD owner and GEngine's controller should be the same. "the game's string table: title ..., resume ..., photo mode ..." with the words in the game's language (LE2 and LE3 have no title there), and "overlay: the game's gamepad icons: A fine, Y fine: used" ("refused" and "ours drawn instead" if a view failed its checks, and "no view of the game's gamepad icons" if the textures gave none). LE3: "the game's fonts: loaded their package in ... ms". A line with "the pause screen keeps Exo 2" if the game's fonts could not be read. |
 | Each press that reaches `Console.InputKey` | One "Esc pressed: mode ..." or "Start pressed: mode ..." line, with what it did. |
 | Each pause | "overlay shown: world pause (or movie pause), gamepad (or keyboard) prompts", then "overlay hidden" ("at once" for photo mode). At the first one, "overlay: the game's fonts: ... used" ("Exo 2 stays" if not), then "overlay: the game's texts: ..." with "used" after each word (Japanese without the game's fonts: "kept ours"); after "world paused", "GUI sound InGameGuiEnter: played"; after a key's "world resumed", "GUI sound InGameGuiExit: played". In LE2 and LE3, a Steam overlay opened during a pause: "game audio released: the Steam overlay is open, the world still held", then that sound, and "world pause ended" once it closes. |
@@ -120,7 +121,7 @@ elsewhere) and with the gamepad's Start and A.
 
 | Area | Result |
 |---|---|
-| Steam overlay, before MelePause was installed | Stops the picture, voice, lips and music; all resume together about 2 s after it closes. |
+| Steam overlay, before Pause Anytime was installed | Stops the picture, voice, lips and music; all resume together about 2 s after it closes. |
 | Esc and Start in a conversation and in an in-engine cutscene | Pause and resume in sync. Space and A resume. The pause screen shows keyboard or gamepad prompts and no photo key. One pause held 11 minutes, with the console opened and closed during it. |
 | Skips | With nothing paused, the skip keys skip a skippable cutscene. The Esc or Start that paused or resumed one did not skip it. |
 | Esc and Start elsewhere | Vanilla in gameplay (the pause menu), in menus and on the galaxy map. Esc skips a loading movie as in the vanilla game, and the world never paused under a movie. |
@@ -164,7 +165,7 @@ and with a gamepad, over three runs. The two camera faults the first runs showed
 Not covered yet: LE2 photo mode in an in-engine cutscene. The same build passed S6 in LE1, in a conversation and in an
 in-engine cutscene, with Y and F7. One entry pressed in the first second of a cutscene, while the camera still blended
 from the player to the director's camera (the log's "pending" view target), opened 51 units and 8 degrees off the shot,
-with "camera mode None" for the whole session: the camera did not answer. MelePause now holds that blend for the
+with "camera mode None" for the whole session: the camera did not answer. Pause Anytime now holds that blend for the
 session ("photo mode: the blend to ... held" in the log). Not seen in the game yet: 46 later entries in an STA00
 cutscene had no blend pending, and all opened on the shot.
 

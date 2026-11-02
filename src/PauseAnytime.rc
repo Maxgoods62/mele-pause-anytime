@@ -1,4 +1,4 @@
-// The version info and the fonts compiled into LE<n>MelePause.asi. Edit it as text: Visual Studio's resource editor
+// The version info and the fonts compiled into LE<n>PauseAnytime.asi. Edit it as text: Visual Studio's resource editor
 // would rewrite the #include lines and the macros.
 
 #include <windows.h>
@@ -37,5 +37,5 @@ BEGIN
     END
 END
 
-MELEPAUSE_FONT_REGULAR RCDATA "fonts/Exo2-Regular.ttf"
-MELEPAUSE_FONT_SEMIBOLD RCDATA "fonts/Exo2-SemiBold.ttf"
+PAUSEANYTIME_FONT_REGULAR RCDATA "fonts/Exo2-Regular.ttf"
+PAUSEANYTIME_FONT_SEMIBOLD RCDATA "fonts/Exo2-SemiBold.ttf"

@@ -1,7 +1,7 @@
-#include "MelePause/Api.hpp"
-#include "MelePause/Blur.hpp"
-#include "MelePause/GameFont.hpp"
-#include "MelePause/Resources.h"
+#include "PauseAnytime/Api.hpp"
+#include "PauseAnytime/Blur.hpp"
+#include "PauseAnytime/GameFont.hpp"
+#include "PauseAnytime/Resources.h"
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -29,10 +29,10 @@
 // where it opens), for the gamepad or the keyboard, whichever pressed our keys last. The game thread says what to show
 // (Publish, UsePadPrompts, UseGameTexts, UseGameIcons, UseGameFonts); nothing here touches a game object, only the D3D11 views
 // of two of its textures and, on the game thread, the bytes of its fonts' movies. The text is set in Exo 2 (SIL OFL 1.1,
-// fonts/OFL.txt), compiled into the ASI (MelePause.rc), in the language the game's launcher passes, or in the game's own
+// fonts/OFL.txt), compiled into the ASI (PauseAnytime.rc), in the language the game's launcher passes, or in the game's own
 // words where it gives them, and in the game's own fonts, turned into TrueType in memory (GameFont.cpp) and never written
 // anywhere. Without the hook or after a fault the Canvas banner of Pause.cpp is drawn instead (Drawing).
-namespace MelePause::Overlay
+namespace PauseAnytime::Overlay
 {
     namespace
     {
@@ -392,7 +392,7 @@ namespace MelePause::Overlay
         // ! Fonts
         // ========================================
 
-        /// One of the fonts compiled into the ASI (MelePause.rc), or null.
+        /// One of the fonts compiled into the ASI (PauseAnytime.rc), or null.
         ImFont* AddEmbedded(int id)
         {
             static int const anchor = 0;
@@ -413,8 +413,8 @@ namespace MelePause::Overlay
 
         void LoadFonts()
         {
-            R.Font.Regular = AddEmbedded(MELEPAUSE_FONT_REGULAR);
-            R.Font.SemiBold = AddEmbedded(MELEPAUSE_FONT_SEMIBOLD);
+            R.Font.Regular = AddEmbedded(PAUSEANYTIME_FONT_REGULAR);
+            R.Font.SemiBold = AddEmbedded(PAUSEANYTIME_FONT_SEMIBOLD);
             R.Font.Embedded = R.Font.Regular != nullptr && R.Font.SemiBold != nullptr;
             if (!R.Font.Embedded)
             {
@@ -909,7 +909,7 @@ namespace MelePause::Overlay
             io.LogFilename = nullptr;
             io.MouseDrawCursor = false;
             io.ConfigFlags |= ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoKeyboard | ImGuiConfigFlags_NoMouseCursorChange;
-            io.BackendPlatformName = "MelePause";
+            io.BackendPlatformName = "PauseAnytime";
             LoadFonts();
             // ImGui's backend compiles its shaders with D3DCompile, a delay-loaded import (CMakeLists.txt): Windows' copy is
             // loaded first, so the import binds to it, and a machine without it gets the banner, not an ASI that won't load.
@@ -1241,7 +1241,7 @@ namespace MelePause::Overlay
         windowClass.cbSize = sizeof windowClass;
         windowClass.lpfnWndProc = DefWindowProcW;
         windowClass.hInstance = GetModuleHandleW(nullptr);
-        windowClass.lpszClassName = L"MelePauseProbe";
+        windowClass.lpszClassName = L"PauseAnytimeProbe";
         RegisterClassExW(&windowClass);
         auto const window = CreateWindowExW(0, windowClass.lpszClassName, L"", WS_OVERLAPPEDWINDOW, 0, 0, 16, 16, nullptr, nullptr, windowClass.hInstance, nullptr);
 

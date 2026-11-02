@@ -1,16 +1,16 @@
-#include "MelePause/PhotoGui.hpp"
+#include "PauseAnytime/PhotoGui.hpp"
 
 // Photo mode's GUI in LE1 and LE2: the ScaleForm GUI manager (MassEffectGuiManager, a BioSFManager), whose ShowPhotoMode and
 // HidePhotoMode open and close the photo panel, and whose conversation panel (game/LE<n>.hpp ConversationPanelOf) is a
 // BioSFPanel with its own input and visibility flags.
-#if !MELEPAUSE_PHOTO_GFX
+#if !PAUSEANYTIME_PHOTO_GFX
 
-#include "MelePause/Engine.hpp"
+#include "PauseAnytime/Engine.hpp"
 
 #include <cstring>
 #include <string>
 
-namespace MelePause::PhotoGui
+namespace PauseAnytime::PhotoGui
 {
     namespace
     {

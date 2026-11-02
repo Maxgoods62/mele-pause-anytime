@@ -1,4 +1,4 @@
-#include "MelePause/GameFont.hpp"
+#include "PauseAnytime/GameFont.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,7 +22,7 @@
 // Fill: every glyph uses FillStyle0 alone, and outer contours run opposite to holes, on all 127,394 contours of the three
 // fonts. Flipping y gives TrueType's own convention, so no contour is reversed. A glyph that uses styles in any other way is
 // refused, since nothing says how it would fill.
-namespace MelePause::GameFont
+namespace PauseAnytime::GameFont
 {
     namespace
     {

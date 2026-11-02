@@ -1,12 +1,12 @@
 name: Bug report
-description: Something goes wrong in the game with MelePause installed.
+description: Something goes wrong in the game with Pause Anytime installed.
 labels: ["bug"]
 body:
   - type: dropdown
     id: game
     attributes:
       label: Game
-      description: The game where it goes wrong. MelePause supports LE1, LE2 and LE3.
+      description: The game where it goes wrong. Pause Anytime supports LE1, LE2 and LE3.
       options:
         - LE1 (Mass Effect 1)
         - LE2 (Mass Effect 2)
@@ -34,9 +34,10 @@ body:
   - type: input
     id: version
     attributes:
-      label: MelePause version
+      label: Pause Anytime version
       description: >-
-        The number in the log line that ends in "LE<n>MelePause N ready" ("MelePause N ready" for version 6 and older).
+        The number in the log line that ends in "LE<n>PauseAnytime N ready" ("LE<n>MelePause N ready" for versions
+        7 to 17, "MelePause N ready" for version 6 and older).
     validations:
       required: true
   - type: textarea
@@ -45,7 +46,7 @@ body:
       label: Game, other ASIs and mods
       description: >-
         Steam or EA app, and the game version if you know it. The files in `Game\ME<n>\Binaries\Win64\ASI`
-        (`LE<n>MelePause.asi` and the others; ME1 for LE1), your other mods, and keyboard or which gamepad.
+        (`LE<n>PauseAnytime.asi` and the others; ME1 for LE1), your other mods, and keyboard or which gamepad.
     validations:
       required: true
   - type: textarea
@@ -53,5 +54,6 @@ body:
     attributes:
       label: Log file
       description: >-
-        Attach `Logs\MelePause.log` from `<LE folder>\Game\ME<n>\Binaries\Win64` (drag it here).
-        MelePause rewrites it each time the game starts, so copy it before you start the game again.
+        Attach `Logs\PauseAnytime.log` (`Logs\MelePause.log` for version 17 and older) from
+        `<LE folder>\Game\ME<n>\Binaries\Win64` (drag it here).
+        Pause Anytime rewrites it each time the game starts, so copy it before you start the game again.

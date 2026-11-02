@@ -1,4 +1,4 @@
-#include "MelePause/Api.hpp"
+#include "PauseAnytime/Api.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -30,7 +30,7 @@
 // posts beside the picture. There a fullscreen movie takes the pause keys only if we know its sound: the event latched for
 // it on the game thread, paused and resumed right after BinkPause (MovieSound.cpp), or Bink audio (the game's list). Any
 // other movie leaves Esc and Start to the game, which skips it.
-namespace MelePause::Bink
+namespace PauseAnytime::Bink
 {
     namespace
     {
@@ -362,7 +362,7 @@ namespace MelePause::Bink
         /// quarter second (an in-level texture movie plays under a HUD drawing every frame).
         char const* NotFullscreen(Movie const& m, ULONGLONG now, ULONGLONG hud)
         {
-            if (!m.FromFile) return m.Flags & BINKFROMMEMORY ? "opened from memory, as loading screens are" : "opened before MelePause, from where unknown";
+            if (!m.FromFile) return m.Flags & BINKFROMMEMORY ? "opened from memory, as loading screens are" : "opened before Pause Anytime, from where unknown";
             if (m.LastWaitAt == 0 || Since(now, m.LastWaitAt) >= WaitStaleMs) return "no BinkWait in the last half second";
             if (hud != 0 && Since(now, hud) <= HudSilentMs) return "the HUD draws";
             return nullptr;
@@ -671,7 +671,7 @@ namespace MelePause::Bink
                     // Opened before the hooks were live (the attach runs on its own thread). Only while BinkClose is hooked: a
                     // movie must never be tracked without its close being seen.
                     if (BinkClose_orig.load(std::memory_order_acquire) == nullptr) return false;
-                    m = &Track(bink, "(opened before MelePause)", 0);
+                    m = &Track(bink, "(opened before Pause Anytime)", 0);
                     LEASI_INFO("movie #{}: {} first seen in a player call, thread {}", m->Serial, bink, ThreadText(GetCurrentThreadId()));
                 }
                 m->LastCallAt = now;

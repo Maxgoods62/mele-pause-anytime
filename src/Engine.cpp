@@ -1,7 +1,7 @@
-#include "MelePause/Engine.hpp"
+#include "PauseAnytime/Engine.hpp"
 #include "Common/Objects.hpp"
 
-namespace MelePause
+namespace PauseAnytime
 {
     thread_local bool InOwnCall = false;
 

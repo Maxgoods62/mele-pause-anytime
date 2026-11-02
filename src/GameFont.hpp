@@ -11,7 +11,7 @@
 //
 // The movie is untrusted input: a mod can replace it. Every read is checked and every size capped, and anything unexpected
 // gives an empty result, never a crash. The span itself must be valid memory: that is the caller's part.
-namespace MelePause::GameFont
+namespace PauseAnytime::GameFont
 {
     /// The kerning of two neighbouring characters, in EM: add it to the pen after <see cref="Left"/>.
     struct KerningPair

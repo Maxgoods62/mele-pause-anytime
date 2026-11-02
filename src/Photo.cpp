@@ -1,12 +1,12 @@
-#include "MelePause/Photo.hpp"
+#include "PauseAnytime/Photo.hpp"
 
 // The game's photo mode under the world pause. What differs from one game to the next comes from game/LE<n>.hpp: the
 // natives' addresses and first bytes, the camera switch, and whether the GUI
-// sounds need our hooks (MELEPAUSE_PHOTO_GUI_SOUNDS). The GUI side, photo mode's panel and the conversation's, is
+// sounds need our hooks (PAUSEANYTIME_PHOTO_GUI_SOUNDS). The GUI side, photo mode's panel and the conversation's, is
 // PhotoGui's.
 
-#include "MelePause/Engine.hpp"
-#include "MelePause/PhotoGui.hpp"
+#include "PauseAnytime/Engine.hpp"
+#include "PauseAnytime/PhotoGui.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace MelePause::PhotoMode
+namespace PauseAnytime::PhotoMode
 {
     namespace
     {
@@ -143,7 +143,7 @@ namespace MelePause::PhotoMode
         bool GuiTickHooked = false;
         /// The GUI sound hooks are in (see PlayGuiSound_hook): without them photo mode's sounds wait for the pause's end.
         bool SoundHooked = false;
-#if MELEPAUSE_PHOTO_GUI_SOUNDS
+#if PAUSEANYTIME_PHOTO_GUI_SOUNDS
         constexpr auto SoundNotHooked = "NOT hooked (they play when the pause ends: see the start of this log)";
 #else
         constexpr auto SoundNotHooked = "not hooked in this build (the game's)";
@@ -740,7 +740,7 @@ namespace MelePause::PhotoMode
             APlayerReplicationInfo* Pauser = nullptr;
         };
 
-#if MELEPAUSE_PHOTO_GFX
+#if PAUSEANYTIME_PHOTO_GFX
         /// For one call of the GFx movies' Tick (LE3): it checks no Pauser, but advances each movie by the time since its last
         /// advance, and most movies run on the world's TimeSeconds, which stands still under the pause. Photo mode's panel
         /// would never load: its movie tells the game it loaded from its own frames. While our session is on, on the game
@@ -812,7 +812,7 @@ namespace MelePause::PhotoMode
         void GuiTick_hook(UObject* manager, float deltaTime)
         {
             auto const orig = OriginalOf(GuiTick_orig);
-#if MELEPAUSE_PHOTO_GFX
+#if PAUSEANYTIME_PHOTO_GFX
             GfxClock clock(manager, Photo.GuiTicks);
 #else
             PauseLift lift(manager, Photo.Gui.Object, Photo.GuiTicks);
@@ -823,7 +823,7 @@ namespace MelePause::PhotoMode
         // ! GUI sounds under the world pause
         // ========================================
 
-#if MELEPAUSE_PHOTO_GUI_SOUNDS
+#if PAUSEANYTIME_PHOTO_GUI_SOUNDS
         // While the world is paused, the audio device (its Update gets bGameTicking off) starts no new sound and advances
         // none, except those whose AudioComponent is bNonRealtime. The GUI manager's sounds aren't: under our pause, photo
         // mode's click (TakePhoto), tab and option sounds would wait for the pause's end and all play then. While ours is
@@ -911,11 +911,11 @@ namespace MelePause::PhotoMode
         InputHooked = keys && axes;
         if (InputHooked) LEASI_INFO("input hooked: photo mode's keys and axes get past the world pause");
 
-        GuiTickHooked = HookNative(Init, MELEPAUSE_PHOTO_GFX ? "the GFx movies' Tick" : "UBioSFManager::Tick", PhotoGuiTickRva, PhotoGuiTickStart,
+        GuiTickHooked = HookNative(Init, PAUSEANYTIME_PHOTO_GFX ? "the GFx movies' Tick" : "UBioSFManager::Tick", PhotoGuiTickRva, PhotoGuiTickStart,
                                    GuiTick_hook, GuiTick_orig, "photo mode's panel under the pause won't answer (tabs, options, prompts)");
         if (GuiTickHooked) LEASI_INFO("GUI tick hooked: photo mode's panel gets past the world pause");
 
-#if MELEPAUSE_PHOTO_GUI_SOUNDS
+#if PAUSEANYTIME_PHOTO_GUI_SOUNDS
         constexpr auto noSound = "photo mode's GUI sounds under the pause wait for its end";
         auto const play = HookNative(Init, "UBioSFManager::PlayGuiSound", PhotoPlayGuiSoundRva, PhotoPlayGuiSoundStart, PlayGuiSound_hook,
                                      PlayGuiSound_orig, noSound);
@@ -952,7 +952,7 @@ namespace MelePause::PhotoMode
 
     bool PlayGuiSound(ABioPlayerController* pc, wchar_t const* row)
     {
-#if MELEPAUSE_PHOTO_GUI_SOUNDS
+#if PAUSEANYTIME_PHOTO_GUI_SOUNDS
         auto const gui = SoundHooked && pc != nullptr ? PhotoGui::Find(pc) : nullptr;
         if (gui == nullptr) return false;
         static CachedFunction cache;
@@ -962,7 +962,7 @@ namespace MelePause::PhotoMode
         parms.nmSound = SFXName{ row, 0 };
         CallMarkedGuiSound(gui, function, &parms);
         return true;
-#elif MELEPAUSE_PHOTO_GFX
+#elif PAUSEANYTIME_PHOTO_GFX
         // SFXGUIInteraction's, a Wwise event as in LE2: no hook to go through.
         auto const gui = pc != nullptr ? PhotoGui::Find(pc) : nullptr;
         if (gui == nullptr) return false;

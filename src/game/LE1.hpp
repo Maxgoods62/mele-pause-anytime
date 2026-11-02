@@ -3,11 +3,11 @@
 // LE1's facts. Include game/Game.hpp, not this file.
 
 /// Photo mode's GUI sounds under the pause need our hooks: ISACT starts only bNonRealtime sounds while the world is paused.
-#define MELEPAUSE_PHOTO_GUI_SOUNDS 1
+#define PAUSEANYTIME_PHOTO_GUI_SOUNDS 1
 /// Photo mode's panel is a ScaleForm panel of the GUI manager (PhotoGuiSF.cpp), not a GFx movie (PhotoGuiGFx.cpp).
-#define MELEPAUSE_PHOTO_GFX 0
+#define PAUSEANYTIME_PHOTO_GFX 0
 
-namespace MelePause::Game
+namespace PauseAnytime::Game
 {
     // SFXGameModeManager.EGameModes (SFXGame_classes.hpp).
     inline constexpr unsigned char ModeConversation = 5;
@@ -27,9 +27,9 @@ namespace MelePause::Game
     /// SFXGameModePhoto's Esc and Start bind, which opens the pause menu.
     inline constexpr wchar_t const* PhotoMenuFunction = L"ShowMenuGui";
 
-    /// The name an older version had in the ASI folder (here v6 and older), or null: Entry.cpp stays off while it is
-    /// loaded.
-    inline constexpr wchar_t const* LegacyModule = L"MelePause.asi";
+    /// The names older versions had in the ASI folder: Entry.cpp stays off while one is loaded. LE1MelePause.asi from
+    /// v7 until the rename to Pause Anytime, MelePause.asi in v6 and older.
+    inline constexpr wchar_t const* LegacyModules[] = { L"LE1MelePause.asi", L"MelePause.asi" };
 
     /// The controller's game modes (BioPlayerController.GameModeManager).
     inline USFXGameModeManager* ModeManagerOf(ABioPlayerController* pc)

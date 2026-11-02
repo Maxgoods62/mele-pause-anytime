@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build LE<n>MelePause.asi for each game picked with the Visual Studio Build Tools, inside this repo's own checkout of
-# ME3Tweaks/LExASIs on the Windows disk (it provides the SDK, the ASI loader interface and the CMake helpers), then
+# Build LE<n>PauseAnytime.asi for each game picked with the Visual Studio Build Tools, inside this repo's own checkout
+# of ME3Tweaks/LExASIs on the Windows disk (it provides the SDK, the ASI loader interface and the CMake helpers), then
 # stage it in MELE_STAGE.
 #   ./build.sh                  build and stage the games in MELE_GAMES, else the released ones (scripts/games.sh)
 #   ./build.sh --game LE2 ...   build and stage these games instead: LE1, LE2, LE3 or all (the ones src/CMakeLists.txt
@@ -16,10 +16,11 @@
 #   MELE_VS       the Visual Studio or Build Tools folder with the C++ tools and CMake (default: found with vswhere)
 #   MELE_LEXASIS  the LExASIs checkout, cloned on the first build; Dear ImGui goes next to it in third_party. Keep it on
 #                 the Windows disk: CMake and MSBuild do not work well on \\wsl.localhost paths
-#                 (default: %LOCALAPPDATA%\mele-asi-build\MelePause\LExASIs)
-#   MELE_STAGE    where LE<n>MelePause.asi and its .pdb are copied (default: dist/ next to this script)
-# Inside the game install, this tool writes only LE<n>MelePause.asi in Game\ME<n>\Binaries\Win64\ASI, and deletes the
-# MelePause.asi of v6 and older from ME1's ASI folder. It never writes the ASI loader.
+#                 (default: %LOCALAPPDATA%\mele-asi-build\PauseAnytime\LExASIs)
+#   MELE_STAGE    where LE<n>PauseAnytime.asi and its .pdb are copied (default: dist/ next to this script)
+# Inside the game install, this tool writes only LE<n>PauseAnytime.asi in Game\ME<n>\Binaries\Win64\ASI, and deletes the
+# files of older versions there: LE<n>MelePause.asi from before the rename to Pause Anytime, and MelePause.asi of v6 and
+# older from ME1's. It never writes the ASI loader.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -132,7 +133,7 @@ if [[ "$action" == uninstall ]]; then
         if [[ ! -d "$ASI_DIR" ]]; then echo "no ASI folder in Game\\$GAME_ME\\Binaries\\Win64: nothing to remove"; continue; fi
         [[ -f "$ASI_DIR/$GAME_ASI" ]] || echo "no $GAME_ASI in $ASI_DIR"
         remove "$ASI_DIR/$GAME_ASI"
-        if [[ -n "$GAME_LEGACY" ]]; then remove "$ASI_DIR/$GAME_LEGACY"; fi
+        for old in "${GAME_LEGACY[@]}"; do remove "$ASI_DIR/$old"; done
     done
     exit 0
 fi
@@ -156,7 +157,7 @@ LEXASIS="${MELE_LEXASIS:-}"
 if [[ -z "$LEXASIS" ]]; then
     LOCAL="$(win_env LOCALAPPDATA)"
     [[ -n "$LOCAL" ]] || die "no %LOCALAPPDATA% from PowerShell: set MELE_LEXASIS to a folder on the Windows disk"
-    LEXASIS="$LOCAL/mele-asi-build/MelePause/LExASIs"
+    LEXASIS="$LOCAL/mele-asi-build/PauseAnytime/LExASIs"
 fi
 # Dear ImGui (MIT, see THIRD_PARTY.md) for the pause screen, next to the LExASIs checkout.
 THIRD_PARTY="$(dirname "$LEXASIS")/third_party"
@@ -186,8 +187,8 @@ if [[ -z "$pinned" || "$current" != "$pinned" ]] || grep -q '^[-+U]' <<< "$subs"
     # script's line is added again below). Any other change is someone's own work: the checkout keeps it, or refuses.
     CML="$LEXASIS/CMakeLists.txt"
     if [[ -f "$CML" ]]; then
-        sed -i -e '/^if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}\/Mele[A-Za-z]*")$/,/^endif ()$/d' \
-            -e '/^add_subdirectory ("Mele[A-Za-z]*")$/d' "$CML"
+        sed -i -e '/^if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}\/\(Mele[A-Za-z]*\|PauseAnytime\)")$/,/^endif ()$/d' \
+            -e '/^add_subdirectory ("\(Mele[A-Za-z]*\|PauseAnytime\)")$/d' "$CML"
         lexasis_git diff --quiet -- CMakeLists.txt \
             || die "CMakeLists.txt in $LEXASIS has changes of your own: commit or stash them, then build again"
     fi
@@ -213,20 +214,24 @@ fetch_pinned() {
 fetch_pinned https://github.com/ocornut/imgui.git "$THIRD_PARTY/imgui" "$IMGUI_COMMIT"
 
 # Our sources become one more ASI project of that tree. The project line is guarded, so the tree still configures if
-# LExASIs/MelePause is ever deleted; an unguarded line from an earlier build is replaced.
+# LExASIs/PauseAnytime is ever deleted; an unguarded line from an earlier build is replaced.
 # By content, not by time: a changed file gets the current time, so MSBuild never keeps an object compiled from another
 # checkout's newer copy. Git Bash has no rsync, and a GitHub runner has no older objects to keep.
-mkdir -p "$LEXASIS/MelePause"
+mkdir -p "$LEXASIS/PauseAnytime"
 if command -v rsync > /dev/null; then
-    rsync -rlc --delete "$HERE/src/" "$LEXASIS/MelePause/"
+    rsync -rlc --delete "$HERE/src/" "$LEXASIS/PauseAnytime/"
 else
-    rm -rf "$LEXASIS/MelePause"
-    cp -r "$HERE/src" "$LEXASIS/MelePause"
+    rm -rf "$LEXASIS/PauseAnytime"
+    cp -r "$HERE/src" "$LEXASIS/PauseAnytime"
 fi
 CML="$LEXASIS/CMakeLists.txt"
-if grep -qx 'add_subdirectory ("MelePause")' "$CML"; then sed -i '/^add_subdirectory ("MelePause")$/d' "$CML"; fi
-grep -qF 'EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/MelePause"' "$CML" \
-    || printf '%s\n' 'if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/MelePause")' '  add_subdirectory ("MelePause")' 'endif ()' >> "$CML"
+if grep -qx 'add_subdirectory ("PauseAnytime")' "$CML"; then sed -i '/^add_subdirectory ("PauseAnytime")$/d' "$CML"; fi
+# A tree built before the rename to Pause Anytime still lists LExASIs/MelePause: that project goes, so the tree builds
+# only this one. Its folder stays, unused.
+sed -i -e '/^if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}\/MelePause")$/,/^endif ()$/d' \
+    -e '/^add_subdirectory ("MelePause")$/d' "$CML"
+grep -qF 'EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/PauseAnytime"' "$CML" \
+    || printf '%s\n' 'if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/PauseAnytime")' '  add_subdirectory ("PauseAnytime")' 'endif ()' >> "$CML"
 
 cd "$LEXASIS"
 # A LEASI_GAME<n>_WIN64 variable makes the ASI builds of every game turned on copy themselves into that game. env -u
@@ -250,17 +255,17 @@ fi
 # A game gets a project only once src/CMakeLists.txt lists it in GAMES. The solution is checked too: a project of a game
 # listed before stays in Build.
 for g in "${GAMES[@]}"; do
-    if [[ ! -f "Build/MelePause/MelePause-$g.vcxproj" ]] || ! grep -q "MelePause-$g\.vcxproj" Build/LExASIs.slnx; then
+    if [[ ! -f "Build/PauseAnytime/PauseAnytime-$g.vcxproj" ]] || ! grep -q "PauseAnytime-$g\.vcxproj" Build/LExASIs.slnx; then
         rm -f "$log"
-        die "no MelePause-$g project: src/CMakeLists.txt does not build $g yet (asi_target's GAMES)"
+        die "no PauseAnytime-$g project: src/CMakeLists.txt does not build $g yet (asi_target's GAMES)"
     fi
 done
 for g in "${GAMES[@]}"; do
-    if ! "$CMAKE" --build Build --config RELEASE --target "MelePause-$g" -- /m /v:minimal /nologo > "$log" 2>&1; then
+    if ! "$CMAKE" --build Build --config RELEASE --target "PauseAnytime-$g" -- /m /v:minimal /nologo > "$log" 2>&1; then
         # The project's path ends each line: it goes first, so the source path's prefix can be cut up to its LExASIs\.
         tr -d '\r' < "$log" | grep -E 'error|warning' | sed -E 's| \[[^]]*vcxproj\]||; s|^.*LExASIs\\||' | sort -u
         rm -f "$log"
-        die "MelePause-$g did not build"
+        die "PauseAnytime-$g did not build"
     fi
 done
 rm -f "$log"
@@ -279,7 +284,7 @@ if [[ "$action" == install ]]; then
         ASI_DIR="$LE_DIR/Game/$GAME_ME/Binaries/Win64/ASI"
         cp "$STAGE/$GAME_ASI" "$ASI_DIR/$GAME_ASI"
         echo "installed $ASI_DIR/$GAME_ASI"
-        # Two copies would each toggle the pause on one key press (the new one stays off while the old one is loaded).
-        if [[ -n "$GAME_LEGACY" ]]; then remove "$ASI_DIR/$GAME_LEGACY"; fi
+        # Two copies would each toggle the pause on one key press (the new one stays off while an old one is loaded).
+        for old in "${GAME_LEGACY[@]}"; do remove "$ASI_DIR/$old"; done
     done
 fi

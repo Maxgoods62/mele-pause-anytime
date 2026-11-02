@@ -2,26 +2,35 @@
 
 Versions are `ASI_VERSION` in `src/SharedVersion.h`, one for every game. The git tags `v2` to `v5` mark them; none is a
 published release yet. The first line of each entry names the games it covers. Every version needs an ASI loader.
+Versions 17 and older were called MelePause.
 
 ## v18 (unreleased)
 
 Games: LE1, LE2, LE3
 
-LE3's pause screen takes the look of the game's menus, as LE1's and LE2's did. In LE1 the ASI does the same as v17 but for
-the dashes, in LE2 but for the dashes and the Steam overlay's fix, both below.
+MelePause is renamed Pause Anytime. LE3's pause screen takes the look of the game's menus, as LE1's and LE2's did. In LE1
+the ASI does the same as v17 but for its name and the dashes, in LE2 but for its name, the dashes and the Steam overlay's
+fix, all below.
 
+- The files are now `LE1PauseAnytime.asi`, `LE2PauseAnytime.asi` and `LE3PauseAnytime.asi`, the log is
+  `Logs\PauseAnytime.log`, its ready line reads `LE<n>PauseAnytime 18 ready`, and the repository is
+  `Maxgoods62/pause-anytime`. Delete the old `LE<n>MelePause.asi` from the ASI folder, and in LE1 an old
+  `MelePause.asi`; `./build.sh --install` and `--uninstall` do. While one is loaded, the new file stays off and writes
+  no log: the loader names each hook after the ASI's name, so both copies would hook the same functions and each would
+  toggle the pause on one key press. It says so to a debugger (DebugView), and the loader logs the attach error in
+  `Logs\bink2w64_proxy.log`.
 - In LE3 the title sits on a band in the game's menu blue, with a bright blue rule along each edge, in its Biomass and
   white, and each key stands left of its label, in Biomass and pale cyan. The blur leans blue. The keycaps stay grey, in
   its Myriad.
-- The labels are the game's own words, in its text language. The title stays MelePause's: LE3's string table has no word
-  for it in every language.
+- The labels are the game's own words, in its text language. The title stays the ASI's own: LE3's string table has no
+  word for it in every language.
 - The gamepad's A and Y are the game's own pictures, as its pause wheel shows them, read from its renderer. If they can't
   be had, drawn discs show instead, and the log says so.
 - The fonts are the game's own. LE3 doesn't keep its font library in memory, so its loader brings it back once at the main
   menu, and the ASI reads it there. Nothing of them is in the ASI, and nothing is written to disk. If they can't be read,
   Exo 2 stays and the log says so.
 - In LE3 the game's menu sound plays as the pause starts, and as a key ends it.
-- `package.sh` writes `dist/LE1MelePause-v18.zip`, `dist/LE2MelePause-v18.zip` and `dist/LE3MelePause-v18.zip`.
+- `package.sh` writes `dist/LE1PauseAnytime-v18.zip`, `dist/LE2PauseAnytime-v18.zip` and `dist/LE3PauseAnytime-v18.zip`.
 - In all three games, the short dash left and right of the title's band is gone.
 - In LE2 and LE3, a pause ended by closing the Steam overlay no longer loses the rest of the voice line: the game's audio
   goes back as the overlay opens, with the scene still held, and the game's menu sound plays then.

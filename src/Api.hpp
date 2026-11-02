@@ -9,7 +9,7 @@
 
 // What Pause.cpp, Overlay.cpp, Bink.cpp and MovieSound.cpp ask of each other. No game class here: the last three include
 // only this file, so they build the same against every game's SDK.
-namespace MelePause
+namespace PauseAnytime
 {
     /// Where a game's fullscreen movies keep their sound (game/LE<n>.hpp's Game::Movies). Bink: in the .bik, which BinkPause
     /// stops (LE1). BinkAndEvent: mostly in a Wwise event that a Kismet BioSeqAct_MovieBink posts beside the picture, which

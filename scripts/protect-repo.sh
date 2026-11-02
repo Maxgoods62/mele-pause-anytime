@@ -8,7 +8,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO="${1:-Maxgoods62/mele-pause}"
+REPO="${1:-Maxgoods62/pause-anytime}"
 
 # On a private repo GitHub takes the first setting and refuses the rest, and a test release then can't give its tag back.
 if [[ "$(gh api "repos/$REPO" --jq .private)" != false ]]; then
