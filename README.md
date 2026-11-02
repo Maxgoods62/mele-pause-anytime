@@ -9,8 +9,8 @@ conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the
 do what they always did.
 
 Version 18 (`ASI_VERSION` in [`src/SharedVersion.h`](src/SharedVersion.h)). Download it from
-[Releases](https://github.com/Maxgoods62/pause-anytime/releases), or build it from source, and copy it into the game
-([Install](#install)).
+[Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases), or build it from source, and copy it into the
+game ([Install](#install)).
 
 ## Games
 
@@ -136,10 +136,10 @@ Pause Anytime needs no other mod, MeleBridge included.
 
 ## Install
 
-Download your game's zip from [Releases](https://github.com/Maxgoods62/pause-anytime/releases). You can
+Download your game's zip from [Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases). You can
 [check the download](docs/releasing.md#check-a-download) against the published hash. Close the game, then copy
 `LE<n>PauseAnytime.asi` from the zip into `<LE folder>\Game\ME<n>\Binaries\Win64\ASI\`, LE1's into ME1's, LE2's into ME2's
-and LE3's into ME3's. The newest code on `main` is at <https://maxgoods62.github.io/pause-anytime/latest/>, less tested than
+and LE3's into ME3's. The newest code on `main` is at <https://maxgoods62.github.io/mele-pause-anytime/latest/>, less tested than
 a release.
 
 Or build it yourself ([BUILDING.md](BUILDING.md)). Close the game, then install it one of two ways:
@@ -202,8 +202,9 @@ the old versions' `Logs\MelePause.log`; delete them too if you like.
 - A window resized while a movie is paused keeps the old frame until the movie resumes.
 - The fallback banner is not drawn during a movie pause: the HUD does not draw over a fullscreen movie.
 
-To report a problem, open an [issue](https://github.com/Maxgoods62/pause-anytime/issues) with `Logs\PauseAnytime.log`
-attached. Pause Anytime rewrites it each time the game starts, so copy it before you start the game again.
+To report a problem, open an [issue](https://github.com/Maxgoods62/mele-pause-anytime/issues) with
+`Logs\PauseAnytime.log` attached. Pause Anytime rewrites it each time the game starts, so copy it before you start the
+game again.
 
 ## How it works
 

@@ -14,7 +14,7 @@ fix, all below.
 
 - The files are now `LE1PauseAnytime.asi`, `LE2PauseAnytime.asi` and `LE3PauseAnytime.asi`, the log is
   `Logs\PauseAnytime.log`, its ready line reads `LE<n>PauseAnytime 18 ready`, and the repository is
-  `Maxgoods62/pause-anytime`. Delete the old `LE<n>MelePause.asi` from the ASI folder, and in LE1 an old
+  `Maxgoods62/mele-pause-anytime`. Delete the old `LE<n>MelePause.asi` from the ASI folder, and in LE1 an old
   `MelePause.asi`; `./build.sh --install` and `--uninstall` do. While one is loaded, the new file stays off and writes
   no log: the loader names each hook after the ASI's name, so both copies would hook the same functions and each would
   toggle the pause on one key press. It says so to a debugger (DebugView), and the loader logs the attach error in

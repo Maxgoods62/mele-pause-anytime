@@ -7,8 +7,8 @@ with the same `package.sh` and `build.sh` you run at home.
 
 | Push | Build | Published at |
 |---|---|---|
-| `main` | `LE<n>PauseAnytime-latest.zip`, `SHA256SUMS` | <https://maxgoods62.github.io/pause-anytime/latest/>, replaced by each push |
-| tag `v<N>` | `LE<n>PauseAnytime-v<N>.zip`, `SHA256SUMS` | [Releases](https://github.com/Maxgoods62/pause-anytime/releases), never replaced |
+| `main` | `LE<n>PauseAnytime-latest.zip`, `SHA256SUMS` | <https://maxgoods62.github.io/mele-pause-anytime/latest/>, replaced by each push |
+| tag `v<N>` | `LE<n>PauseAnytime-v<N>.zip`, `SHA256SUMS` | [Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases), never replaced |
 
 Each run's summary shows the hashes. The run also keeps the `.pdb` files for 90 days, as the `pdb` artifact: only these
 match that build's ASI.
@@ -51,8 +51,8 @@ With the [GitHub CLI](https://cli.github.com), signed in to a free GitHub accoun
 that release's, then that this repo's workflow built it from that tag:
 
 ```bash
-gh release verify-asset v<N> LE1PauseAnytime-v<N>.zip -R Maxgoods62/pause-anytime
-gh attestation verify LE1PauseAnytime-v<N>.zip -R Maxgoods62/pause-anytime --source-ref refs/tags/v<N>
+gh release verify-asset v<N> LE1PauseAnytime-v<N>.zip -R Maxgoods62/mele-pause-anytime
+gh attestation verify LE1PauseAnytime-v<N>.zip -R Maxgoods62/mele-pause-anytime --source-ref refs/tags/v<N>
 ```
 
 On a latest zip, `gh attestation verify` works without `--source-ref`.

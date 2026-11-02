@@ -145,9 +145,9 @@ Logs\\PauseAnytime.log too.
 
 Problems
 
-Open an issue at https://github.com/Maxgoods62/pause-anytime/issues with Logs\\PauseAnytime.log
+Open an issue at https://github.com/Maxgoods62/mele-pause-anytime/issues with Logs\\PauseAnytime.log
 attached. Pause Anytime rewrites the log each time the game starts, so copy it before you start the
-game again. The source code and the known issues: https://github.com/Maxgoods62/pause-anytime
+game again. The source code and the known issues: https://github.com/Maxgoods62/mele-pause-anytime
 
 License
 

@@ -21,8 +21,8 @@ the Windows build tools through interop.
 ## Build
 
 ```bash
-git clone https://github.com/Maxgoods62/pause-anytime.git
-cd pause-anytime
+git clone https://github.com/Maxgoods62/mele-pause-anytime.git
+cd mele-pause-anytime
 ./build.sh
 ```
 
