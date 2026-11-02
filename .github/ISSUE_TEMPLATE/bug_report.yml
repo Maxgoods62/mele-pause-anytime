@@ -35,9 +35,7 @@ body:
     id: version
     attributes:
       label: Pause Anytime version
-      description: >-
-        The number in the log line that ends in "LE<n>PauseAnytime N ready" ("LE<n>MelePause N ready" for versions
-        7 to 17, "MelePause N ready" for version 6 and older).
+      description: The number in the log line that ends in "LE<n>PauseAnytime N ready".
     validations:
       required: true
   - type: textarea
@@ -54,6 +52,5 @@ body:
     attributes:
       label: Log file
       description: >-
-        Attach `Logs\PauseAnytime.log` (`Logs\MelePause.log` for version 17 and older) from
-        `<LE folder>\Game\ME<n>\Binaries\Win64` (drag it here).
+        Attach `Logs\PauseAnytime.log` from `<LE folder>\Game\ME<n>\Binaries\Win64` (drag it here).
         Pause Anytime rewrites it each time the game starts, so copy it before you start the game again.

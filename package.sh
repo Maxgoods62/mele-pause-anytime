@@ -108,15 +108,10 @@ and_list() {
 
 add() { [[ -f "$1" ]] || die "missing $1"; cp "$1" "$PKG/$2"; }
 mkdir -p "$PKG/LICENSE"
-legacy=()
 for g in "${GAMES[@]}"; do
     game_info "$g"
     mkdir -p "$PKG/$g"
     add "$STAGE/$GAME_ASI" "$g/$GAME_ASI"
-    if (( ${#GAME_LEGACY[@]} > 0 )); then
-        old="${GAME_LEGACY[*]}"
-        legacy+=("- $GAME_ME: ${old// / or }")
-    fi
 done
 add "$HERE/LICENSE"                         LICENSE/LICENSE
 add "$HERE/THIRD_PARTY.md"                  LICENSE/THIRD_PARTY.md
@@ -132,18 +127,29 @@ add "$THIRD_PARTY/imgui/LICENSE.txt"        LICENSE/LICENSE-imgui.txt
         printf 'This zip holds the file for %s only, in the folder named after the game.\n' "${GAMES[0]}"
     fi
     printf 'The LICENSE folder holds the license texts.\n'
+    cat <<'EOF'
+
+Pause Anytime lets you pause Mass Effect Legendary Edition where the game does not: during
+conversations, in-engine cutscenes and some fullscreen movies. Press Esc, or Start on a
+gamepad, to pause. Press Esc, Start, Space or A to resume at the same word. While the game is
+paused, the picture is blurred and darkened under a pause screen. In a paused conversation or
+cutscene, press Y on a gamepad or F7 to open the game's photo mode on the paused shot.
+Loading-screen movies do not pause. Everywhere else the keys work as in the game without mods.
+
+EOF
     for g in "${GAMES[@]}"; do
-        printf '\n'
         game_readme "$g"
     done
-    cat <<EOF
+    cat <<'EOF'
+
+Every key in each game: https://github.com/Maxgoods62/mele-pause-anytime/blob/main/docs/using.md
 
 Requirements
 
-- Mass Effect Legendary Edition. Each file runs in its own game only: LE<n>PauseAnytime.asi in
-  ME<n>.
+- Mass Effect Legendary Edition. Each file works only in its own game (see Install below).
 - An ASI loader: LEBinkProxy (https://github.com/ME3Tweaks/LEBinkProxy). ME3Tweaks Mod Manager
-  installs it with any mod.
+  installs it with any mod. The loader is there when <LE folder>\Game\ME<n>\Binaries\Win64
+  holds bink2w64_original.dll and an ASI folder.
 - The latest Microsoft Visual C++ x64 Redistributable:
   https://aka.ms/vc14/vc_redist.x64.exe
 
@@ -156,17 +162,11 @@ EOF
         game_info "$g"
         printf '  %s\\%s  into  <LE folder>\\Game\\%s\\Binaries\\Win64\\ASI\n' "$g" "$GAME_ASI" "$GAME_ME"
     done
-    cat <<EOF
-
-<LE folder> is the Legendary Edition folder, the one that holds Game. Copy the .asi file, not its
-folder. To update, copy the new file over the old one.
-EOF
-    if (( ${#legacy[@]} > 0 )); then
-        printf '\nOlder versions had other names. Delete these from the game'"'"'s ASI folder:\n'
-        printf '%s\n' "${legacy[@]}"
-        printf 'While an old copy is there, it runs, and the new file stays off and writes no log.\n'
-    fi
     cat <<'EOF'
+
+<LE folder> is the folder where Mass Effect Legendary Edition is installed. It contains a
+folder named Game. Copy the .asi file itself, not the folder it is in. To update, copy the new
+file over the old one.
 
 To check that it loaded, start the game and open
 <LE folder>\Game\ME<n>\Binaries\Win64\Logs\PauseAnytime.log, where <n> is the game's number.
@@ -181,15 +181,19 @@ Logs\\PauseAnytime.log too.
 
 Problems
 
-Open an issue at https://github.com/Maxgoods62/mele-pause-anytime/issues with Logs\\PauseAnytime.log
-attached. Pause Anytime rewrites the log each time the game starts, so copy it before you start the
-game again. The source code and the known issues: https://github.com/Maxgoods62/mele-pause-anytime
+Common problems and known issues:
+https://github.com/Maxgoods62/mele-pause-anytime/blob/main/docs/troubleshooting.md
+The full guide to install, update and uninstall:
+https://github.com/Maxgoods62/mele-pause-anytime/blob/main/docs/install.md
+
+To report a bug, open an issue at https://github.com/Maxgoods62/mele-pause-anytime/issues and
+attach Logs\\PauseAnytime.log. Pause Anytime rewrites the log each time the game starts, so copy
+it before you start the game again.
 
 License
 
-Pause Anytime is GPL-3.0 (LICENSE\\LICENSE). The Exo 2 font is under the SIL Open Font License 1.1
-(LICENSE\\OFL.txt), spdlog and Dear ImGui under the MIT license (LICENSE\\LICENSE-spdlog.txt,
-LICENSE\\LICENSE-imgui.txt). LICENSE\\THIRD_PARTY.md lists all the third-party code and fonts.
+Pause Anytime is GPL-3.0 (LICENSE\\LICENSE). Third-party code and fonts: LICENSE\\THIRD_PARTY.md.
+Source code: https://github.com/Maxgoods62/mele-pause-anytime
 EOF
 } > "$PKG/README.txt"
 

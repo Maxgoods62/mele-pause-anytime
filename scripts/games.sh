@@ -5,10 +5,8 @@
 # What a build or a package covers when neither --game nor MELE_GAMES names a game.
 RELEASED_GAMES=(LE1 LE2 LE3)
 
-# game_info LE<n> sets GAME_ME (the game's folder under Game), GAME_EXE (its executable), GAME_ASI (our file in its
-# Binaries\Win64\ASI folder) and GAME_LEGACY (the names older versions had there, which build.sh deletes and beside
-# which the ASI stays off: LE<n>MelePause.asi from before the rename to Pause Anytime, and in LE1 MelePause.asi of v6
-# and older).
+# game_info LE<n> sets GAME_ME (the game's folder under Game), GAME_EXE (its executable) and GAME_ASI (our file in its
+# Binaries\Win64\ASI folder).
 game_info() {
     case "$1" in
         LE1|LE2|LE3) ;;
@@ -17,8 +15,6 @@ game_info() {
     GAME_ME="ME${1#LE}"
     GAME_EXE="MassEffect${1#LE}.exe"
     GAME_ASI="$1PauseAnytime.asi"
-    GAME_LEGACY=("$1MelePause.asi")
-    if [[ "$1" == LE1 ]]; then GAME_LEGACY+=("MelePause.asi"); fi
 }
 
 # pick_games [NAME...] sets GAMES to the games named (LE1, LE2, LE3, or all: the ones asi_target's GAMES line in
@@ -44,36 +40,26 @@ pick_games() {
     done
 }
 
-# game_readme LE<n> prints the paragraph of the zip's README.txt that says what that game's ASI does (package.sh). A game
-# gets its text when it is released.
+# game_readme LE<n> prints the lines of the zip's README.txt that say what differs in that game. package.sh prints them
+# under the paragraph that holds for every game. A game gets its lines when it is released.
 game_readme() {
     case "$1" in
         LE1) cat <<'EOF'
-LE1PauseAnytime.asi is an ASI plugin for Mass Effect 1 in the Legendary Edition (LE1). Esc, or
-Start on a gamepad, pauses a conversation, an in-engine cutscene or a fullscreen movie such as
-the galaxy map's travel movie, and Esc, Start, Space or A resumes it. While the game is paused,
-the picture is blurred and darkened under a pause screen. In a paused conversation or cutscene,
-a gamepad's Y or F7 opens the game's photo mode on the paused shot.
+- LE1: the movies that pause include the galaxy map travel movie. A movie that Esc skips in
+  the game without mods is still skipped.
 EOF
             ;;
         LE2) cat <<'EOF'
-LE2PauseAnytime.asi is an ASI plugin for Mass Effect 2 in the Legendary Edition (LE2). Esc, or
-Start on a gamepad, pauses a conversation, an in-engine cutscene, or a fullscreen movie whose
-sound it knows, such as the mass relay jump, and Esc, Start, Space or A resumes it. While the
-game is paused, the picture is blurred and darkened under a pause screen. In a paused
-conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot.
-In a skippable cutscene or movie, Esc pauses instead of skipping it: Space, or X on a gamepad,
-skips.
+- LE2: the movies that pause include the mass relay jump. In a skippable cutscene, and in a
+  movie that Pause Anytime can pause, Esc pauses instead of skipping. Space, or X on a
+  gamepad, skips a cutscene or a movie when the game lets you skip it. In other movies Esc
+  skips as usual.
 EOF
             ;;
         LE3) cat <<'EOF'
-LE3PauseAnytime.asi is an ASI plugin for Mass Effect 3 in the Legendary Edition (LE3). Esc, or
-Start on a gamepad, pauses a conversation, an in-engine cutscene, or a fullscreen movie a level
-starts whose sound it knows, such as the mass relay jump, and Esc, Start, Space or A resumes it.
-While the game is paused, the picture is blurred and darkened under a pause screen. In a paused
-conversation or cutscene, a gamepad's Y or F7 opens the game's photo mode on the paused shot.
-In a skippable cutscene, Esc pauses instead of skipping it: Space, or X on a gamepad, skips.
-Movies played inside a cutscene or a conversation keep their vanilla Esc and Start.
+- LE3: the movies that pause include the mass relay jump. In a skippable cutscene, Esc pauses
+  instead of skipping. Space, or X on a gamepad, still skips the cutscene. What Esc does in a
+  movie played inside a cutscene or a conversation is not tested yet.
 EOF
             ;;
         *) return 1 ;;

@@ -18,9 +18,8 @@
 #                 the Windows disk: CMake and MSBuild do not work well on \\wsl.localhost paths
 #                 (default: %LOCALAPPDATA%\mele-asi-build\PauseAnytime\LExASIs)
 #   MELE_STAGE    where LE<n>PauseAnytime.asi and its .pdb are copied (default: dist/ next to this script)
-# Inside the game install, this tool writes only LE<n>PauseAnytime.asi in Game\ME<n>\Binaries\Win64\ASI, and deletes the
-# files of older versions there: LE<n>MelePause.asi from before the rename to Pause Anytime, and MelePause.asi of v6 and
-# older from ME1's. It never writes the ASI loader.
+# Inside the game install, this tool writes and deletes only LE<n>PauseAnytime.asi in Game\ME<n>\Binaries\Win64\ASI. It
+# never writes the ASI loader.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -133,7 +132,6 @@ if [[ "$action" == uninstall ]]; then
         if [[ ! -d "$ASI_DIR" ]]; then echo "no ASI folder in Game\\$GAME_ME\\Binaries\\Win64: nothing to remove"; continue; fi
         [[ -f "$ASI_DIR/$GAME_ASI" ]] || echo "no $GAME_ASI in $ASI_DIR"
         remove "$ASI_DIR/$GAME_ASI"
-        for old in "${GAME_LEGACY[@]}"; do remove "$ASI_DIR/$old"; done
     done
     exit 0
 fi
@@ -226,10 +224,6 @@ else
 fi
 CML="$LEXASIS/CMakeLists.txt"
 if grep -qx 'add_subdirectory ("PauseAnytime")' "$CML"; then sed -i '/^add_subdirectory ("PauseAnytime")$/d' "$CML"; fi
-# A tree built before the rename to Pause Anytime still lists LExASIs/MelePause: that project goes, so the tree builds
-# only this one. Its folder stays, unused.
-sed -i -e '/^if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}\/MelePause")$/,/^endif ()$/d' \
-    -e '/^add_subdirectory ("MelePause")$/d' "$CML"
 grep -qF 'EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/PauseAnytime"' "$CML" \
     || printf '%s\n' 'if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/PauseAnytime")' '  add_subdirectory ("PauseAnytime")' 'endif ()' >> "$CML"
 
@@ -284,7 +278,5 @@ if [[ "$action" == install ]]; then
         ASI_DIR="$LE_DIR/Game/$GAME_ME/Binaries/Win64/ASI"
         cp "$STAGE/$GAME_ASI" "$ASI_DIR/$GAME_ASI"
         echo "installed $ASI_DIR/$GAME_ASI"
-        # Two copies would each toggle the pause on one key press (the new one stays off while an old one is loaded).
-        for old in "${GAME_LEGACY[@]}"; do remove "$ASI_DIR/$old"; done
     done
 fi

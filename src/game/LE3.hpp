@@ -31,10 +31,6 @@ namespace PauseAnytime::Game
     /// SFXGameModePhoto's Esc and Start bind, which opens the pause menu.
     inline constexpr wchar_t const* PhotoMenuFunction = L"ShowMenu";
 
-    /// The names older versions had in the ASI folder: Entry.cpp stays off while one is loaded. LE3MelePause.asi from
-    /// v11 until the rename to Pause Anytime.
-    inline constexpr wchar_t const* LegacyModules[] = { L"LE3MelePause.asi" };
-
     /// The controller's game modes (BioPlayerController.GameModeManager2, SFXGame_classes.hpp:7610).
     inline USFXGameModeManager* ModeManagerOf(ABioPlayerController* pc)
     {
