@@ -1,1 +1,5 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Troubleshooting
+    url: https://github.com/Maxgoods62/mele-pause-anytime/blob/main/docs/troubleshooting.md
+    about: Common problems, known issues and what to put in a bug report. Please read it first.
