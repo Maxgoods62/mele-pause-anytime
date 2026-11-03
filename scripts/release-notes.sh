@@ -31,7 +31,7 @@ this release's, then that this repo's workflow built it from this tag:
 
 \`\`\`
 gh release verify-asset $TAG PauseAnytime-$TAG.zip -R Maxgoods62/mele-pause-anytime
-gh attestation verify PauseAnytime-$TAG.zip -R Maxgoods62/mele-pause-anytime --source-ref refs/tags/$TAG
+gh attestation verify PauseAnytime-$TAG.zip -R Maxgoods62/mele-pause-anytime --source-ref refs/tags/$TAG --signer-workflow Maxgoods62/mele-pause-anytime/.github/workflows/build.yml
 \`\`\`
 
 Or compare the hash in PowerShell with the table below. The table is a copy of this release's \`SHA256SUMS\`, which can't

@@ -113,6 +113,20 @@ namespace PauseAnytime
         return tick != 0 && (tick >= now || now - tick < ReleaseGraceMs);
     }
 
+    // ! Engine.cpp: faults
+    // ========================================
+
+    namespace Fault
+    {
+        /// The __except filter of our guards: takes an access violation, noting where it was raised for Log, and lets any
+        /// other exception go on up. Use as __except (Fault::Filter(GetExceptionInformation())). Any thread.
+        int Filter(EXCEPTION_POINTERS const* info);
+
+        /// From the __except block of a fault Filter took on this thread: one line, "<what>: access violation reading 0x...,
+        /// raised at <module>+0x<offset>", naming whose code it was (Pause Anytime's, the game's or another module's).
+        void Log(char const* what);
+    }
+
     // ! Overlay.cpp
     // ========================================
 
@@ -170,8 +184,11 @@ namespace PauseAnytime
         /// Movies opened (or first seen) since Install and not closed yet.
         int OpenMovies();
 
-        /// Of those, the ones opened from a file: the only ones the movie pause takes (loading screens play from memory).
-        int FileMovies();
+        /// Of those, the ones Esc could pause once the HUD goes silent: opened from a file (LE1's and LE2's loading screens
+        /// play from memory) and, under BinkAndEvent, with a known sound (LE3's loading screens have none); and any our
+        /// pause holds. Overlay.cpp keeps a frame only for these. 0
+        /// without BinkPause and the hooks.
+        int PausableMovies();
 
         /// Bumped at each BinkOpen: Pause.cpp logs once per movie whether the game thread still runs input and the HUD.
         unsigned MovieSerial();
@@ -249,6 +266,9 @@ namespace PauseAnytime
 
         /// Any thread: a copy of the latch.
         Latched Current();
+
+        /// Any thread: bumped at each change of the latch, so a movie's thread can tell that a movie's sound may have changed.
+        unsigned Changes();
 
         /// Any thread, for the logs: GetIDFromString of the name (Wwise's ids are the FNV-1 hash of the lowercased name),
         /// 0 without the export.

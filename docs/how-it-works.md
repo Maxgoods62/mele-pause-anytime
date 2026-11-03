@@ -304,7 +304,8 @@ code that plays the movie) calls `BinkWait` some 250 times a second while a movi
 
 A movie takes the pause keys when all three of these are true:
 
-- it was opened from a file (loading screens play from memory);
+- it was opened from a file (LE1's and LE2's loading screens play from memory; LE3 opens its own from a file, and their
+  sound is not known, so they stay the game's);
 - it called `BinkWait` in the last half second;
 - `BioHUD.PostRender` has not run for 0.25 s.
 
@@ -497,9 +498,12 @@ ends.
 
 ### A paused movie's frame
 
-A paused Bink movie presents nothing: its thread only polls `BinkWait`. So while a movie from a file is open and the
-HUD is silent, each frame is copied before anything is drawn on it. Copying starts once the HUD has been silent for
-0.125 s, half the 0.25 s that the movie pause waits for. So a frame is already kept when the pause can start.
+A paused Bink movie presents nothing: its thread only polls `BinkWait`. So while a movie that Esc could pause is open
+and the HUD is silent, each frame is copied before anything is drawn on it. Such a movie was opened from a file, and in
+LE2 and LE3 its sound is known. Copying starts once the HUD has been silent for 0.125 s, half the 0.25 s that the movie
+pause waits for. So a frame is already kept when the pause can start. A movie that stays the game's, such as LE3's
+loading screens, costs no copy. When the game thread latches or clears a Kismet movie action, the next `BinkWait` counts
+the movies again.
 
 While the movie pause holds and the game has presented nothing for 0.1 s, the movie's `BinkWait` hook puts that frame
 back. It presents the frame with the pause screen over it, 60 times a second at most. It does this only on the thread
@@ -653,7 +657,9 @@ Myriad, LE1's third font, is not used there. LE2 and LE3 use it for the keys. Ea
 Exo 2 is compiled into `LE<n>PauseAnytime.asi` as resources (`src/PauseAnytime.rc`). It holds Latin, Latin Extended-A
 and Cyrillic only, about 68 KB a weight. If Exo 2 does not load, ImGui's default font stands in.
 
-The shaders compile at the game's first frame, once, in some 20 ms. They use Windows' own `d3dcompiler_47.dll`. Dear
+The shaders, the blur's and Dear ImGui's, compile at the game's first frame, in some 20 ms. They compile once more if a
+display mode change gives the game a new device, at that change, not at the next pause. They use Windows' own
+`d3dcompiler_47.dll`. Dear
 ImGui's import of it is delay-loaded (`src/CMakeLists.txt`) and bound to the copy in System32 first. So a copy placed
 next to the game is never used, and a Windows without one gets the banner.
 
@@ -676,7 +682,9 @@ between pauses.
 
 ## Crash guards
 
-Each of these runs under its own access-violation guard, and each fault is logged.
+Each of these runs under its own access-violation guard, and each fault is logged. The line names the module and offset
+where the fault was raised, and whether that is Pause Anytime's code, the game's or another module's (a driver, an
+overlay). A fault in the game's code can still come from a bad pointer that Pause Anytime handed it.
 
 | Where the fault happens | What Pause Anytime does |
 |---|---|

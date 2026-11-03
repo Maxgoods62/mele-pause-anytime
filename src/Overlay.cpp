@@ -597,8 +597,9 @@ namespace PauseAnytime::Overlay
                 TakeGameIcons();
                 return true;
             }
-            __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+            __except (Fault::Filter(GetExceptionInformation()))
             {
+                Fault::Log("overlay, the game's gamepad icons");
                 return false;
             }
         }
@@ -918,8 +919,9 @@ namespace PauseAnytime::Overlay
                 LEASI_ERROR("overlay: no d3dcompiler_47.dll in System32 (error {})", GetLastError());
                 return false;
             }
-            if (!ImGui_ImplDX11_Init(R.Device, R.Context)) return false;
-            // The shaders compile here, at the game's first frame, not at the first pause.
+            // The shaders compile here, at the game's first frame, not in the first paused one: ImGui's NewFrame would build its
+            // own there.
+            if (!ImGui_ImplDX11_Init(R.Device, R.Context) || !ImGui_ImplDX11_CreateDeviceObjects()) return false;
             auto const blur = Blur::Init(R.Device);
 
             R.GameChain = chain;
@@ -951,13 +953,15 @@ namespace PauseAnytime::Overlay
                 R.Device->Release();
                 R.Device = device;
                 R.Device->GetImmediateContext(&R.Context);
-                if (!ImGui_ImplDX11_Init(R.Device, R.Context))
+                if (!ImGui_ImplDX11_Init(R.Device, R.Context) || !ImGui_ImplDX11_CreateDeviceObjects())
                 {
                     LEASI_ERROR("overlay: ImGui did not start on the new swap chain's device: overlay off");
                     R.Failed = true;
                     Live.store(false, std::memory_order_release);
                     return;
                 }
+                // The blur's shaders too, now, not in the next paused frame; it lets go of the old device. It logs a failure.
+                Blur::Init(R.Device);
             }
             else device->Release();
             R.GameChain = chain;
@@ -1014,13 +1018,14 @@ namespace PauseAnytime::Overlay
             auto const hudFresh = hud != 0 && (now > hud ? now - hud : 0) <= HudSilentMs;
             auto const world = (flags & ShowWorldPause) != 0 && hudFresh;
             auto const movie = !world && Bink::PauseWanted() && !hudFresh;
-            // A movie from a file with the HUD silent may be a fullscreen one: its frame is kept for MovieIdle, before we draw
-            // on it. From half the silence Bink.cpp waits for before it takes a pause, so a frame is kept when one comes.
+            // A movie Esc could pause, with the HUD silent, may be a fullscreen one: its frame is kept for MovieIdle, before we
+            // draw on it. From half the silence Bink.cpp waits for before it takes a pause, so a frame is kept when one comes.
+            // A movie that stays the game's (a loading screen, no known sound) costs no copy.
             if (!SelfPresent)
             {
                 R.LastGamePresent = time;
                 auto const quiet = hud == 0 || (now > hud ? now - hud : 0) > HudSilentMs / 2;
-                if (Bink::FileMovies() > 0 && quiet)
+                if (Bink::PausableMovies() > 0 && quiet)
                 {
                     KeepClean(chain);
                     // The game presents again: no movie paused by us.
@@ -1131,10 +1136,11 @@ namespace PauseAnytime::Overlay
             {
                 FrameEntry(chain);
             }
-            __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+            __except (Fault::Filter(GetExceptionInformation()))
             {
                 R.Failed = true;
                 Live.store(false, std::memory_order_release);
+                Fault::Log("overlay: off, the Canvas banner instead");
             }
         }
 
@@ -1209,10 +1215,11 @@ namespace PauseAnytime::Overlay
             {
                 return PrepareIdle();
             }
-            __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+            __except (Fault::Filter(GetExceptionInformation()))
             {
                 R.Failed = true;
                 Live.store(false, std::memory_order_release);
+                Fault::Log("overlay, a paused movie's frame: off, the Canvas banner instead");
                 return false;
             }
         }

@@ -39,6 +39,7 @@ namespace PauseAnytime::MovieSound
         /// The latch: written on the game thread, read on the movies' threads. Nothing else is done under this lock.
         std::mutex LatchLock;
         Latched Slot;
+        std::atomic<unsigned> ChangeCount{ 0 };
     }
 
     void Install()
@@ -65,6 +66,7 @@ namespace PauseAnytime::MovieSound
         Slot.Movie = std::move(movie);
         Slot.Id = id;
         Slot.Beside = beside;
+        ChangeCount.fetch_add(1, std::memory_order_release);
     }
 
     bool Unlatch(std::string const& movie)
@@ -72,6 +74,7 @@ namespace PauseAnytime::MovieSound
         std::scoped_lock lock{ LatchLock };
         if (Slot.Movie.empty() || Slot.Movie != movie) return false;
         Slot = {};
+        ChangeCount.fetch_add(1, std::memory_order_release);
         return true;
     }
 
@@ -80,6 +83,8 @@ namespace PauseAnytime::MovieSound
         std::scoped_lock lock{ LatchLock };
         return Slot;
     }
+
+    unsigned Changes() { return ChangeCount.load(std::memory_order_acquire); }
 
     unsigned Hash(char const* name)
     {

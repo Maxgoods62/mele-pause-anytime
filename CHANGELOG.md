@@ -36,6 +36,10 @@ Steam overlay, and LE2 and LE3 get one for Space in a paused movie.
   that moment. In LE3, the new menu sound handles the Steam overlay in the same way.
 - In LE2 and LE3, pressing Space to resume a paused movie no longer skips the movie as well. The skip was seen in LE2,
   on the Citadel arrival.
+- In LE2 and LE3, the movies Esc leaves to the game, LE3's loading screens among them, no longer cost a copy of every
+  frame.
+- The pause screen's shaders compile when the game starts, not at the first pause.
+- A fault in the pause screen is now logged, with the module it came from.
 
 ### For builders
 
@@ -45,6 +49,10 @@ Steam overlay, and LE2 and LE3 get one for Space in a paused movie.
 - GitHub now builds the zip: from `main` for the latest page, and from a `v<N>` tag for a release. Each comes with its
   SHA-256 hashes ([docs/releasing.md](docs/releasing.md)).
 - `build.sh` also runs in Git Bash, and `package.sh` takes `--label`.
+- The `.asi` holds no path of the build machine: source paths start at `\LExASIs\`, and the `.pdb` is named without
+  its folder.
+- The attestation checks in [docs/releasing.md](docs/releasing.md) and the release notes add `--signer-workflow`, and a
+  latest zip is checked with `--source-ref refs/heads/main`.
 
 ## v17 (unreleased)
 

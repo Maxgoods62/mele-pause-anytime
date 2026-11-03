@@ -129,8 +129,10 @@ namespace PauseAnytime::Bink
         std::mutex Lock;
         std::vector<Movie> Movies;
         std::atomic<int> OpenCount{ 0 };
-        /// Of those, opened from a file: the only ones the movie pause takes.
-        std::atomic<int> FileCount{ 0 };
+        /// Of those, the ones MayPause takes: Overlay.cpp keeps a frame for them.
+        std::atomic<int> PausableCount{ 0 };
+        /// MovieSound::Changes() when Recount last ran: under Lock.
+        unsigned SoundsSeen = 0;
         std::atomic<unsigned> Serial{ 0 };
         std::atomic<bool> Wanted{ false };
         /// BinkPause, BinkWait's hook and BinkClose's are there.
@@ -331,11 +333,15 @@ namespace PauseAnytime::Bink
             return it != Movies.end() ? &*it : nullptr;
         }
 
+        bool MayPause(Movie const& m);
+
         /// Under Lock.
         void Recount()
         {
+            // Read first: a latch changed while this counts is counted again at the next poll.
+            SoundsSeen = MovieSound::Changes();
             OpenCount.store(static_cast<int>(Movies.size()), std::memory_order_relaxed);
-            FileCount.store(static_cast<int>(std::count_if(Movies.begin(), Movies.end(), [](Movie const& m) { return m.FromFile; })), std::memory_order_relaxed);
+            PausableCount.store(static_cast<int>(std::count_if(Movies.begin(), Movies.end(), MayPause)), std::memory_order_relaxed);
             Wanted.store(std::any_of(Movies.begin(), Movies.end(), [](Movie const& m) { return m.Want; }), std::memory_order_release);
         }
 
@@ -400,6 +406,13 @@ namespace PauseAnytime::Bink
         {
             if (auto const why = NotFullscreen(m, now, hud); why != nullptr) return why;
             return Policy == MoviePolicy::BinkAndEvent && SoundOf(m).Unknown != nullptr ? "no known sound" : nullptr;
+        }
+
+        /// Under Lock. Esc could pause the movie once the HUD goes silent (NotPausable without its timing tests), or our pause
+        /// holds it. A movie with no known sound under BinkAndEvent stays the game's, and its frames are not kept.
+        bool MayPause(Movie const& m)
+        {
+            return m.Want || m.Paused || (m.FromFile && SoundOf(m).Unknown == nullptr);
         }
 
         /// Under Lock, under BinkAndEvent: the movie's sound and the latch, for its fullscreen line.
@@ -592,6 +605,9 @@ namespace PauseAnytime::Bink
             std::scoped_lock lock{ Lock };
             auto const now = GetTickCount64();
             auto const hud = HudSeen();
+            // The game thread latched or cleared a Kismet movie since the count: a movie's sound, and so whether its frames are
+            // kept, may have changed.
+            if (MovieSound::Changes() != SoundsSeen) Recount();
 
             // Each movie says once that it is a fullscreen one (under BinkAndEvent, with what we know of its sound then: "no
             // known sound" leaves it to the game); its close line says why it never was.
@@ -681,6 +697,8 @@ namespace PauseAnytime::Bink
                 pause = m->Want;
                 m->Paused = pause;
                 m->ChangedAt = now;
+                // Paused is one of MayPause's inputs: a movie resumed here may no longer be one whose frames are kept.
+                Recount();
                 serial = m->Serial;
                 name = m->Name;
                 requestedAt = m->RequestedAt;
@@ -893,7 +911,7 @@ namespace PauseAnytime::Bink
 
     int OpenMovies() { return OpenCount.load(std::memory_order_relaxed); }
 
-    int FileMovies() { return FileCount.load(std::memory_order_relaxed); }
+    int PausableMovies() { return CanPause.load(std::memory_order_acquire) ? PausableCount.load(std::memory_order_relaxed) : 0; }
 
     unsigned MovieSerial() { return Serial.load(std::memory_order_relaxed); }
 
