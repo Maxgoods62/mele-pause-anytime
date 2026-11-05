@@ -73,6 +73,11 @@ done
 [[ ! "$LABEL" =~ ^v[0-9]+$ || "${GAMES[*]}" == "${RELEASED_GAMES[*]}" ]] \
     || die "label $LABEL packs ${GAMES[*]}: a release zip needs every released game (${RELEASED_GAMES[*]})"
 
+# Git Bash has cygpath in place of wslpath, as in build.sh.
+if ! command -v wslpath > /dev/null; then
+    wslpath() { cygpath "$@"; }
+fi
+
 # The LExASIs checkout (build.sh's default under %LOCALAPPDATA% when it is not set), exported so build.sh builds in that
 # same tree: the spdlog and Dear ImGui license texts come from there.
 if [[ -z "${MELE_LEXASIS:-}" ]]; then
