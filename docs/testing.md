@@ -40,8 +40,7 @@ game's name (LE1, LE2, LE3) holds that game's scenes and what differs there.
   - The picture blurs and darkens. The title stands at the centre, on a band in the game's menu colours.
   - The keys stand left of their labels at the bottom left. The labels are in the game's language: "Resume" and
     "Photo Mode" in English. In French they are "Mode photo", with "Continuer" in LE1 and "Reprendre" in LE2 and LE3.
-  - In LE1 the title is the game's word too: "PAUSED" in English, "PAUSE" in French. In LE2 and LE3 the title is
-    Pause Anytime's own.
+  - The title is Pause Anytime's own word in every game: "PAUSE" in English and French.
   - Wait a few seconds, then press Esc. The line resumes at the same word, in sync. The picture is sharp again, and the
     menu sound plays again.
   - Do the same with Start on a gamepad. The pause screen shows the A icon, and the Y icon where photo mode opens. They

@@ -91,9 +91,10 @@ namespace PauseAnytime::Game
     using StringGame = ABioSPGame;
     using GetSimpleStringParms = ABioSPGame_execGetSimpleString_Parms;
 
-    /// The pause screen's words in the game's string table, in every language it ships: the title (170645, "PAUSED"; the
-    /// game's own unused paused box shows it), resume (157151, "Resume") and photo mode (184397, "Photo Mode").
-    inline constexpr PauseTextIds PauseTexts{ 170645, 157151, 184397 };
+    /// The pause screen's words in the game's string table, in every language it ships: resume (157151, "Resume") and photo
+    /// mode (184397, "Photo Mode"). The title stays ours, "PAUSE" as in LE2 and LE3: the game's paused box (170645) says
+    /// "PAUSED" (user, 2026-11-06).
+    inline constexpr PauseTextIds PauseTexts{ 0, 157151, 184397 };
 
     /// The gamepad's A and Y, which the game's wheel and message boxes show: in Startup_<lang>.pcc, the same in every
     /// language, loaded with the game and kept for good (RootSet).

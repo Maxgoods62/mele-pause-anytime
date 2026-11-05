@@ -105,11 +105,11 @@ depend on where you last pressed one of Pause Anytime's keys, on a gamepad or on
 
 The words follow the game's language:
 
-- LE1 uses the game's own words, in its text language: "PAUSED", "Resume" and "Photo Mode" in English, and "PAUSE",
-  "Continuer" and "Mode photo" in French.
-- LE2 and LE3 use the game's own words for the labels. The title is Pause Anytime's own word, in the language that the
-  launcher sets: English, French, German, Italian, Spanish, Polish or Russian. It is English in the Japanese game, and
-  when the game starts without the launcher's language setting.
+- The labels are the game's own words, in its text language: "Resume" and "Photo Mode" in English. In French they are
+  "Mode photo", with "Continuer" in LE1 and "Reprendre" in LE2 and LE3.
+- The title is Pause Anytime's own word, "PAUSE" in English, in the language that the launcher sets: English, French,
+  German, Italian, Spanish, Polish or Russian. It is English in the Japanese game, and when the game starts without the
+  launcher's language setting.
 - In every game, the Space keycap is named in the launcher's language, and in English in the Japanese game.
 
 The text uses the game's own fonts, which Pause Anytime reads from the game's memory while the game runs. The mod's

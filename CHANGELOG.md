@@ -13,8 +13,8 @@ and some fullscreen movies. The same key resumes them. A pause screen in the sty
 paused conversation or cutscene, Y or F7 opens the game's photo mode on the paused shot.
 
 v17 was the last test build. Since then, LE3's pause screen has taken the look of the game's menus, as in LE1 and LE2.
-In LE1 the only other change is that the short dashes beside the title's band are gone. LE2 also gets a fix for the
-Steam overlay, and LE2 and LE3 get one for Space in a paused movie.
+In LE1 the only other changes are that the short dashes beside the title's band are gone and that the title reads
+"PAUSE". LE2 also gets a fix for the Steam overlay, and LE2 and LE3 get one for Space in a paused movie.
 
 - The new look of the pause screen in LE3:
   - The title is in the game's Biomass font, in white, on a band of the game's menu blue. A bright blue line runs along
@@ -31,6 +31,7 @@ Steam overlay, and LE2 and LE3 get one for Space in a paused movie.
     be read, the screen keeps Exo 2 and the log says so.
   - The game's menu sound plays when the pause starts, and again when a key ends it.
 - In all three games, the short dashes left and right of the title's band are gone.
+- In LE1 the title is Pause Anytime's own word, as in LE2 and LE3: "PAUSE" in English, no longer the game's "PAUSED".
 - In LE2, a pause that ends when the Steam overlay closes no longer loses the rest of the voice line. When the overlay
   opens, Pause Anytime now gives the game its audio back while the scene stays paused. The game's menu sound plays at
   that moment. In LE3, the new menu sound handles the Steam overlay in the same way.

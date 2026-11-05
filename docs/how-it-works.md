@@ -576,10 +576,10 @@ texture's 128 texels across, so the texture is drawn 128/95 larger than the disc
 
 The words come from the game's string table (`Game::PauseTexts`):
 
-- LE1: all three. The title is 170645 ("PAUSED", the word of the game's unused paused box), "Resume" is 157151, and
-  "Photo Mode" is 184397. In French they are "PAUSE", "Continuer" and "Mode photo".
-- LE2 and LE3: the two labels only. The title stays Pause Anytime's own, because their string tables have no such word
-  in every language.
+- The two labels only, in every game. LE1's are 157151 ("Resume") and 184397 ("Photo Mode"), "Continuer" and "Mode
+  photo" in French.
+- The title stays Pause Anytime's own, "PAUSE" in English. LE1's word, 170645 (its unused paused box), says "PAUSED".
+  LE2's and LE3's string tables have no such word in every language.
 
 On the first frame whose world has a game object (`BioSPGame` in LE1, `SFXGame` in LE2 and LE3), `Pause.cpp` calls the
 native `GetSimpleString` for those ids. It tries again on the next two frames while all of them come back empty, under

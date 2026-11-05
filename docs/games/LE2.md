@@ -121,7 +121,7 @@ were read from the game's files, and none of those files is shipped.
 | Blur | Toward warm | Toward blue |
 | Title | $BioMass 49.5 at 1080 lines, spacing 1.5 | $AeroLight 67.5, as `WindowPop` sets it |
 | Fonts | `GUI_SF_Fonts.AeroLightFont_glyphs` and `.BioMassFont_glyphs` | `GUI_SF_Fonts.Fonts`, both in one movie |
-| Words | Resume 157151, photo mode 392221; the title is Pause Anytime's own | Title 170645, resume 157151, photo mode 184397 |
+| Words | Resume 157151, photo mode 392221; the title is Pause Anytime's own | Resume 157151, photo mode 184397; the title is Pause Anytime's own |
 | Gamepad buttons | `GUI_SF_Xbox_ControllerIcons.Xbox_ControllerIcons_IA` and `_I1` | `GUI_SF_SharedAssets.XBox_ControllerIcons_I4` and `_I9` |
 | Sound | `BioSFManager.PlaySound` with `InGameGuiEnter` and `InGameGuiExit` | `PlayGuiSound` with the same names, through the GUI sound hooks |
 | `GetSimpleString` | `SFXGame`, which `BioSPGame` extends | `BioSPGame` |
