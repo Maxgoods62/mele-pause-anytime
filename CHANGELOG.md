@@ -4,7 +4,7 @@ Each version is `ASI_VERSION` in `src/SharedVersion.h`, one number for every gam
 v2 to v17 were test builds, and the dates on v2 to v5 are the days they were committed. The first line of each entry
 names the games it covers. Every version needs an ASI loader.
 
-## v18 (unreleased)
+## v18 (2026-11-07)
 
 Games: LE1, LE2, LE3
 
