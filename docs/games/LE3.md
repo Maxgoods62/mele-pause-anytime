@@ -1,244 +1,164 @@
 # Pause Anytime in LE3
 
-Status: in `RELEASED_GAMES` (`scripts/games.sh`), so built by default. Test results: [testing.md](../testing.md#le3).
+This page is for modders. It covers `LE3PauseAnytime.asi`, the build for Mass Effect 3 Legendary Edition. The game's
+names, ids and addresses are in [src/game/LE3.hpp](../../src/game/LE3.hpp); every other source file serves all three
+games. The shared design is in [how-it-works.md](../how-it-works.md), and test results are in
+[testing.md](../testing.md#le3).
 
-## What differs from LE1
+## Keys
 
-`./build.sh --game LE3` builds `LE3PauseAnytime.asi` from the same sources as LE1 and LE2, against LE3's SDK.
-Everything the LE1 build has is on. What differs:
+The world pause starts in game mode 7 (Conversation) or 8 (Cinematic), when nothing else holds the world paused
+(`WorldInfo.Pauser` is None).
 
-| Part | LE3 | LE1 |
-|---|---|---|
-| Movie pause | Only a Kismet movie whose sound Pause Anytime knows ([Movies](#movies)) | `MoviePolicy::Bink`: each movie's sound is in its `.bik` |
-| The engine's movie input | Hooked; Space and X reach it as they are ([Movie keys](#movie-keys)) | Not hooked |
-| Photo mode's GUI side (`PAUSEANYTIME_PHOTO_GFX`) | 1: GFx movies, `PhotoGuiGFx.cpp` ([Photo mode](#photo-mode)) | 0: ScaleForm panels, `PhotoGuiSF.cpp` |
-| Photo mode's GUI sounds (`PAUSEANYTIME_PHOTO_GUI_SOUNDS`) | 0: no hook | 1: hooked |
-| Pause screen | LE3's menu look ([Pause screen](#pause-screen)) | LE1's menu look |
-| File | `LE3PauseAnytime.asi`, Windows version `N.0.6.0`, in `Game\ME3\Binaries\Win64\ASI` | `LE1PauseAnytime.asi`, `N.0.4.0` |
+| Where | Esc or Start | Space or A | Y or F7 |
+|---|---|---|---|
+| Conversation or cutscene, not paused | Pauses the world | The game's | The game's |
+| Under the world pause | Resumes | Resumes | Opens photo mode |
+| Photo mode opened from the pause | Leaves it, still paused | The game's (Space takes the picture) | Leaves it, still paused |
+| Kismet movie with a known sound | Toggles the movie pause | Resumes a paused movie | The game's |
+| Matinee-track movie, loading screen | The game mode decides | The game's | The game's |
+| Gameplay, menus, galaxy map, open console | The game's | The game's | The game's |
 
-N is `ASI_VERSION` in `src/SharedVersion.h`.
+- `SFXGameModeCinematic` binds Escape and SpaceBar to `PC_CineSkip`, and XboxTypeS_X to `Console_CineSkip`. Pause
+  Anytime takes the Esc that would skip a cutscene. Space and X still skip it when nothing is paused.
+- The [skip guard](../how-it-works.md#skip-guard) drops the `GuiKey` events of the always-on binds: Escape sends
+  `BUTTON_B`, 16 (released 37), and Start sends `BUTTON_START`, 24 (released 45). Since `GuiKey` is matched by number,
+  a pad B press in the guard window is dropped too.
+- While Pause Anytime's photo session runs, photo mode's menu bind, `SFXGameModePhoto.ShowMenu`, is always dropped.
+- If the Steam overlay opens over the world pause, the next frame posts `InGameGuiExit` while the world is still held,
+  so the voice line survives
+  ([why](../how-it-works.md#the-audio-hold-and-the-steam-overlay)). Closing the overlay ends the pause.
 
 ## Movies
 
-Of the 334 movies in `BioGame\Movies` and the DLC, only `StartupLoop_a` (the startup movie) carries a Bink audio track.
-Every other movie's sound is a Wwise event, which `BinkPause` does not stop. One movie player (`GFullScreenMovie`) plays
-every fullscreen movie. Once a movie starts, the player starts the movie's Wwise event itself. Three kinds of caller
-ask it to play a movie:
+Of the 334 movies in `BioGame\Movies` and the DLC, only `StartupLoop_a`, the startup movie, has Bink audio. Every other
+movie's sound is a Wwise event, which `BinkPause` does not stop. One player, `GFullScreenMovie`, plays every fullscreen
+movie, for three kinds of caller:
 
-| Caller | Live in the game files | Esc and Start |
+| Caller | In the game files | Movie pause |
 |---|---|---|
-| Kismet `BioSeqAct_MovieBink` (and `SFXSeqAct_PlatformMovieBink`) | 188 actions, 71 movies; 122 actions name an event | Paused when the sound is known, as in LE2 (below) |
-| Matinee track `SFXInterpTrackMovieBink`, in an in-engine cutscene or a conversation | 442 tracks, 240 movies | Nothing latches them; what Esc does is not tested yet ([Open questions](#open-questions)) |
-| Loading screens (`SFXLoadMovieManager`) | 45 movies | The game's: opened by file handle or from memory, nothing latches them |
+| Kismet `BioSeqAct_MovieBink` | 188 live actions, 71 movies | When its sound is known |
+| Matinee track `SFXInterpTrackMovieBink` | 442 tracks, 240 movies | Never: nothing latches them |
+| Loading screens (`SFXLoadMovieManager`) | 45 movies | Never: no known sound |
 
-- The Matinee tracks play the end of the Prologue, the Mars arrival, the summit videos and most of the ending.
-- The loading screens play the Normandy and shuttle rides and the Citadel's transit.
+So Kismet plays only some LE3 movies. Most are Matinee tracks, inside cutscenes and conversations, or loading movies.
+Nothing latches those, so the movie pause leaves Esc and Start to the game there. The world pause may still take Esc
+([Esc and the world pause](#esc-and-the-world-pause)).
 
-A Kismet movie takes Esc and Start when Pause Anytime knows its sound (`MoviePolicy::BinkAndEvent`). That is the case
-when the action that plays the movie names a Wwise event and runs nothing else beside the movie that could make a
-sound (`MovieActionOf`, `src/game/KismetMovie.hpp`, shared with LE2). Pause Anytime pauses that event with
-`ExecuteActionOnEvent` right after `BinkPause`.
+A fullscreen Kismet movie takes the pause keys when its sound is known (`MoviePolicy::BinkAndEvent`). The action
+latched last must play this movie, name a Wwise event, and run nothing beside it that may make a sound (`MovieActionOf`
+in `src/game/KismetMovie.hpp`). The movie player posts that event as the movie starts, and Pause Anytime pauses it with
+`ExecuteActionOnEvent` right after `BinkPause`. The Bink-audio list is empty, because the game's own screens play over
+`StartupLoop_a`.
 
-- LE3 has no `BioSeqAct_StartConversation`. Its conversation op is `SFXSeqAct_StartAmbientConv`
-  (`ConversationActionClass`).
-- LE3's movie action can preload its file (input `Prime`, output `Primed`). Neither counts as starting the movie.
-- 114 of the 122 actions with an event pass. They play 38 movies. Among them are:
-  - the relay jump `GLO_01_Relay` (`Play_cineanim_massrelay`);
-  - the first Citadel arrival;
-  - `OmgIntro_001` to `010` on Omega;
-  - the Leviathan arrivals;
-  - the Hammer movies of End01;
-  - the memorial flashbacks of the ending.
-- The other 8 fail because a Matinee, music, a conversation, a sound loop or a nested sequence runs beside them:
-  - the Mars arrival;
-  - the two Normandy movies of the Citadel DLC;
-  - `Device_Reveal`;
-  - the Kro001 animatic;
-  - the intro of Hackett's speech;
-  - `Lev002_Asteroid_Depart`;
-  - `Lev004_WW_ArrivalCrash4`.
-- Only Genesis2Title has localized files (`MovieLanguages`).
+- `SFXSeqAct_PlatformMovieBink` counts as a `BioSeqAct_MovieBink`. Its `Prime` input and `Primed` output preload the
+  file and do not count as a start.
+- LE3 has no `BioSeqAct_StartConversation`, so the conversation op for the beside test is `SFXSeqAct_StartAmbientConv`.
+- Only `Genesis2Title` has localized files, from `DLC_CON_DH1` and `DLC_METR_Patch01`.
+
+Of the 188 live movie actions, 122 post a Wwise event, and 114 of those pass `MovieActionOf`. They include the relay
+jump, the first Citadel arrival, Omega's intros, the Leviathan arrivals and the memorial flashbacks of the ending. A
+Matinee, music, a conversation, a sound loop or a nested sequence runs beside the 8 others: the Mars arrival, the
+Citadel DLC's two Normandy movies, `Device_Reveal`, the Kro001 animatic, the intro of Hackett's speech,
+`Lev002_Asteroid_Depart` and `Lev004_WW_ArrivalCrash4`.
 
 ### Movie keys
 
-These come from a read-only dump of the running MassEffect3.exe. RVAs are the exe's.
+The engine's movie input is the Bink player's native `InputKey`, slot 5 of its `FViewportClient` vtable, at RVA
+`0x24afc0`. It sees a press before `Console.InputKey`.
 
-- `SFXGameModeMovie` binds Escape and SpaceBar to `PC_MovieSkip`, and the pad's X to `Console_MovieSkip`. Start, A, B
-  and Enter are unbound. Both binds run `SkipMovie`, a script. During a loading movie it does nothing. Otherwise, with
-  the cutscene mode (8) on and its skip allowed, it skips the cutscene. LE3 has no native `SkipMovie`.
-- The engine's movie input is at `0x24afc0`, slot 5 of the Bink movie player's `FViewportClient` vtable
-  (`0x10DED78`), with LE2's first 28 bytes.
-  - On a press of Escape, SpaceBar, XboxTypeS_Back, XboxTypeS_X or XboxTypeS_Start, it asks the player to stop the
-    movie and returns TRUE. X and Start count only when the movie's flags allow them.
-  - Enter, A and the left mouse button are not its keys.
-- For a movie with flag 0x400 or 0x80, the movie input ignores every key, and the key goes on to `SkipMovie`.
-  - The relay jump (played under the cutscene mode) and the Matinee tracks' movies have flag 0x400.
-  - The movies opened by file handle have flag 0x80: the movie input is off for them.
-- `[FullScreenMovie] SkippableMovies` (`BioEngine`) lists the movies that skip: `Device_Reveal`, `ProCit_100_Arrival`,
-  and the Cat002 and Cat003 arrivals. The player checks it when the movie starts and keeps the result in its field at
-  +0x84. `GLO_01_Relay` is not among them.
+- Its keys are Escape, SpaceBar, XboxTypeS_Back, XboxTypeS_X and XboxTypeS_Start (X and Start unless the movie's flags
+  turn them off). On a press it asks the player to stop the movie and reports the key as handled.
+- The movie stops only if `[FullScreenMovie] SkippableMovies` lists it: `Device_Reveal`, `ProCit_100_Arrival`, and the
+  Cat002 and Cat003 arrivals.
+- Flag 0x400 makes it ignore every key. Matinee tracks set it, and so does Kismet while a cutscene runs, as for the
+  relay jump. The keys then go on to `SFXGameModeMovie.SkipMovie`, a script that skips the cutscene and nothing else.
+- Flag 0x80, on movies opened by file handle, turns the movie input off.
 
-`src/MovieInput.cpp` hooks the movie input as in LE2 ([games/LE2.md](LE2.md#movie-keys)). These presses do not reach
-the movie input and go on to `Console.InputKey` instead:
+`src/MovieInput.cpp` hooks it after checking its first 28 bytes. The hook keeps these presses from it: Esc and Start
+on a movie that owns the pause keys, any press under the movie pause, and a Space press that the movie's thread just
+resumed on. They go on to `Console.InputKey`. Esc toggles the pause on the movie's thread, Start on the game thread, and
+Space or A resume. Space and X pass unchanged, so with nothing paused they work as in the game without mods.
 
-- Esc and Start while a movie owns the pause keys (`Bink::OwnsKeys`);
-- any key while Pause Anytime's movie pause is on;
-- a Space press that the movie's thread has just resumed on.
+### Esc and the world pause
 
-Space and X reach the movie input as they are (`MovieSkipKeyAs` is null), since they are its keys already. The movie
-lines in the log add the player's flags and skippable flag (`Game::MoviePlayer`).
+A movie with flag 0x400 or 0x80 lets Esc's press reach `Console.InputKey`. If no movie owns the pause keys and the mode
+is 7 or 8, that press pauses the world. The Bink picture plays on, and the pause screen shows only while the HUD draws.
+In a test, a movie opened from memory during the Citadel arrival conversation was refused, and Esc paused the world.
 
 ## Photo mode
 
-LE3's photo panel is a GFx movie (`SFXSFHandler_PhotoMode`, `SFXGame_classes.hpp:15611`).
-`SFXGUIInteraction.ShowPhotoMode(PC)` opens it (`EnableMode(Photo)` and `OpenMovie`), and `HidePhotoMode(PC)` closes
-it.
+Y or F7 under the world pause opens the game's photo mode on the paused shot, for the controller that paused.
 
-The conversation's panel is a movie too, `BioSFHandler_Conversation`, from `GetConversationHandler(PC)`. Its visibility
-and input state live in the native movie.
+- The photo panel is a GFx movie of `SFXGUIInteraction` (`PhotoGuiGFx.cpp`). `ShowPhotoMode(PC)` runs
+  `EnableMode(Photo)` and `OpenMovie(MovieTag_PhotoMode)`, and `HidePhotoMode(PC)` undoes both.
+- The conversation panel is the `BioSFHandler_Conversation` movie from `GetConversationHandler(PC)`. It is set aside
+  with `SetVisible(FALSE)` and `SetInputEnabled(FALSE)`, which clear `m_bDisplayingWheel` and
+  `m_bDisplayInvestigateSubMenu`. The exit writes those back.
+- That movie advances under photo mode and can show itself again, so it is hidden again on each frame.
+- The subtitle is left alone, photo mode's GUI sounds are not hooked, and the tether is widened on foot only.
+- `Activated` turns the modes' input back on after 0.5 s (`EnableInputWrapper`): photo mode's timers are not held.
 
-- `PhotoGuiGFx.cpp` saves both with `GetVisible` and `GetInputEnabled`, hides the movie with `SetVisible(FALSE)` and
-  `SetInputEnabled(FALSE)`, and restores both at the exit.
-- The handler's `SetVisible(FALSE)` clears `m_bDisplayingWheel` and `m_bDisplayInvestigateSubMenu`, so they are
-  written back after the calls.
-- With the reply wheel up, the game shows the movie again on its own while photo mode runs, often for many frames in a
-  row. `PhotoGui::Hold` hides it again each frame, and the exit line counts those frames.
+The GFx movies' `Tick` checks no `Pauser`. But most movies advance on the world's `TimeSeconds`, which stands still
+under the pause, so photo mode's panel would never load. For each call during the session, `GfxClock` moves
+`TimeSeconds` on by the real time. Then it puts it back, along with the movie stamps that the call wrote (+0x44 of each
+entry, in arrays at (0x4c, 0x54) and (0xbc, 0xc4)). Without `GfxClock`, the labels stayed "TEST STRING".
 
-The natives were found through the classes' vtables in a memory dump of the running game (MassEffect3.exe of
-2026-10-30):
+The natives come from a memory dump of the running game. Each hook first compares the bytes listed in `LE3.hpp`.
 
-| Native | RVA |
-|---|---|
-| `BioPlayerInput::InputKey`, slot 88 (LE2: 89) | `0xa5a040` |
-| `UPlayerInput::InputAxis`, slot 89, not overridden | `0x54ac90` |
-| The GFx movies' `Tick`, slot 18 of vtable `0x12c7e48` | `0x92d7a0` |
+| Native | RVA | Bytes checked |
+|---|---|---|
+| `BioPlayerInput::InputKey` (vtable slot 88) | `0xa5a040` | 24 |
+| `UPlayerInput::InputAxis` (slot 89, not overridden) | `0x54ac90` | 16 |
+| The GFx movies' `Tick` (slot 18 of vtable `0x12c7e48`) | `0x92d7a0` | 16 |
 
-What each one does under the pause:
-
-- `BioPlayerInput::InputKey` hands the key to `SFXGUIInteraction` first (`0xbc9be0`), then to `UPlayerInput::InputKey`
-  (`0x54b710`) and `UInput::InputKey` (`0x54b2f0`). The last one drops presses while `WorldInfo.Pauser` (+0x670) is
-  set. The hook works as in LE2: it clears the `Pauser` around the call.
-- `UPlayerInput::InputAxis` skips the axis binds while the `Pauser` is set (`0x54ad9e`). It has LE2's first bytes, and
-  the hook works as in LE2.
-- The viewport client's tick (`0xc25695`) calls the GFx movies' `Tick`, which checks no `Pauser`. It advances each
-  movie by the time since its last advance on the movie's clock. That clock is real time, or for most movies the
-  world's `TimeSeconds` (`0x8c2570`, +0x74c), which stands still under the pause.
-- Without `GfxClock`, each movie got `Advance(0)` under the pause. Photo mode's movie never played the frame that tells
-  the game it loaded (`MovieLoaded`, then `InitializePhotoMode`), so its labels stayed "TEST STRING". The conversation
-  movie's hide was never drawn either.
-
-While photo mode is on, `GfxClock` (`Photo.cpp`) wraps each call of the GFx movies' `Tick`:
-
-- Before the call, it moves `TimeSeconds` forward by the real time since the last call.
-- After the call, it puts back `TimeSeconds`. Each movie stamp that the call wrote with the moved time goes back to the
-  world's time too (`Game::GfxMovieLists`, the stamp at +0x44 of each entry). The next call measures from the world's
-  clock again.
-
-Nothing else sees the clock move. `SFXGUIInteraction`'s own tick (slot 87, `0xbcbf70`) skips only its queued message
-boxes under the pause (`IsPaused`, `0x593f40`).
+`UInput::InputKey` (`0x54b2f0`) drops keys while the `Pauser` (+0x670) is set, and `InputAxis` checks it at
+`0x54ad9e`.
 
 ## Pause screen
 
-`src/game/LE3.hpp` holds the names and ids, and `Le3Look` in `src/Overlay.cpp` holds the colours and sizes. All of them
-were read from the game's files, and none of those files is shipped.
+The look is `OverlayLook::LE3`, the `Le3Look` table in `src/Overlay.cpp`, taken from the pause wheel `MainWheel`.
+Sizes are at 1080 lines, and the title is 1.5 times the wheel's.
 
-| What | LE3 | LE2 |
-|---|---|---|
-| Title colour | `#FFFFFF`, `MainWheel`'s `guiTitleText` | `#FFCC66` |
-| Label colour | `#ACF5FE`, the wheel's buttons | `#FF9142` |
-| Rules | `#0896F7`, the edge of `PC_SharedAssets_I46` | `#FF9C5B` |
-| Band | `#08759C` to `#084E7E`, lighter at the top (the bars `MainWheel_I1E` and `_I9`) | `#5F2C0C` to `#843E14` |
-| Blur | Toward blue | Toward warm |
-| Title | $BioMass 63 at 1080 lines, spacing 1.5 | $BioMass 49.5, spacing 1.5 |
-| Labels and keys | As in LE2, in the colour of the wheel's buttons | $BioMass 22.8; the keys in the light font at 18 |
-| Fonts | `GUI_SF_Fonts.gfxfonts` of `SFXGUI_Fonts.pcc` | `GUI_SF_Fonts.AeroLightFont_glyphs` and `.BioMassFont_glyphs` |
-| Words | Resume 157151, photo mode 817979; the title is Pause Anytime's own | Resume 157151, photo mode 392221; the title is Pause Anytime's own |
-| Gamepad buttons | `GUI_SF_MainWheel.Xbox_ControllerIcons_ABtn` and `_YBtn` | `GUI_SF_Xbox_ControllerIcons.Xbox_ControllerIcons_IA` and `_I1` |
-| Sound | `SFXGUIInteraction.PlayGuiSound` with `InGameGuiEnter` and `InGameGuiExit` | `BioSFManager.PlaySound` with the same names |
-| `GetSimpleString` | `SFXGame` | `SFXGame` |
-| `UTexture.Resource` | At +0x60 | At +0xA0 |
-
-- As in LE2, the title is 1.5 times the size of the wheel's `guiTitleText`, which is 42 with a spacing of 1.
-- The wheel's own prompts differ from the pause screen's labels: $AeroLight 30, `#FFBA65` (`ControlTextLeftAlign` in
-  `PC_SharedAssets`).
-- The font library holds both fonts in one SWF version 15 movie, the same two fonts as LE2. Cut down to the letters
-  the pause screen uses in all 8 languages, they are byte-identical to LE2's. `$BioMass` and `$AeroLight` are "BioMass
-  Shared" and "AeroLight Shared" here.
-- The font movie is out of the object list by the first HUD, unlike the GUI movies. So `Pause.cpp` has the game's
-  loader bring it back at the main menu, with `DynamicLoadObject` on the file's `ObjectReferencer_448`
-  (`PauseFonts.LoadPath`). That took 31 ms on the test machine. The next garbage collection drops it again.
-- `SFXGUI_FontsJPN.pcc`, which the Japanese game uses (`SFXGUIInteraction.FontMap`), gives the same letters. So one
-  file serves every language.
-- 170645 is not in the table. "Pause" (174771) stays English in Russian, Polish and Japanese, and "Pause Game" (687508)
-  is a sentence in French. So the title stays Pause Anytime's own.
-- The gamepad buttons are the ones the wheel shows, in `Startup.pcc`: 256x256 DXT5, with a ring 108 texels across,
-  centred.
-- The sounds are the ones `ShowBrowserWheel` and `HideBrowserWheel` play. They are Wwise events that also hold and give
-  back the game's audio ([World pause](../how-it-works.md#world-pause)).
-
-## Facts
-
-`src/game/LE3.hpp` holds these. The file and line are in the LE3 SDK of the LExASIs commit that `build.sh` pins
-(`External/LExSDKv2/Src/LESDK/LE3/`). The binds are the defaults of `Default__BioPlayerInput` in the game's
-`SFXGame.pcc`.
-
-The game modes are `SFXGameModeManager.EGameModes` (`SFXGame_classes.hpp:3210-3239`):
-
-| Number | Mode |
+| Part | LE3 |
 |---|---|
-| 0 | Default |
-| 1 | Vehicle |
-| 2 | Atlas |
-| 3 | PowerWheel |
-| 4 | WeaponWheel |
-| 5 | Command |
-| 6 | InjuredShepard |
-| 7 | Conversation |
-| 8 | Cinematic |
-| 9 | GUI |
-| 10 | Movie |
-| 11 | Galaxy |
-| 12 | Orbital |
-| 13 | MultiLand |
-| 14 | Photo |
-| 15 | CheatMenu |
-| 16 to 24 | Nine more, up to 24 Lobby |
+| Title | `#FFFFFF`, bold, 63, spacing 1.5 |
+| Labels | `#ACF5FE`, bold, 22.8, spacing 0.9 |
+| Keys | Light, 18, spacing 0.75 |
+| Band | `#08759C` to `#084E7E`, rules `#0896F7` |
+| Blur tint | 0.88, 0.97, 1.06 (blue) |
+| Light font | `Myriad Pro+DFGGothicP-W5` |
+| Bold font | `Biomass+DFGSoGei-W7` |
+| Words | Resume 157151, photo mode 817979 |
+| String table | `ASFXGame.GetSimpleString` |
+| Gamepad A, Y | `GUI_SF_MainWheel.Xbox_ControllerIcons_ABtn`, `_YBtn` |
+| Button art | 256 texels, disc at (128, 128), 108 across |
+| Texture view | `{ 0x114CD18, 0x24, 0x12FE328, 0xC, 0x10 }` |
 
-LE1 has 5 Conversation, 6 Cinematic, 8 Movie and 11 Photo.
+- Both fonts are in the font library `GUI_SF_Fonts.gfxfonts` of `SFXGUI_Fonts.pcc`, for every language. By the first
+  HUD it is no longer in the object list, so at the main menu `Pause.cpp` loads it once through
+  `SFXGUI_Fonts.ObjectReferencer_448`.
+- The title is Pause Anytime's own word. "Pause" (174771) stays English in Russian, Polish and Japanese, and "Pause
+  Game" (687508) is a sentence in French.
+- The sounds `InGameGuiEnter` and `InGameGuiExit` play through `SFXGUIInteraction.PlayGuiSound`. The first starts
+  with a Wwise Pause All and the second with a Resume All. So every end of the pause posts `InGameGuiExit` once.
 
-| What | LE3 | LE1 | Where (LE3) |
-|---|---|---|---|
-| The controller's game modes | `BioPlayerController.GameModeManager2` | `GameModeManager` | `SFXGame_classes.hpp:7610` |
-| `GuiKey` events of the always-on Start and Escape binds | Start 24 (released 45), Escape 16 (released 37) | Start 21 (released 43), Escape 24 (released 46) | `SFXGame_classes.hpp:1126`; binds `:17765-17766` |
-| What Escape sends there | `BUTTON_B`, as in LE2 | `KEY_ESCAPE` | `SFXGame_classes.hpp:1126` |
-| Photo mode's Esc and Start bind | `SFXGameModePhoto.ShowMenu` | `ShowMenuGui` | `SFXGame_classes.hpp:31027` |
-| Cutscene skip binds (`SFXGameModeCinematic`) | Escape and SpaceBar: `PC_CineSkip`; XboxTypeS_X: `Console_CineSkip` | Esc | `Default__SFXGameModeCinematic` in `SFXGame.pcc` |
+## Engine facts
 
-In LE3, `BioGuiEvents` is in SFXGame. The always-on binds are `BioPlayerInput.StaticPCBinds` and
-`StaticConsoleBinds`. The rest of the shared code's names (`WorldInfo.Pauser`, `BioHUD`, `SFXConsole`,
-`SFXPlayerCamera`, the Console's `InputKey`) are in LE3's SDK under the same names.
-
-Seen in the game (2026-10-30 unless stated):
-
-- The world pause stops LE3's conversations (`BioConversationController`) and keeps voice, lips and music in sync.
-- LE3's HUD draws through GFx, and `BioHUD.PostRender` still passes through `ProcessEvent` every frame in
-  conversations and cutscenes. The per-frame checks and the pause screen rest on it. Over a fullscreen movie it stops:
-  the relay jump was fullscreen 0.2 s after its open.
-- In a skippable cutscene, Escape, SpaceBar and X are the skip keys. Esc pauses there, as in LE2, and the press that
-  paused or resumed did not skip.
-- The console check through `Console.StateFrame` (`Typing` or `Open`) holds for LE3's `SFXConsole`
-  (`SFXGame_classes.hpp:20022`): v12, played by hand.
-- Photo mode opens on a cutscene's shot, and since v12 its panel loads there too. In four photo sessions on Omega, the
-  panel had one GUI tick per frame. They ran in an in-engine cutscene on a `CameraActor`'s shot, in game mode 7
-  (Conversation).
-- With the Steam overlay open over a pause, Esc's resume logged "still paused by ...": another pause held the world
-  (S9, 2026-11-02).
+- The modes are `SFXGameModeManager.EGameModes`, read from `BioPlayerController.GameModeManager2`: Conversation 7,
+  Cinematic 8, Movie 10, Photo 14. `ModeNames` in `LE3.hpp` holds all 25, and the log prints each mode's name.
+- The pinned LExASIs SDK gives `ProcessEvent` at RVA `0xf4f80` and `GEngine` at `0x18b31d0`. Neither is checked
+  against the exe's bytes.
+- `AK::SoundEngine::ExecuteActionOnEvent` and `GetIDFromString` come from the exe's export table.
+- The movie log lines read `GFullScreenMovie` at RVA `0x1cb9cd0`: its flags at +0x58 and its skippable flag at
+  +0x84. Only the logs use these reads, under an access-violation guard.
+- Seen in the game: `BioHUD.PostRender` runs every frame in conversations and cutscenes, and stops over a fullscreen
+  movie.
 
 ## Open questions
 
-1. Photo mode's GUI sounds under the pause (clicks, tabs, options). LE3's movies play them through
-   `SFXGUIInteraction`, with no hook. No test has looked at them yet.
-2. Matinee-track movies, which are most of LE3's movies and play inside a cutscene or a conversation. Their flag is
-   0x400 ([Movie keys](#movie-keys)). Not checked in the game yet: which game mode is current while they play, what
-   Esc does there in the game without mods, and so whether Esc pauses the world under them. Pausing them would need
-   the world pause (for the Matinee and its voice) together with `BinkPause` (for the picture).
+1. Matinee-track and file-handle movies inside a conversation or a cutscene: the mode during them, and what Esc does
+   there without mods, are not checked. If the mode is 7 or 8, Esc pauses the world while the picture plays on.
+2. Photo mode's GUI sounds under the pause (clicks, tabs, options) have not been checked.
+3. X under the movie pause: the hook keeps it from the movie input, but outside the guard window its `SkipMovie` bind
+   passes and ends the movie pause. The `SkipMovie` script then skips a cutscene that the game lets you skip.

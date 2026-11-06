@@ -1,37 +1,33 @@
 # Building Pause Anytime
 
-`build.sh` builds Pause Anytime from a clone of this repo: `LE1PauseAnytime.asi`, `LE2PauseAnytime.asi` and
-`LE3PauseAnytime.asi` ([Games](#games)). It downloads the other sources it needs, LExASIs and Dear ImGui, by itself. It
-runs in WSL and calls the Windows build tools through interop.
+`build.sh` builds `LE1PauseAnytime.asi`, `LE2PauseAnytime.asi` and `LE3PauseAnytime.asi`, one file per game from the
+same sources. It is a bash script for Windows: it runs in WSL or in Git Bash and calls the Windows build tools. It
+downloads LExASIs and Dear ImGui by itself, each at a pinned commit ([THIRD_PARTY.md](THIRD_PARTY.md)).
 
 ## What you need
 
-| What | Notes |
+| What | Why |
 |---|---|
-| Windows with WSL | `build.sh` is a bash script. In WSL it uses `rsync` and `flock` when they are present. |
-| Git for Windows | `git.exe` must be on the `PATH` that WSL sees. WSL adds the Windows `PATH` to its own by default. |
-| Visual Studio 18 (2026), or its Build Tools | With the C++ x64 build tools and the "C++ CMake tools for Windows" component. |
-| Network on the first build | `build.sh` clones [ME3Tweaks/LExASIs](https://github.com/ME3Tweaks/LExASIs) with its submodules and downloads [Dear ImGui](https://github.com/ocornut/imgui). |
-| Mass Effect Legendary Edition | Only for `--install` and `--uninstall`. `--install` also needs the ASI loader in the game. |
+| Windows, with WSL or Git Bash | `build.sh` and `package.sh` are bash scripts. GitHub's build runs them in Git Bash. |
+| Git for Windows | `build.sh` runs `git.exe` on the build tree, which lives on the Windows disk. |
+| Visual Studio 18 (2026) or its Build Tools | With the C++ x64 build tools and the "C++ CMake tools for Windows" component. |
+| The Windows SDK | For the DirectX headers and libraries. `build.sh` does not check for it. |
+| Network on the first build | To clone LExASIs with its submodules and fetch Dear ImGui. Again when a pin moves. |
+| `git`, `python3` or `python`, and `sha256sum` in your shell | Only for `package.sh`. |
+| `rsync` and `flock` | Optional: used when present. Git Bash has neither. |
+| Mass Effect Legendary Edition | Only for `--install` and `--uninstall`. `--install` also needs the ASI loader. |
 
-On the Windows side, `build.sh` calls `powershell.exe`, `reg.exe`, `tasklist.exe`, `vswhere.exe`, `git.exe` and CMake.
-The LExASIs and Dear ImGui checkouts live on the Windows disk, so `build.sh` runs Windows' git on them. The `git clone`
-under [Build](#build) and `package.sh` use the git of WSL: `package.sh` names the commit in the zip's `README.txt`.
+`git.exe`, `powershell.exe`, `reg.exe` and `tasklist.exe` must run from your shell. WSL adds the Windows `PATH` to its
+own by default.
 
-Git Bash also works, and GitHub's build uses it ([docs/releasing.md](docs/releasing.md)). Without `rsync`, each build
-copies all of `src/` again. Without `flock`, the build takes no lock, so two builds of the same tree do not wait for
-each other.
+`build.sh` finds Visual Studio with `vswhere.exe`: the newest version 18 install with the component
+`Microsoft.VisualStudio.Component.VC.Tools.x86.x64`. It checks only that component. Older versions can't build,
+because the LExASIs preset uses the "Visual Studio 18 2026" generator and their CMake does not know it. `MELE_VS`
+picks another install, and then nothing checks the version.
 
-The sources use the DirectX headers and libraries of the Windows SDK. LExASIs' CMake preset uses the "Visual Studio 18
-2026" generator, which older versions of Visual Studio do not know.
-
-`build.sh` finds Visual Studio with `vswhere.exe`: the newest install of version 18 with the C++ x64 tools
-(`Microsoft.VisualStudio.Component.VC.Tools.x86.x64`). It checks for that component only, not for the SDK. Set `MELE_VS`
-to use another install.
-
-The ASI uses the shared C++ runtime (`MSVCP140.dll`, `VCRUNTIME140.dll`). Anyone who runs your build needs a
-[Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe) no older than the MSVC tools you built
-with. An older `msvcp140.dll` can make the ASI crash.
+The ASI uses the shared Visual C++ runtime. Whoever runs your build needs the
+[Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe), at least as new as the compiler you
+built with. An older `msvcp140.dll` can make the ASI crash.
 
 ## Build
 
@@ -41,109 +37,101 @@ cd mele-pause-anytime
 ./build.sh
 ```
 
-The result is `dist/LE1PauseAnytime.asi`, `dist/LE2PauseAnytime.asi` and `dist/LE3PauseAnytime.asi`, each with its
-`.pdb`. To install them, run `./build.sh --install`, or copy them by hand as [docs/install.md](docs/install.md) says.
+For each game, the build puts `LE<n>PauseAnytime.asi` and its `.pdb` in `dist/` and prints `built <path>`.
 
 | Command | What it does |
 |---|---|
-| `./build.sh` | Builds `LE<n>PauseAnytime.asi` and its `.pdb` for each game picked, and copies both to `MELE_STAGE`. |
-| `./build.sh --game LE1` | Builds only the games named, one `--game` each ([Games](#games)). Also with `--install` and `--uninstall`. |
-| `./build.sh --install` | Builds, then copies `LE<n>PauseAnytime.asi` into each game ([Install checks](#install-checks)). |
-| `./build.sh --uninstall` | Removes `LE<n>PauseAnytime.asi` from each game. Builds nothing and needs no Visual Studio. |
+| `./build.sh` | Builds the games in `MELE_GAMES`, else the released games: LE1, LE2 and LE3. |
+| `./build.sh --game LE2` | Builds only the games named, one `--game` for each. Works with `--install` and `--uninstall` too. |
+| `./build.sh --install` | Checks the games, builds, then copies each `.asi` into its game ([Install checks](#install-checks)). |
+| `./build.sh --uninstall` | Deletes each `LE<n>PauseAnytime.asi` from its game. Builds nothing and needs no Visual Studio. |
 | `./package.sh` | Builds into `dist/stage`, then packs one zip and `dist/SHA256SUMS` ([Package](#package)). |
+
+A game name is `LE1`, `LE2`, `LE3` or `all`, in upper or lower case. `all` means the games on the `GAMES` line of
+`asi_target` in `src/CMakeLists.txt`. Each game is built once, in the order LE1, LE2, LE3. Give `--install` or
+`--uninstall` once, never both. To copy the files into the game by hand, see [docs/install.md](docs/install.md).
 
 ## Package
 
-`./package.sh` builds with `build.sh` into `dist/stage`. Then it packs one zip, `dist/PauseAnytime-<label>.zip`, and
-writes `dist/SHA256SUMS` over it. It installs nothing into the game.
+`./package.sh` checks the version, empties `dist/stage` and builds there with `build.sh`. Then it packs
+`dist/PauseAnytime-<label>.zip` and writes the hash of that zip to `dist/SHA256SUMS`. It never installs anything.
 
-- The label is `v<N>` by default, where N is `ASI_VERSION`. `--label latest` names the zip `PauseAnytime-latest.zip`.
-- A `v<N>` label must match `ASI_VERSION`, and its zip must hold every released game.
-- `--game` picks the games as in `build.sh`.
-- The zip holds one `README.txt` for all the games, a folder per game with its `.asi` (`LE1\LE1PauseAnytime.asi`, ...),
-  and a `LICENSE` folder with the license texts. The `.pdb` files stay in `dist/stage`.
-- `package.sh` needs `python3`.
-- [docs/releasing.md](docs/releasing.md) says how GitHub publishes the zip.
+- The label is `v<N>` by default, where N is `ASI_VERSION`. `--label latest` makes `PauseAnytime-latest.zip`.
+- A label made of `v` and a number must be `v<ASI_VERSION>`, and its zip must hold every released game. For a zip of
+  one game, use another label: `./package.sh --game LE2 --label test`.
+- Each run deletes this label's zip and `SHA256SUMS` first. Zips with other labels stay, but `SHA256SUMS` lists only
+  the new zip.
 
-## Games
+```
+PauseAnytime-<label>.zip
+  README.txt                  one text for all the games packed, with the commit it was built from
+  LE1\LE1PauseAnytime.asi
+  LE2\LE2PauseAnytime.asi
+  LE3\LE3PauseAnytime.asi
+  LICENSE\LICENSE             GPL-3.0
+  LICENSE\THIRD_PARTY.md
+  LICENSE\OFL.txt             the license of the Exo 2 fonts
+  LICENSE\LICENSE-spdlog.txt
+  LICENSE\LICENSE-imgui.txt
+```
 
-Each game gets its own ASI from the same sources, built against that game's SDK. The CMake target `PauseAnytime-LE<n>`
-makes `LE<n>PauseAnytime.asi` and `LE<n>PauseAnytime.pdb`. One version number covers every game.
+The `.pdb` files stay in `dist/stage`. The `README.txt` text is in `package.sh`, and each game's own lines are in
+`game_readme` in `scripts/games.sh`.
 
-A build covers the games named with `--game`. Without `--game`, it covers those in `MELE_GAMES`, and without that, the
-released games (`RELEASED_GAMES` in `scripts/games.sh`: LE1, LE2 and LE3). A name is `LE1`, `LE2`, `LE3` or `all`, in
-upper or lower case. `all` means the games on the `GAMES` line of `asi_target` in `src/CMakeLists.txt`: LE1, LE2 and
-LE3. A game missing from that line has no project, and the build stops after the configure step: "no PauseAnytime-LE<n>
-project: src/CMakeLists.txt does not build LE<n> yet (asi_target's GAMES)".
-
-A plain `./build.sh --install` installs all three released games. If any of them has no ASI loader or is running,
-`build.sh` stops before it builds anything. To install one game only, add `--game LE1` (or `LE2`, `LE3`), or set
-`MELE_GAMES`.
-
-### Adding a game
-
-What differs per game is in `src/game/LE<n>.hpp`. `src/game/Game.hpp` includes the right file for the build's SDK
-target, and stops the build for any other game. Before you add a game to the `GAMES` line of `asi_target`:
-
-1. Write its `src/game/LE<n>.hpp`, with every name that `LE1.hpp` defines.
-2. Add its branch to `Game.hpp`.
-3. Add its `README.txt` text to `game_readme` in `scripts/games.sh`. `package.sh` packs no game without that text.
-
-Do steps 1 and 2 first. The tree's `VisualStudio` preset turns every `LEASI_BUILD_LE<n>` on, so a listed game that does
-not compile breaks the whole tree's build in Visual Studio.
+GitHub builds and publishes the zips with this same script. The steps to publish a version, and the rules for every
+release, are on the toolkit's [releasing page](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/docs/releasing.md#publish-a-version).
 
 ## Install checks
 
-`--install` and `--uninstall` find the Legendary Edition folder (`MELE_LE_DIR`, else the registry: see
-[Settings](#settings)). Then they check each game picked, before anything in it changes:
+`--install` and `--uninstall` first find the Legendary Edition folder: `MELE_LE_DIR`, else the registry
+([Settings](#settings)). Then they check every game picked, before anything in the game folder changes:
 
-- The ASI loader, `bink2w64_original.dll` in `Game\ME<n>\Binaries\Win64` (`--install` only). `build.sh` never writes
-  the loader: ME3Tweaks Mod Manager installs it with any mod.
-- The `ASI` folder in `Game\ME<n>\Binaries\Win64` (`--install` only). Without it, `--uninstall` has nothing to remove
-  there and goes on to the next game.
-- The game is closed: `tasklist.exe` does not list `MassEffect<n>.exe`. A failed `tasklist` counts as "running".
+- `--install` only: the ASI loader is there, as `bink2w64_original.dll` and an `ASI` folder in
+  `Game\ME<n>\Binaries\Win64`. `build.sh` never writes the loader. ME3Tweaks Mod Manager installs it with any mod.
+- Both: the game is closed. `tasklist.exe` must answer and must not list `MassEffect<n>.exe`.
 
-`--install` runs the checks twice. The first time is before the build, so a missing loader or a running game stops
-`build.sh` before any build time is spent. The second time is after the build, just before the first copy: if a game
-was started during the build, `build.sh` stops with "(built, not installed)".
+One failed check stops the whole run, and no game is built or changed. `--install` checks again after the build,
+before the first copy, and stops with "(built, not installed)" if a game was started in the meantime.
 
-Then `--install` copies `LE<n>PauseAnytime.asi` into each game's `ASI` folder, and `--uninstall` deletes it from there.
-Inside the game install, `build.sh` writes and deletes only that file.
+Inside the game folder, `build.sh` writes and deletes only `LE<n>PauseAnytime.asi` in `Game\ME<n>\Binaries\Win64\ASI`.
+It does not look at the other files there.
 
 ## Settings
 
-Every setting is optional. Set one in the environment, or copy `build.env.example` to `build.env` (ignored by git) and
-uncomment the lines you need. A variable already set in the environment wins over `build.env`. `package.sh` reads the
-same settings, but sets `MELE_STAGE` itself.
+Every setting is optional. Set it in the environment, or copy `build.env.example` to `build.env` (a bash file that git
+ignores) and uncomment the lines you need. A variable already set in the environment wins over `build.env`.
 
 | Variable | Default | What it is |
 |---|---|---|
-| `MELE_GAMES` | the released games (`LE1 LE2 LE3`) | The games to build when no `--game` is given, separated by spaces: `LE1`, `LE2`, `LE3` or `all`. |
-| `MELE_LE_DIR` | the install folder from the registry | The Legendary Edition folder, as a Windows path. Only `--install` and `--uninstall` use it. |
-| `MELE_VS` | found with `vswhere.exe` | The Visual Studio or Build Tools folder, as a WSL path. |
-| `MELE_LEXASIS` | `%LOCALAPPDATA%\mele-asi-build\PauseAnytime\LExASIs` | The LExASIs checkout, as a WSL path, on the Windows disk. |
-| `MELE_STAGE` | `dist/` next to `build.sh` | Where `LE<n>PauseAnytime.asi` and its `.pdb` are copied. |
+| `MELE_GAMES` | `LE1 LE2 LE3`, the released games | The games to build when no `--game` is given, separated by spaces, or `all`. |
+| `MELE_LE_DIR` | from the registry | The Legendary Edition folder, as a Windows path. Only `--install` and `--uninstall` use it. |
+| `MELE_VS` | found with `vswhere.exe` | The Visual Studio or Build Tools folder. |
+| `MELE_LEXASIS` | `%LOCALAPPDATA%\mele-asi-build\PauseAnytime\LExASIs` | The LExASIs checkout. Dear ImGui goes next to it, in `third_party`. |
+| `MELE_STAGE` | `dist/` in this repo | Where each built `.asi` and `.pdb` is copied. |
 
-Keep `MELE_LEXASIS` on the Windows disk: CMake and MSBuild do not work well on `\\wsl.localhost` paths.
+The folders other than `MELE_LE_DIR` are paths of your shell: WSL paths in WSL, Git Bash paths in Git Bash. Keep
+`MELE_LEXASIS` on the Windows disk: CMake and MSBuild do not work well on `\\wsl.localhost` paths. `package.sh` reads
+`MELE_GAMES` and `MELE_LEXASIS` the same way, and sets `MELE_STAGE` to `dist/stage` itself.
 
-Without `MELE_LE_DIR`, `build.sh` reads the `Install Dir` value under `HKLM\SOFTWARE\BioWare` (the key whose name ends
-in "Legendary Edition"), then Steam's uninstall entry for app 1328670. The folder must contain `Game`.
+Without `MELE_LE_DIR`, `build.sh` reads the `Install Dir` value under `HKLM\SOFTWARE\BioWare`, in the key whose name
+ends in `Legendary Edition`. Then it tries Steam's uninstall entry for app 1328670. The folder must contain `Game`.
+
+`LEASI_GAME1_WIN64`, `LEASI_GAME2_WIN64`, `LEASI_GAME3_WIN64` and `LEASI_GAMEL_WIN64` make LExASIs copy each build into
+the game. `build.sh` removes them for the configure step, and stops if one still reaches CMake from the Windows side.
 
 ## What a build does
 
-With `--install` or `--uninstall`, the [install checks](#install-checks) come first. `--uninstall` then removes the
-files and stops. A build:
+With `--install` or `--uninstall`, the [install checks](#install-checks) come first. `--uninstall` stops once it has
+deleted the files. Then `build.sh`:
 
-1. Finds Visual Studio and the CMake that ships with it.
-2. Takes a lock on the build tree, `.lexasis-build.lock` next to the LExASIs checkout. A second build of the same tree
-   (another clone or worktree with the same `MELE_LEXASIS`) waits for the first.
-3. Checks the LExASIs checkout. It clones it on the first build, then checks out the pinned commit `aaad03a` with all
-   its submodules (LExSDKv2, spdlog, simdutf). This check runs on every build, so it repairs an interrupted clone or a
-   new pin.
-4. Downloads Dear ImGui at the pinned commit `c1aaac65e896a45f81f47a4d68f9959e0f86c859` (v1.93.0) into
-   `third_party\imgui` next to the checkout. It downloads it again if the pin moves.
-5. Copies `src/` into the checkout as `LExASIs\PauseAnytime`. If the tree's `CMakeLists.txt` does not have these lines
-   yet, it adds them at the end. Deleting `LExASIs\PauseAnytime` takes the project out of the tree again.
+1. Finds Visual Studio and the CMake that comes with it.
+2. Takes a lock with `flock`, `.lexasis-build.lock` next to the LExASIs checkout. A second build of the same tree, from
+   another clone or worktree, waits for the first.
+3. Clones LExASIs on the first build. On every build it checks that the checkout and its submodules (LExSDKv2, spdlog,
+   simdutf) are at their pinned commits, and checks them out again if not. This repairs an interrupted clone too.
+4. Fetches Dear ImGui into `third_party\imgui` when that folder is not at its pinned commit.
+5. Copies `src/` into the checkout as `LExASIs\PauseAnytime`. With `rsync`, it copies only the files whose content
+   changed. Then it adds these lines to the end of the tree's `CMakeLists.txt` if they are missing:
 
    ```cmake
    if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/PauseAnytime")
@@ -152,80 +140,128 @@ files and stops. A build:
    ```
 
 6. Configures with the tree's `VisualStudio` preset: `LEASI_BUILD_LE<n>` on for each game picked and off for the others,
-   and `LEASI_BUILD_LEL` off. A `LEASI_GAME<n>_WIN64` variable would make that game's build copy itself into the game,
-   so `build.sh` unsets all four of them for this step: `LEASI_GAME1_WIN64`, `LEASI_GAME2_WIN64`, `LEASI_GAME3_WIN64`
-   and `LEASI_GAMEL_WIN64`. A variable set in the Windows environment still reaches CMake, so `build.sh` stops if the
-   configure output shows one.
-7. Checks that each game picked has its `PauseAnytime-LE<n>` project, both in `Build\PauseAnytime` and in the solution
-   `Build\LExASIs.slnx`. A project from an earlier build, for a game that was listed then, can still be in `Build`.
-8. Builds each `PauseAnytime-LE<n>` target in the `RELEASE` configuration, with the tree's flags (`/W4 /WX`). Dear ImGui
-   builds as a static library with its own defaults. On a failure, `build.sh` prints the error and warning lines and
-   names the target.
-9. Copies `LE<n>PauseAnytime.asi` and `LE<n>PauseAnytime.pdb` into `MELE_STAGE`. `--install` then checks each game again
-   and copies `LE<n>PauseAnytime.asi` into it. The `.pdb` stays in `MELE_STAGE`.
+   and `LEASI_BUILD_LEL` off. The output is hidden ([When something fails](#when-something-fails) shows it).
+7. Checks that each game picked has its `PauseAnytime-LE<n>` project, in `Build\PauseAnytime` and in
+   `Build\LExASIs.slnx`.
+8. Builds each `PauseAnytime-LE<n>` target in `RELEASE`, one game after the other. On a failure it prints the
+   compiler's error and warning lines and stops.
+9. Once every game has built, copies each `.asi` and `.pdb` from `Build\RELEASE` into `MELE_STAGE`. It does not empty
+   the stage first. `--install` then checks the games again and copies each `.asi` into its game.
 
-With the defaults, the build tree looks like this:
+Edit the sources in this repo's `src/`, never in `LExASIs\PauseAnytime`: each build replaces that folder. With the
+defaults, the build tree looks like this:
 
 ```
 %LOCALAPPDATA%\mele-asi-build\PauseAnytime\
-  LExASIs\             ME3Tweaks/LExASIs at aaad03a; PauseAnytime\ is the copy of src/
-  third_party\imgui\   Dear ImGui at c1aaac65
-  .lexasis-build.lock
+  LExASIs\                ME3Tweaks/LExASIs at the pinned commit
+    PauseAnytime\         the copy of src/
+    Build\RELEASE\        the built .asi and .pdb files
+  third_party\imgui\      Dear ImGui at the pinned commit
+  .lexasis-build.lock     only where flock exists
 ```
 
-## Your own edits in the build tree
+### Your own changes in the tree
 
-The repair in step 3 runs when the checkout is not at the pinned commit, or when a submodule is missing or at another
-commit. It keeps your own work:
+The repair in step 3 keeps your own work in the LExASIs checkout. First it removes the project lines that builds like
+this one add to `CMakeLists.txt`: those for `PauseAnytime` and for folders whose names start with `Mele`. If the file
+still differs from the pinned commit, the build stops. Then git checks out the pinned commit, which keeps your changes
+to other files, or refuses if it would overwrite one.
 
-- First it removes from `CMakeLists.txt` the `add_subdirectory` lines that this build and similar builds add: those
-  for `PauseAnytime` and `Mele...` folders, with or without the `if (EXISTS ...)` guard. Step 5 adds this build's
-  lines back.
-- If `CMakeLists.txt` still differs from the commit after that, the build stops: "CMakeLists.txt in ... has changes of
-  your own: commit or stash them, then build again".
-- Then git checks out the pinned commit. Your changes to files that the checkout does not touch are kept. If a change
-  would be overwritten, git refuses and the build stops with "could not check out LExASIs ...". Commit or stash your
-  changes in that checkout. If you have no changes to keep, delete the folder and build again.
+A line that another project added to `CMakeLists.txt` counts as your change. So give each project its own tree, as
+the defaults do. Your changes in `third_party\imgui` stay while that folder is at its pinned commit.
 
-Edit the sources in this repo's `src/`, not in `LExASIs\PauseAnytime`: each build replaces that folder with a copy of
-`src/`.
+### Compiler and linker options
+
+The LExASIs tree sets C++20, the shared Visual C++ runtime (`/MD`), `/W4 /WX` and a `.pdb` for its ASI targets. Dear
+ImGui builds as a static library of ours, `PauseAnytimeImGui`, with its own defaults. `src/CMakeLists.txt` adds:
+
+- `/DELAYLOAD:d3dcompiler_47.dll`: the ASI loads without that DLL. `src/Overlay.cpp` loads the copy in System32
+  first, so Dear ImGui's DirectX 11 backend never binds to one next to the game.
+- `/PDBALTPATH`: the ASI names its `.pdb` by file name only.
+- `/d1trimfile`: file paths in the ASI (log macros, fatal errors) start below the build folder, so no user folder name
+  gets in.
+
+## Adding a game
+
+LE1, LE2 and LE3 are all built and released. The scripts know only these three names, so another target would also
+need changes in `scripts/games.sh` and `build.sh`. A game needs these steps, in this order:
+
+1. `src/game/LE<n>.hpp`, with every name that `src/game/LE1.hpp` defines and the two photo mode switches
+   `PAUSEANYTIME_PHOTO_GUI_SOUNDS` and `PAUSEANYTIME_PHOTO_GFX`.
+2. A branch in `src/game/Game.hpp`. Any other SDK target stops the compile.
+3. Its block in `src/SharedVersion.h`: file prefix, ME3Tweaks game id, group id and description.
+4. Its name on the `GAMES` line of `asi_target` in `src/CMakeLists.txt`. Do steps 1 to 3 first: the `VisualStudio`
+   preset turns every `LEASI_BUILD_LE<n>` on, so a listed game that does not compile breaks the tree's build in Visual
+   Studio.
+5. Its `README.txt` lines in `game_readme` in `scripts/games.sh`. `package.sh` packs no game without them.
+6. Its name in `RELEASED_GAMES` in `scripts/games.sh`. A released game builds by default, and every release zip must
+   hold it. A game that is only on the `GAMES` line builds when you name it.
+7. Its entry in the Game list of `.github/ISSUE_TEMPLATE/bug_report.yml`.
 
 ## When something fails
 
-| Message | What to do |
-|---|---|
-| `no vswhere.exe` or `vswhere found no Visual Studio 18 (2026) with the C++ x64 tools` | Install the Visual Studio 18 (2026) Build Tools with the C++ x64 tools, or set `MELE_VS`. |
-| `no CMake in ...` | Add the "C++ CMake tools for Windows" component, or set `MELE_VS` to a Visual Studio that has it. |
-| `no %LOCALAPPDATA% from PowerShell` | Set `MELE_LEXASIS` to a folder on the Windows disk. |
-| `cmake configure failed: run it by hand in ...` | `build.sh` hides the configure output. Run the same step in that folder to see it (command below). |
-| `a LEASI_GAME*_WIN64 variable is set in the Windows environment` | Remove that variable in System Properties, Environment Variables, then open a new terminal. |
-| `unknown game '...': LE1, LE2, LE3 or all` | Use one of those names in `--game` and in `MELE_GAMES`. |
-| `no PauseAnytime-LE<n> project: src/CMakeLists.txt does not build LE<n> yet` | That game has no build ([Games](#games)): leave it out of `--game` and `MELE_GAMES`. |
-| `PauseAnytime-LE<n> did not build` | The lines above it are the compiler's errors and warnings. |
-| `Legendary Edition not found in the registry` or `no Game folder in ...` | Set `MELE_LE_DIR` to the Legendary Edition folder, as a Windows path. |
-| `no ASI loader in Game\ME<n>` or `no ASI folder in Game\ME<n>\Binaries\Win64` | Add the ASI loader with ME3Tweaks Mod Manager (any mod installs it), then run the command again. |
-| `MassEffect<n>.exe is running: close the game first` | Close the game and run the command again. After "(built, not installed)", the build is in `MELE_STAGE`. |
+Each error from `build.sh` starts with `build.sh:` and stops the script. `package.sh` runs `build.sh`, so it can show
+the same errors, and its own start with `package.sh:`. Below, `<n>` is 1, 2 or 3, and `...` is a path or a name.
 
-To see the configure output, run this command in the LExASIs folder. It is the command `build.sh` runs for an LE1-only
-build: use `=ON` for each game you build and `=OFF` for the others. `<VS folder>` is the Visual Studio folder as a WSL
-path. `<third_party folder>` is the `third_party` folder next to the checkout, as a Windows path with forward slashes.
+| `build.sh` says | What to do |
+|---|---|
+| `--game needs LE1, LE2, LE3 or all` | Put a game name after `--game`. |
+| `--install or --uninstall, not both` | Give one of them, once. |
+| `unknown argument '...'` | Use only the flags in the usage line of the message. |
+| `unknown game '...': LE1, LE2, LE3 or all` | Fix the name in `--game` or in `MELE_GAMES`. |
+| `no GAMES line in src/CMakeLists.txt, so no games for 'all'` | Put back the `GAMES` line of `asi_target`. |
+| `Legendary Edition not found in the registry` | Set `MELE_LE_DIR`. This also shows when `reg.exe` does not run. |
+| `no Game folder in '...'` | Set `MELE_LE_DIR` to the folder that holds `Game`. |
+| `no ASI loader in Game\ME<n>` or `no ASI folder in Game\ME<n>\Binaries\Win64` | Install any mod in that game with ME3Tweaks Mod Manager. It adds the loader. |
+| `MassEffect<n>.exe is running: close the game first` | Close the game. If it is closed, check that `tasklist.exe` runs: a failed one counts as running. |
+| `... (built, not installed)` | The game started during the build. The files are in `MELE_STAGE`: close the game and run again. |
+| `no vswhere.exe` | Install the Visual Studio 18 Build Tools with C++, or set `MELE_VS`. This also shows when `powershell.exe` does not run. |
+| `vswhere found no Visual Studio 18 (2026) with the C++ x64 tools` | Add the C++ x64 build tools in the Visual Studio Installer, or set `MELE_VS`. |
+| `no CMake in ...` | Add the "C++ CMake tools for Windows" component, or set `MELE_VS` to an install that has it. |
+| `no %LOCALAPPDATA% from PowerShell` | Set `MELE_LEXASIS` to a folder on the Windows disk. |
+| `CMakeLists.txt in ... has changes of your own` | Commit or stash them in that checkout ([Your own changes](#your-own-changes-in-the-tree)). |
+| `could not check out LExASIs ...` | Read git's lines above it. Commit or stash your changes there. With none, delete the folder. |
+| A git error with no `build.sh:` line | The clone of LExASIs or the fetch of Dear ImGui failed. Check the network and `git.exe`. |
+| `cmake configure failed: run it by hand in ...` | Run the configure command below in that folder to see its output. |
+| `a LEASI_GAME*_WIN64 variable is set in the Windows environment` | Remove it in System Properties, Environment Variables. Then open a new terminal. |
+| `no PauseAnytime-LE<n> project` | That game is not on the `GAMES` line. Leave it out, or [add it](#adding-a-game). |
+| `PauseAnytime-LE<n> did not build` | The lines above it are the compiler's errors and warnings, each shown once. |
+
+Two lines are not errors: `another build of ... is running: waiting for it` (another run holds the lock on that tree),
+and `checking out LExASIs ... and its submodules in ...` (the first build, a new pin, or a repair).
+
+| `package.sh` says | What to do |
+|---|---|
+| `--label needs a name` | Put a name after `--label`. |
+| `no ASI_VERSION in ...` | Put back the `#define ASI_VERSION <number>` line in `src/SharedVersion.h`. |
+| `VERSION_STRING_A "..." differs from ASI_VERSION ...` (or `VERSION_STRING_W`) | Set both strings to the version number. |
+| `label v... differs from ASI_VERSION ...` | Use `v<ASI_VERSION>`, or a label that is not `v` and a number. |
+| `no git commit in ...` | Run it in a git clone, with `git` in your shell. The zip's `README.txt` names the commit. |
+| `no python that runs: install python3` | Install Python. On Windows, `python3` can be the Microsoft Store stub, which does not run. |
+| `no README.txt text for LE<n> in scripts/games.sh` | Add that game's lines to `game_readme`. |
+| `label v... packs ...: a release zip needs every released game` | Leave out `--game`, or use another label. |
+| `missing ...` | A file to pack is not at that path. |
+
+To see the configure output, run in the LExASIs folder what `build.sh` runs, with `=ON` for each game picked and
+`=OFF` for the others. `<VS folder>` is the Visual Studio folder as a path of your shell. `<third_party folder>` is the
+`third_party` folder next to the checkout, as a Windows path with forward slashes. The second command is the build
+step, and it shows all of the MSBuild output.
 
 ```bash
-env -u LEASI_GAME1_WIN64 -u LEASI_GAME2_WIN64 -u LEASI_GAME3_WIN64 -u LEASI_GAMEL_WIN64 \
-    '<VS folder>/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe' --preset VisualStudio \
-    -DLEASI_BUILD_LE1=ON -DLEASI_BUILD_LE2=OFF -DLEASI_BUILD_LE3=OFF -DLEASI_BUILD_LEL=OFF \
+CMAKE='<VS folder>/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+env -u LEASI_GAME1_WIN64 -u LEASI_GAME2_WIN64 -u LEASI_GAME3_WIN64 -u LEASI_GAMEL_WIN64 "$CMAKE" --preset VisualStudio \
+    -DLEASI_BUILD_LE1=ON -DLEASI_BUILD_LE2=ON -DLEASI_BUILD_LE3=ON -DLEASI_BUILD_LEL=OFF \
     '-DMELE_THIRD_PARTY=<third_party folder>'
+"$CMAKE" --build Build --config RELEASE --target PauseAnytime-LE1 -- /m /v:minimal /nologo
 ```
 
 ## Version
 
 The version is `ASI_VERSION` in `src/SharedVersion.h`, one number for every game. `VERSION_STRING_A` and
-`VERSION_STRING_W` next to it hold the same number as text. The ASI loader logs the wide one, and the log's
-"LE<n>PauseAnytime N ready" line prints the other. `package.sh` stops if they differ.
+`VERSION_STRING_W` next to it hold the same number as text. The log's `LE<n>PauseAnytime <N> ready` line prints the
+first, and the ASI loader logs the second. `package.sh` stops if they differ.
 
-`src/PauseAnytime.rc` gives each file the Windows version `N.0.<game id>.<group id>`, as the LExASIs projects do:
+`src/PauseAnytime.rc` gives each file the Windows version `<N>.0.<game id>.<group id>`, as the LExASIs projects do. The
+game id is the one ME3Tweaks uses: 4 for LE1, 5 for LE2 and 6 for LE3. The group id is 0 until ME3Tweaks assigns one.
 
-- The game id is ME3Tweaks' id for the game: 4, 5 and 6 for LE1, LE2 and LE3.
-- The group id is 0 until ME3Tweaks assigns one.
-
-Changes per version are in [CHANGELOG.md](CHANGELOG.md).
+The changes in each version are in [CHANGELOG.md](CHANGELOG.md).

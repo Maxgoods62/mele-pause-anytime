@@ -5,92 +5,105 @@
 Pause Anytime writes a log at `<LE folder>\Game\ME<n>\Binaries\Win64\Logs\PauseAnytime.log`, where `<n>` is the
 game's number. It rewrites the file each time the game starts, so copy it before you start the game again.
 
-- A line that ends in `LE<n>PauseAnytime N ready` means that Pause Anytime loaded. N is the version.
+- A line that ends in `LE<n>PauseAnytime N ready` means that Pause Anytime loaded. N is the version. The line is there
+  even when a part of Pause Anytime turned itself off, so read the warnings above it too.
+- No log, or a log from before you started the game, means that Pause Anytime did not load.
 - Each press of Esc or Start that reaches Pause Anytime adds a line with `Esc pressed` or `Start pressed`. The line
-  says what Pause Anytime did, such as `paused the world`, or `vanilla` when it left the key to the game.
-- A line with `not found at RVA` and `another build of the game?` means that a part of Pause Anytime turned itself off.
-  See [Another version of the game](#another-version-of-the-game).
+  says what Pause Anytime did, such as `paused the world` or `resumed the world`. `vanilla` there means that it left
+  the key to the game, as in the game without mods.
+- A pause adds `world paused in mode ...`, and its end adds `world resumed ...` or `world pause ended ...`.
+- Lines marked `warning` or `error` say what went wrong and what Pause Anytime turned off.
 
-No log, or a log from before you started the game, means that Pause Anytime did not load.
+Warnings and errors reach the file at once, and other lines within a few seconds. After a crash, the last seconds of
+the log can be missing.
 
 ## Common problems
 
 | Problem | Likely cause | What to do |
 |---|---|---|
-| Nothing pauses, and there is no new `PauseAnytime.log` | No ASI loader, or the file is in the wrong folder | Check both ([install.md](install.md#before-you-start)). |
-| Esc does nothing in a conversation, and the log has no `Esc pressed` line | A game menu that was taking the keys got Esc first | Known issue, with no fix yet. |
-| Esc closes the console | The console was open | Esc closes it, as in the normal game. Press Esc again. |
+| Nothing pauses, and there is no new `PauseAnytime.log` | No ASI loader, or the file is in the wrong folder | Check both ([install.md](install.md#before-you-start)). Each file works only in its own game. |
+| Esc opens the pause menu, or does nothing | The game was not in a conversation or a cutscene | The `Esc pressed` line names the game's mode. Pause Anytime pauses only in a conversation or a cutscene. |
 | A movie does not pause | Pause Anytime cannot pause that movie | See [which movies pause](using.md#movies). |
-| The game crashes with Pause Anytime installed | An old Visual C++ runtime (`msvcp140.dll`) | Install the latest [Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe). |
-| A plain "PAUSE" text shows instead of the pause screen | The pause screen cannot be drawn | The pause still works. See [below](#plain-pause-text). |
-| The picture is only darker, not blurred | The blur does not handle that screen format | The pause still works. |
-| No photo mode key on the pause screen, or the photo camera does not move | Another version of the game | See [below](#another-version-of-the-game). |
-| The gamepad buttons on the pause screen are drawn circles | The game could not give its button pictures | The log says why. The pause still works. |
+| Esc closes the console | The console was open | Esc closes it, as in the game without mods. Press Esc again to pause. |
+| The game crashes with Pause Anytime installed | An old Visual C++ runtime | Install the latest [Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe). |
+| The game closes at start, and the log ends with `failed to resolve` and `Fatal assertion` lines | Pause Anytime could not start in the game. Two copies of it in one `ASI` folder can cause this. | Keep only one copy of Pause Anytime in each `ASI` folder. If there is only one, report it with the log. |
+| The scene stays paused after a resume | Another pause holds the game, or Pause Anytime met an error | See [The scene stays paused](#the-scene-stays-paused). |
+| A plain "PAUSE" text shows instead of the pause screen | The pause screen cannot be drawn | The pause still works. See [Plain PAUSE text](#plain-pause-text). |
+| The picture is only darker, not blurred | The blur could not start on this screen | The pause still works. The log says why, in lines that start with `pause blur:`. |
+| No photo mode key on the pause screen, or the photo camera does not move | A part of photo mode turned itself off | See [After a game update](#after-a-game-update). |
+| The gamepad buttons on the pause screen are drawn circles | The game's own button pictures could not be used | The pause still works. The log says why. |
+
+### The scene stays paused
+
+The log says why. `the world stays paused by` means that the game no longer has the player who paused.
+`still paused by` means that another pause holds the game, such as the Steam overlay: closing the overlay ends it. If
+the scene still does not go on, and you have turned on the game's console, its `pause` command resumes the game.
+Please report it, with the log.
 
 ### Plain PAUSE text
 
-Pause Anytime falls back to a plain "PAUSE" text, with the keys under it, when it cannot draw its pause screen. One
-cause is a Windows without `d3dcompiler_47.dll` in `System32`. Pause Anytime also falls back when its pause screen fails
-to start or fails while the game runs. The log then has a line about it. During a movie pause there is no such text,
-because the game's HUD does not draw over a fullscreen movie.
+When Pause Anytime cannot draw its pause screen, it shows a plain "PAUSE" text with two keys under it. This text is
+always in English, and it names the photo mode key even where photo mode cannot open. One cause is a Windows install
+with no `d3dcompiler_47.dll` in `System32`. Pause Anytime also shows this text when its pause screen fails to start,
+or fails while the game runs. The log then has a line with `the Canvas banner instead`.
 
-### Another version of the game
+A paused movie gets no such text. If the pause screen cannot be drawn, the movie only stops on its picture.
 
-Pause Anytime checks the game's code before it hooks photo mode, and in LE2 and LE3 before it hooks the movie keys. If
-the code differs, for example after a game update, the log shows a warning and that part turns off:
+### After a game update
 
-- Photo mode still opens, but its camera, its panel or its sounds may not respond.
+Before it changes some parts of the game, Pause Anytime checks that they are the ones it knows: photo mode's camera,
+panel and sounds, and in LE2 and LE3 the keys in movies. If one differs, for example after a game update, the log has
+a warning with `another build of the game?`, and that part turns off:
+
+- Photo mode still opens, but its camera, its panel or (in LE1) its sounds may not answer.
 - Without the camera part or the panel part, the pause screen leaves out the photo mode key.
-- In LE2 and LE3, Esc and Start skip a skippable movie as in the normal game. In LE2, Space and X then skip nothing.
-- The gamepad buttons on the pause screen are drawn circles, and the log has a warning.
+- In LE1, without the sound part, the pause makes no menu sound either.
+- In LE2 and LE3, Esc and Start skip a movie that the game lets you skip, as in the game without mods. In LE2, Space
+  and X then skip no movie.
+
+The game's button pictures are checked too. If they can't be used, the pause screen draws its own circles, and the log
+has a line that says why.
+
+If the game crashes at start after an update, delete the Pause Anytime file and report it.
 
 ## Known issues
 
 - Loading-screen movies do not pause.
-- In LE1, a movie that Esc skips in the normal game is still skipped. The game acts on Esc before Pause Anytime sees it.
-- In LE2 and LE3, a movie whose sound Pause Anytime cannot stop with the picture does not pause. Esc and Start work as
-  in the normal game there.
-- In LE3, Esc in a movie that plays inside a cutscene or a conversation is not tested yet.
-- In the open console, Esc closes the console, as in the normal game.
-- In a conversation or a cutscene, a game menu that is taking the keys can get Esc before Pause Anytime sees it. Then
-  nothing pauses.
-- During a movie, Pause Anytime reads Esc straight from the keyboard. It ignores a press while another program's
-  window is in front.
-- During a movie, any Esc pressed while the game's window is in front pauses or resumes the movie. That includes an Esc
-  meant to close the console or the Steam overlay.
-- Pause Anytime does not take a key pressed in the first quarter second of a movie. That key works as in the normal
-  game, so Esc still skips a movie that the game lets you skip.
+- In LE1, a movie that Esc skips in the game without mods is still skipped, because the game acts on Esc first.
+- In LE2 and LE3, a movie pauses only when Pause Anytime can stop its sound with the picture. In the other movies,
+  Esc and Start work as in the game without mods.
+- In LE3, Esc during a movie in a conversation can pause the conversation while the movie plays on. Most other movies
+  inside a cutscene or a conversation are not tested yet.
+- In the first moment of a movie (a quarter second at most), Esc works as in the game without mods, so it can skip a
+  movie that the game lets you skip.
+- During a movie that Pause Anytime can pause, Esc counts only while the game's window is in front. Then every Esc
+  counts, even one meant to close the console or the Steam overlay.
 - With a menu open over a fullscreen movie, Esc and Start go to the movie.
-- In an LE1 movie, Start acts when you let go of it, or after about 0.2 s if you hold it. The game can lose the release
-  of Start, for example when another window takes the focus. So if a Start press sends nothing for half a second, Pause
-  Anytime counts it as over. The next press of Start then counts as a new one.
-- Closing the Steam overlay during a pause ends the pause, and the scene resumes by itself.
-- If you resize the window while a movie is paused, the old picture stays until the movie resumes.
+- In an LE1 movie, Start acts when you let go of it, or after about 0.2 s if you hold it.
+- Closing the Steam overlay during a pause ends the pause, and the scene goes on by itself.
+- If you resize the window while a movie is paused, the pause screen is not drawn again until the movie goes on.
 
 ## Compatibility
 
-- MeleBridge: works side by side with Pause Anytime. Pause Anytime does not need it, or any other mod.
-- The Steam overlay, ReShade and MeleBridge's editor: each of them draws over the picture too. Whichever one draws last
-  is on top.
+- Other ASI mods: Pause Anytime shares the ASI loader with them. MeleBridge, from
+  [mele-maxgoods-toolkit](https://github.com/Maxgoods62/mele-maxgoods-toolkit), works side by side with it. Pause
+  Anytime does not need it, or any other mod.
+- The Steam overlay and ReShade draw over the picture too. Whichever one draws last is on top.
 - Resolutions: the pause screen works at any resolution and aspect ratio. Its sizes follow the height of the picture,
   and its layout is made for a picture 1080 pixels high.
-- Gamepads: tested with an Xbox pad only. A PlayStation pad through Steam Input or DS4Windows is not tested yet
-  ([Gamepads](using.md#gamepads)).
-- Another version of the game: some parts turn off ([above](#another-version-of-the-game)).
+- Gamepads: only an Xbox pad is tested, and the pause screen shows Xbox buttons. A PlayStation pad has to reach the
+  game as an Xbox pad, through Steam Input or DS4Windows. That is not tested yet.
 
 ## Report a bug
 
 Open an [issue](https://github.com/Maxgoods62/mele-pause-anytime/issues) and fill in the bug report form. It asks for:
 
-- the game;
-- what happened, and the steps that make it happen again;
+- the game, and what happened;
+- the steps that make it happen again: where in the game, and the keys or buttons you pressed;
 - the Pause Anytime version, which is the number in the log's `ready` line;
-- Steam or the EA app;
-- the game version, if you know it;
-- the files in the game's `ASI` folder;
-- your other mods;
-- keyboard, or which gamepad you use;
-- the log file.
+- Steam or the EA app, and the game version if you know it;
+- the files in the game's `ASI` folder, and your other mods;
+- keyboard, or which gamepad you use.
 
 Attach `Logs\PauseAnytime.log` from `<LE folder>\Game\ME<n>\Binaries\Win64`. Pause Anytime rewrites it each time the
-game starts, so copy it before you start the game again.
+game starts, so copy it before you start the game again. If the game crashed, say so.

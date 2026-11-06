@@ -58,8 +58,9 @@ EOF
             ;;
         LE3) cat <<'EOF'
 - LE3: the movies that pause include the mass relay jump. In a skippable cutscene, Esc pauses
-  instead of skipping. Space, or X on a gamepad, still skips the cutscene. What Esc does in a
-  movie played inside a cutscene or a conversation is not tested yet.
+  instead of skipping. Space, or X on a gamepad, still skips the cutscene. In a test, Esc
+  during a movie inside a conversation paused the conversation, and the movie played on.
+  Other cases are not tested yet.
 EOF
             ;;
         *) return 1 ;;

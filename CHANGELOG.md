@@ -48,12 +48,13 @@ In LE1 the only other changes are that the short dashes beside the title's band 
   folders `LE1`, `LE2` and `LE3` with each game's `.asi`, and a `LICENSE` folder with the license texts. A `v<N>` zip
   must hold every released game: `package.sh` stops if the games picked leave one out.
 - GitHub now builds the zip: from `main` for the latest page, and from a `v<N>` tag for a release. Each comes with its
-  SHA-256 hashes ([docs/releasing.md](docs/releasing.md)).
+  SHA-256 hashes ([how releases work](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/docs/releasing.md)).
 - `build.sh` also runs in Git Bash, and `package.sh` takes `--label`.
 - The `.asi` holds no path of the build machine: source paths start at `\LExASIs\`, and the `.pdb` is named without
   its folder.
-- The attestation checks in [docs/releasing.md](docs/releasing.md) and the release notes add `--signer-workflow`, and a
-  latest zip is checked with `--source-ref refs/heads/main`.
+- The attestation checks in the toolkit's
+  [Check a download](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/docs/releasing.md#check-a-download)
+  and the release notes add `--signer-workflow`, and a latest zip is checked with `--source-ref refs/heads/main`.
 
 ## v17 (unreleased)
 
@@ -250,7 +251,7 @@ other ASIs' hooks (below).
 - `build.sh` and `package.sh` take `--game LE1|LE2|LE3|all`, once per game, or the setting `MELE_GAMES`; by default
   they build the released games, LE1. `src/CMakeLists.txt` also builds `LE2PauseAnytime.asi`, with photo mode and the
   movie pause off; it is not released ([docs/games/LE2.md](docs/games/LE2.md)). See
-  [BUILDING.md](BUILDING.md#games).
+  [BUILDING.md](BUILDING.md#build).
 - `--install` checks every game before the build: the ASI loader, the ASI folder, and the game closed. It checks again
   before it copies.
 - `package.sh` writes one zip per game, `dist/LE<n>PauseAnytime-v<N>.zip`.
