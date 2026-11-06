@@ -16,7 +16,7 @@ SPI_IMPLEMENT_ATTACH
     ::LESDK::Initializer Init{ InterfacePtr, SDK_TARGET_NAME_A ASI_NAME_NO_SPACE_A };
 
     ::PauseAnytime::InitializeGlobals(Init);
-    ::PauseAnytime::InstallHooks(Init);
+    if (!::PauseAnytime::InstallHooks(Init)) return false;
     ::PauseAnytime::Bink::Install(Init, ::PauseAnytime::Game::Movies, ::PauseAnytime::Game::BinkAudioMovies, ::PauseAnytime::Game::MovieLanguages,
                                ::PauseAnytime::Game::MoviePlayer);
     ::PauseAnytime::MovieInput::Install(Init, ::PauseAnytime::Game::MovieInputRva, ::PauseAnytime::Game::MovieInputStart,

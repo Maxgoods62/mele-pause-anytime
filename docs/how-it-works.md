@@ -42,8 +42,11 @@ The attach sets up `Logs\PauseAnytime.log` (rewritten at each start) and the SDK
 hooks `ProcessEvent` and photo mode's natives. Then come `Bink::Install`, `MovieInput::Install`, `Overlay::Install`,
 and the line `LE<n>PauseAnytime <version> ready`, even when a part turned itself off.
 
-A part that cannot hook logs what it loses and stays off. Only the core checks are fatal (GEngine, `ProcessEvent` and
-its hook, the SDK's globals): a failed one logs `failed to resolve <name>` and aborts the game. `ProcessEvent` and
+A part that cannot hook logs what it loses and stays off. Only the core checks are fatal (GEngine, `ProcessEvent`, the
+SDK's globals): a failed one logs `failed to resolve <name>` and aborts the game. If the loader refuses the `ProcessEvent`
+hook, the attach logs `the loader refused the ProcessEvent hook` and stops there: no other part is hooked, no "ready"
+line is written, and the game goes on without Pause Anytime. The loader names each hook after the plugin name built
+into the file, so a second copy of the ASI under another file name asks for names that are taken. `ProcessEvent` and
 GEngine are at fixed RVAs of the pinned SDK, and nothing checks their bytes. Every other native has its first bytes
 compared before it is hooked, and on another build the log says `not found at RVA ... (another build of the game?)`.
 The RVAs come from a memory dump of the running game, since the exe's code is encrypted on disk.
@@ -364,8 +367,6 @@ longer lifts a movie pause.
 - Does a TRUE return from `Console.InputKey` keep a key from PlayerInput's binds? A log line
   `SkipCinematic on ...: dropped, our Esc` would show that the bind still fired.
 - Another build of the exe: the core hook and GEngine have no byte check, so the effect of a game update is not known.
-- Two copies of the ASI under one plugin name: the code has no check for it. If the loader refuses the second hook of
-  the same name, the second copy aborts the game at start (`failed to resolve orig`). Not run.
 - Other ASIs and overlays (ReShade, the Steam overlay): which hook sees a key first, or draws on top, depends on the
   loader's order and is not tested.
 - A Matinee-track movie in a conversation or a cutscene: if the mode stays Conversation or Cinematic, Esc pauses the

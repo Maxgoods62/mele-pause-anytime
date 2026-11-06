@@ -41,6 +41,8 @@ In LE1 the only other changes are that the short dashes beside the title's band 
   frame.
 - The pause screen's shaders compile when the game starts, not at the first pause.
 - A fault in the pause screen is now logged, with the module it came from.
+- A second copy of Pause Anytime in the same `ASI` folder, under another file name, no longer closes the game at start.
+  That copy stays off and says so in the log.
 
 ### For builders
 

@@ -2,6 +2,7 @@
 #include "PauseAnytime/Engine.hpp"
 #include "PauseAnytime/Photo.hpp"
 #include "PauseAnytime/game/Game.hpp"
+#include "PauseAnytime/SharedVersion.h"
 #include "Common/Objects.hpp"
 
 #include <algorithm>
@@ -1299,17 +1300,25 @@ namespace PauseAnytime
         CHECK_RESOLVED(GEngine);
     }
 
-    void InstallHooks(::LESDK::Initializer& Init)
+    bool InstallHooks(::LESDK::Initializer& Init)
     {
         auto const target = Init.ResolveTyped<t_UObject_ProcessEvent>(BUILTIN_PROCESSEVENT_RVA);
         CHECK_RESOLVED(target);
         auto const orig = static_cast<t_UObject_ProcessEvent*>(Init.InstallHook("UObject::ProcessEvent", target, ProcessEvent_hook));
-        CHECK_RESOLVED(orig);
+        // The loader names a hook after the plugin name compiled into the file, so a copy of this file under another name
+        // asks for the same name, and the loader refuses it. The copy that loaded first keeps working.
+        if (orig == nullptr)
+        {
+            LEASI_ERROR("the loader refused the ProcessEvent hook: is a second copy of " SDK_TARGET_NAME_A ASI_NAME_NO_SPACE_A
+                        " in the ASI folder under another name? Keep only one. This copy stays off");
+            LEASI_FLUSH();
+            return false;
+        }
         ProcessEvent_orig.store(orig, std::memory_order_release);
         LEASI_INFO("ProcessEvent hooked");
 
         PhotoMode::InstallHooks(Init);
-
+        return true;
     }
 
     DWORD GameThread() { return GameThreadId.load(std::memory_order_relaxed); }

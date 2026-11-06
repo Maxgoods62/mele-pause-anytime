@@ -26,7 +26,8 @@ the log can be missing.
 | A movie does not pause | Pause Anytime cannot pause that movie | See [which movies pause](using.md#movies). |
 | Esc closes the console | The console was open | Esc closes it, as in the game without mods. Press Esc again to pause. |
 | The game crashes with Pause Anytime installed | An old Visual C++ runtime | Install the latest [Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe). |
-| The game closes at start, and the log ends with `failed to resolve` and `Fatal assertion` lines | Pause Anytime could not start in the game. Two copies of it in one `ASI` folder can cause this. | Keep only one copy of Pause Anytime in each `ASI` folder. If there is only one, report it with the log. |
+| The log says `the loader refused the ProcessEvent hook` | Two copies of Pause Anytime are in one `ASI` folder, under different file names | Keep only one copy in each `ASI` folder. The copy that loaded first still works. |
+| The game closes at start, and the log ends with `failed to resolve` and `Fatal assertion` lines | Pause Anytime could not start in this build of the game | Report it with the log. |
 | The scene stays paused after a resume | Another pause holds the game, or Pause Anytime met an error | See [The scene stays paused](#the-scene-stays-paused). |
 | A plain "PAUSE" text shows instead of the pause screen | The pause screen cannot be drawn | The pause still works. See [Plain PAUSE text](#plain-pause-text). |
 | The picture is only darker, not blurred | The blur could not start on this screen | The pause still works. The log says why, in lines that start with `pause blur:`. |

@@ -15,6 +15,7 @@ namespace PauseAnytime
     void InitializeGlobals(::LESDK::Initializer& Init);
 
     /// ProcessEvent: Esc and a gamepad's Start in Console.InputKey, what the pause screen shows after BioHUD.PostRender, and
-    /// the skips Esc is bound to while our key is down.
-    void InstallHooks(::LESDK::Initializer& Init);
+    /// the skips Esc is bound to while our key is down. False when the loader refuses the hook (a second copy of the file):
+    /// then nothing else may be installed.
+    bool InstallHooks(::LESDK::Initializer& Init);
 }
