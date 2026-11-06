@@ -199,6 +199,8 @@ License
 
 Pause Anytime is GPL-3.0 (LICENSE\\LICENSE). Third-party code and fonts: LICENSE\\THIRD_PARTY.md.
 Source code: https://github.com/Maxgoods62/mele-pause-anytime
+
+All of the code was written by an LLM, Claude Opus 5.5, from my instructions.
 EOF
 } > "$PKG/README.txt"
 

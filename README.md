@@ -10,6 +10,9 @@ open the game's photo mode on the same shot. The pause screen is hidden in photo
 Everywhere else the keys do what they do in the game without mods, except Space and X in LE2 movies. Pause Anytime has
 no settings.
 
+All of the code here was written by an LLM, Claude Opus 5.5, through Claude Code, from my instructions. I decide what
+to build and I test the results in the game.
+
 ## Keys
 
 | Keyboard | Gamepad | What it does |
@@ -43,7 +46,9 @@ number: 1, 2 or 3.
    and an `ASI` folder. If they are missing, install any mod once with ME3Tweaks Mod Manager. It adds the loader,
    [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy).
 2. Install the latest [Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe).
-3. Download `PauseAnytime-v<N>.zip` from [Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases).
+3. Download `PauseAnytime-v<N>.zip` from the
+   [Nexus Mods page](https://www.nexusmods.com/masseffectlegendaryedition/mods/3539) or from
+   [Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases).
 4. Close the game. Copy the file of each game you play into that game's `ASI` folder:
 
    | File in the zip | Copy it into |

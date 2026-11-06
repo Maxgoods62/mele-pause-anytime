@@ -28,7 +28,8 @@ needs it, and an older one can make the game crash.
 
 ## Download
 
-Download the zip from [Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases). It is named
+Download the zip from the [Nexus Mods page](https://www.nexusmods.com/masseffectlegendaryedition/mods/3539) or from
+[Releases](https://github.com/Maxgoods62/mele-pause-anytime/releases). Both have the same file. It is named
 `PauseAnytime-v<N>.zip`, where N is the version. It holds:
 
 - one folder for each game, `LE1`, `LE2` and `LE3`, with that game's `.asi` file;
