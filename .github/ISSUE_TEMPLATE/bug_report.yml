@@ -35,7 +35,7 @@ body:
     id: version
     attributes:
       label: Pause Anytime version
-      description: The number in the log line that ends in "LE<n>PauseAnytime N ready".
+      description: The version in the log line that ends in "LE<n>PauseAnytime N ready", such as 1.0.
     validations:
       required: true
   - type: textarea

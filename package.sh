@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Build LE<n>PauseAnytime.asi for each game picked with build.sh and pack them for a release in one zip,
-# dist/PauseAnytime-<label>.zip, where the label is v<N> and N is ASI_VERSION in src/SharedVersion.h, and write
+# dist/PauseAnytime-<label>.zip, where the label is v<N> and N is the version in src/SharedVersion.h, and write
 # dist/SHA256SUMS over it. The zip holds a single README.txt that covers all the games, a folder per game
 # (LE1\LE1PauseAnytime.asi, ...) and a LICENSE folder: LICENSE, THIRD_PARTY.md, OFL.txt and the MIT license texts of spdlog
 # and Dear ImGui. No .pdb: it stays in dist/stage with the build's ASI.
 #
 #   ./package.sh [--game LE1|LE2|LE3|all]...   the games as build.sh picks them (default: MELE_GAMES, else the released
 #                                              games); a v<N> label needs every released game
-#   ./package.sh ... --label latest            another label for the file name; a label like v18 must be this version
+#   ./package.sh ... --label latest            another label for the file name; a label like v1.0 must be this version
 # Runs where build.sh runs, with python and the same settings (the environment, then build.env); it sets MELE_STAGE to
 # dist/stage itself. It builds only: nothing is installed into the game.
 set -euo pipefail
@@ -37,19 +37,22 @@ while (( $# > 0 )); do
     esac
 done
 
-# ASI_VERSION, VERSION_STRING_A (the number the log's "LE<n>PauseAnytime N ready" line prints) and VERSION_STRING_W (the
-# one the ASI loader logs) must agree. PauseAnytime.rc's four-part version is made from ASI_VERSION.
+# The version is ASI_VERSION_MAJOR.ASI_VERSION_MINOR, such as 1.0. VERSION_STRING_A (the version the log's
+# "LE<n>PauseAnytime N ready" line prints) and VERSION_STRING_W (the one the ASI loader logs) must be that text.
+# PauseAnytime.rc's four-part version is made from the two numbers.
 VER_H="$HERE/src/SharedVersion.h"
-VERSION="$(sed -n 's/^#define ASI_VERSION \([0-9][0-9]*\)[[:space:]]*$/\1/p' "$VER_H")"
-[[ -n "$VERSION" ]] || die "no ASI_VERSION in $VER_H"
+MAJOR="$(sed -n 's/^#define ASI_VERSION_MAJOR \([0-9][0-9]*\)[[:space:]]*$/\1/p' "$VER_H")"
+MINOR="$(sed -n 's/^#define ASI_VERSION_MINOR \([0-9][0-9]*\)[[:space:]]*$/\1/p' "$VER_H")"
+[[ -n "$MAJOR" && -n "$MINOR" ]] || die "no ASI_VERSION_MAJOR or ASI_VERSION_MINOR in $VER_H"
+VERSION="$MAJOR.$MINOR"
 VERSION_A="$(sed -n 's/^#define VERSION_STRING_A "\([^"]*\)"[[:space:]]*$/\1/p' "$VER_H")"
-[[ "$VERSION_A" == "$VERSION" ]] || die "VERSION_STRING_A \"$VERSION_A\" differs from ASI_VERSION $VERSION in $VER_H"
+[[ "$VERSION_A" == "$VERSION" ]] || die "VERSION_STRING_A \"$VERSION_A\" differs from the version $VERSION in $VER_H"
 VERSION_W="$(sed -n 's/^#define VERSION_STRING_W L"\([^"]*\)"[[:space:]]*$/\1/p' "$VER_H")"
-[[ "$VERSION_W" == "$VERSION" ]] || die "VERSION_STRING_W L\"$VERSION_W\" differs from ASI_VERSION $VERSION in $VER_H"
+[[ "$VERSION_W" == "$VERSION" ]] || die "VERSION_STRING_W L\"$VERSION_W\" differs from the version $VERSION in $VER_H"
 
-# A tag's build passes the tag as the label, so a v19 tag on v18's sources stops here.
+# A tag's build passes the tag as the label, so a v1.1 tag on v1.0's sources stops here.
 LABEL="${label:-v$VERSION}"
-[[ ! "$LABEL" =~ ^v[0-9]+$ || "$LABEL" == "v$VERSION" ]] || die "label $LABEL differs from ASI_VERSION $VERSION in $VER_H"
+[[ ! "$LABEL" =~ ^v[0-9]+(\.[0-9]+)?$ || "$LABEL" == "v$VERSION" ]] || die "label $LABEL differs from the version $VERSION in $VER_H"
 COMMIT="$(git -C "$HERE" rev-parse HEAD)" || die "no git commit in $HERE: the zip's README.txt names it"
 # The first one that runs: on Windows, python3 can be the Microsoft Store's stub, which only prints a message.
 PYTHON=""
@@ -67,7 +70,7 @@ done
 
 # The games, passed to build.sh as --game. A release is one zip, so it holds them all.
 pick_games "${names[@]}"
-[[ ! "$LABEL" =~ ^v[0-9]+$ || "${GAMES[*]}" == "${RELEASED_GAMES[*]}" ]] \
+[[ ! "$LABEL" =~ ^v[0-9]+(\.[0-9]+)?$ || "${GAMES[*]}" == "${RELEASED_GAMES[*]}" ]] \
     || die "label $LABEL packs ${GAMES[*]}: a release zip needs every released game (${RELEASED_GAMES[*]})"
 
 # Git Bash has cygpath in place of wslpath, as in build.sh.

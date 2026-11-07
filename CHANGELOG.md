@@ -1,14 +1,14 @@
 # Changelog
 
-Each version is `ASI_VERSION` in `src/SharedVersion.h`, one number for every game. No version before v18 was published:
-v2 to v17 were test builds, and the dates on v2 to v5 are the days they were committed. The first line of each entry
-names the games it covers. Every version needs an ASI loader.
+The version is set in `src/SharedVersion.h`, one for every game. v1.0 is the first public release. The versions below
+it, v2 to v17, were test builds that were never published, and the dates on v2 to v5 are the days they were committed.
+The first line of each entry names the games it covers. Every version needs an ASI loader.
 
-## v18 (2026-11-07)
+## v1.0 (2026-11-07)
 
 Games: LE1, LE2, LE3
 
-Pause Anytime v18 is the first public release. Esc, or Start on a gamepad, pauses conversations, in-engine cutscenes
+Pause Anytime v1.0 is the first public release. Esc, or Start on a gamepad, pauses conversations, in-engine cutscenes
 and some fullscreen movies. The same key resumes them. A pause screen in the style of the game's menus comes up. In a
 paused conversation or cutscene, Y or F7 opens the game's photo mode on the paused shot.
 
@@ -46,7 +46,9 @@ In LE1 the only other changes are that the short dashes beside the title's band 
 
 ### For builders
 
-- `package.sh` writes one zip for the three games, `dist/PauseAnytime-v18.zip`. The zip holds one `README.txt`, the
+- The version has a minor number now, so the first public release is v1.0: `ASI_VERSION_MAJOR` and
+  `ASI_VERSION_MINOR` in `src/SharedVersion.h`. The release workflow takes `v<N>.<M>` tags as well as `v<N>`.
+- `package.sh` writes one zip for the three games, `dist/PauseAnytime-v1.0.zip`. The zip holds one `README.txt`, the
   folders `LE1`, `LE2` and `LE3` with each game's `.asi`, and a `LICENSE` folder with the license texts. A `v<N>` zip
   must hold every released game: `package.sh` stops if the games picked leave one out.
 - GitHub now builds the zip: from `main` for the latest page, and from a `v<N>` tag for a release. Each comes with its

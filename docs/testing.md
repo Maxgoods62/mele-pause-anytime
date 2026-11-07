@@ -203,7 +203,7 @@ In this order:
 - `Bink: bink2w64_original.dll hooked (...), BinkPause true: movie pause on (Esc read in BinkWait)`;
 - LE2 and LE3: `movie input hooked: ...`, which in LE2 ends with `given as Enter`;
 - `overlay: swap chain hooks Present true ...`;
-- a line that ends in `LE<n>PauseAnytime N ready`, where N is the build's `ASI_VERSION`.
+- a line that ends in `LE<n>PauseAnytime N ready`, where N is the build's version, such as 1.0.
 
 ### At the first frames
 

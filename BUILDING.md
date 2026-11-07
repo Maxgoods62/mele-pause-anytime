@@ -56,8 +56,10 @@ A game name is `LE1`, `LE2`, `LE3` or `all`, in upper or lower case. `all` means
 `./package.sh` checks the version, empties `dist/stage` and builds there with `build.sh`. Then it packs
 `dist/PauseAnytime-<label>.zip` and writes the hash of that zip to `dist/SHA256SUMS`. It never installs anything.
 
-- The label is `v<N>` by default, where N is `ASI_VERSION`. `--label latest` makes `PauseAnytime-latest.zip`.
-- A label made of `v` and a number must be `v<ASI_VERSION>`, and its zip must hold every released game. For a zip of
+- The label is `v<N>` by default, where N is the [version](#version), such as `v1.0`. `--label latest` makes
+  `PauseAnytime-latest.zip`.
+- A label made of `v` and a version, such as `v1.0` or `v2`, must be this version, and its zip must hold every released
+  game. For a zip of
   one game, use another label: `./package.sh --game LE2 --label test`.
 - Each run deletes this label's zip and `SHA256SUMS` first. Zips with other labels stay, but `SHA256SUMS` lists only
   the new zip.
@@ -231,9 +233,9 @@ and `checking out LExASIs ... and its submodules in ...` (the first build, a new
 | `package.sh` says | What to do |
 |---|---|
 | `--label needs a name` | Put a name after `--label`. |
-| `no ASI_VERSION in ...` | Put back the `#define ASI_VERSION <number>` line in `src/SharedVersion.h`. |
-| `VERSION_STRING_A "..." differs from ASI_VERSION ...` (or `VERSION_STRING_W`) | Set both strings to the version number. |
-| `label v... differs from ASI_VERSION ...` | Use `v<ASI_VERSION>`, or a label that is not `v` and a number. |
+| `no ASI_VERSION_MAJOR or ASI_VERSION_MINOR in ...` | Put back both `#define` lines, each with a number, in `src/SharedVersion.h`. |
+| `VERSION_STRING_A "..." differs from the version ...` (or `VERSION_STRING_W`) | Set both strings to the version, such as `1.0`. |
+| `label v... differs from the version ...` | Use `v` and the version, or a label that is not a version. |
 | `no git commit in ...` | Run it in a git clone, with `git` in your shell. The zip's `README.txt` names the commit. |
 | `no python that runs: install python3` | Install Python. On Windows, `python3` can be the Microsoft Store stub, which does not run. |
 | `label v... packs ...: a release zip needs every released game` | Leave out `--game`, or use another label. |
@@ -254,11 +256,14 @@ env -u LEASI_GAME1_WIN64 -u LEASI_GAME2_WIN64 -u LEASI_GAME3_WIN64 -u LEASI_GAME
 
 ## Version
 
-The version is `ASI_VERSION` in `src/SharedVersion.h`, one number for every game. `VERSION_STRING_A` and
-`VERSION_STRING_W` next to it hold the same number as text. The log's `LE<n>PauseAnytime <N> ready` line prints the
-first, and the ASI loader logs the second. `package.sh` stops if they differ.
+The version is a number and a minor number, `ASI_VERSION_MAJOR` and `ASI_VERSION_MINOR` in `src/SharedVersion.h`,
+one version for every game: 1.0 is the first public release. The test builds before it were numbered 2 to 18.
+`VERSION_STRING_A` and `VERSION_STRING_W` next to them hold the same version as text, such as `1.0`. The log's
+`LE<n>PauseAnytime <N> ready` line prints the first, and the ASI loader logs the second. `package.sh` stops if they
+differ.
 
-`src/PauseAnytime.rc` gives each file the Windows version `<N>.0.<game id>.<group id>`, as the LExASIs projects do. The
+`src/PauseAnytime.rc` gives each file the Windows version `<major>.<minor>.<game id>.<group id>`. The LExASIs projects
+use the same scheme with 0 for the minor number. The
 game id is the one ME3Tweaks uses: 4 for LE1, 5 for LE2 and 6 for LE3. The group id is 0 until ME3Tweaks assigns one.
 
 The changes in each version are in [CHANGELOG.md](CHANGELOG.md).

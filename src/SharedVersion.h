@@ -10,11 +10,13 @@
 #define ASI_NAME_NO_SPACE_A "PauseAnytime"
 #define ASI_NAME_NO_SPACE_W L"PauseAnytime"
 
-// One version for every game. The log and the loader print it as a plain number, and package.sh checks that the two
-// strings are ASI_VERSION.
-#define ASI_VERSION 18
-#define VERSION_STRING_A "18"
-#define VERSION_STRING_W L"18"
+// One version for every game: a number and a minor number. 1.0 is the first public release; the test builds before it
+// were numbered 2 to 18. The log and the loader print the strings, and package.sh checks that both are
+// ASI_VERSION_MAJOR.ASI_VERSION_MINOR.
+#define ASI_VERSION_MAJOR 1
+#define ASI_VERSION_MINOR 0
+#define VERSION_STRING_A "1.0"
+#define VERSION_STRING_W L"1.0"
 
 // The game this build is for: its file name prefix, and the game and group ids of ME3Tweaks' tooling. Group 0 until
 // ME3Tweaks assigns one.
@@ -39,8 +41,9 @@
 #define ASI_DESCRIPTION "Pauses conversations, cutscenes and movies in Mass Effect 3 (LE3)"
 #endif
 
-// The four-part version of the LExASIs scheme, version.0.game id.group id, for PauseAnytime.rc only.
+// The four-part version of the LExASIs scheme, with the minor number where it has 0: major.minor.game id.group id, for
+// PauseAnytime.rc only.
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
-#define APP_VERSION_RC ASI_VERSION, 0, ASI_GAME_ID_RC, ASI_GROUP_ID_RC
-#define VERSION_STRING_RC TOSTRING(ASI_VERSION) ".0." TOSTRING(ASI_GAME_ID_RC) "." TOSTRING(ASI_GROUP_ID_RC)
+#define APP_VERSION_RC ASI_VERSION_MAJOR, ASI_VERSION_MINOR, ASI_GAME_ID_RC, ASI_GROUP_ID_RC
+#define VERSION_STRING_RC TOSTRING(ASI_VERSION_MAJOR) "." TOSTRING(ASI_VERSION_MINOR) "." TOSTRING(ASI_GAME_ID_RC) "." TOSTRING(ASI_GROUP_ID_RC)
