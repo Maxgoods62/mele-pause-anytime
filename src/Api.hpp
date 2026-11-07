@@ -132,8 +132,8 @@ namespace PauseAnytime
 
     namespace Overlay
     {
-        /// Hooks the swap chain's Present, Present1 and ResizeBuffers: the pause screen is drawn into the back buffer, in
-        /// <paramref name="look"/>. Without them (logged) Pause.cpp draws its Canvas banner.
+        /// Hooks the swap chain's Present, Present1, ResizeBuffers and ResizeBuffers1: the pause screen is drawn into the back
+        /// buffer, in <paramref name="look"/>. Without them (logged) Pause.cpp draws its Canvas banner.
         void Install(::LESDK::Initializer& Init, OverlayLook look);
 
         /// The title and the two labels in the game's own words, read from its string table (UTF-8). Each one replaces ours
@@ -163,7 +163,8 @@ namespace PauseAnytime
         /// screen is presented from here over its last frame (60 a second at most). Only on the thread that presents.
         void MovieIdle();
 
-        /// The pause screen started on the game's swap chain and hasn't failed: Pause.cpp's Canvas banner stays off.
+        /// The pause screen started on the game's swap chain, hasn't failed, and that swap chain presented in the last 250 ms:
+        /// Pause.cpp's Canvas banner stays off.
         bool Drawing();
     }
 

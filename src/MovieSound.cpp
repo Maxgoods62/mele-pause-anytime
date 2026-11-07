@@ -36,7 +36,9 @@ namespace PauseAnytime::MovieSound
         std::atomic<t_ExecuteActionOnEvent*> ExecuteActionOnEvent_fn{ nullptr };
         std::atomic<t_GetIDFromString*> GetIDFromString_fn{ nullptr };
 
-        /// The latch: written on the game thread, read on the movies' threads. Nothing else is done under this lock.
+        /// The latch: written on the game thread, read on the movies' threads. Nothing else is done under this lock: it is
+        /// taken inside Pause.cpp's fault guards, and a fault they take there could leave it held (/EHsc), so what is done
+        /// under it touches only Slot.
         std::mutex LatchLock;
         Latched Slot;
         std::atomic<unsigned> ChangeCount{ 0 };

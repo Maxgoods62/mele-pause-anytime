@@ -131,6 +131,10 @@ namespace PauseAnytime::Bink
             unsigned Reports = 0;
         };
 
+        /// Also taken on the game thread inside Pause.cpp's fault guards (OwnsKeys, Toggle, RequestResume). Under /EHsc a fault
+        /// the guard takes while it is held may skip its unlock, and the movie's thread would then wait at its next BinkWait
+        /// for good. So nothing done under it reads the game's or Bink's memory unguarded (ReadHeader and ReadPlayer guard
+        /// their own reads): only a corrupt heap could fault there.
         std::mutex Lock;
         std::vector<Movie> Movies;
         std::atomic<int> OpenCount{ 0 };

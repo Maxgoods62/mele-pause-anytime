@@ -96,6 +96,11 @@ namespace PauseAnytime
     }
 
     /// An access violation in our code (a pointer the checks missed) fails that call, not the game. No C++ object may
-    /// live in this frame: __try cannot unwind one.
+    /// live in this frame: __try cannot unwind one. The ASI is built with /EHsc, under which the unwind from a fault taken
+    /// here may skip destructors in the frames below: memory is leaked, and a lock taken there could stay held. So code
+    /// under Bink.cpp's Lock and MovieSound.cpp's LatchLock reads only our own memory, and the game's own half-done state
+    /// is the price of the guard. Not /EHa, which would run those destructors: it also lets every catch (...) built into
+    /// our files take an access violation, as spdlog's logging does to rethrow it, and that rethrow is a C++ exception
+    /// this guard doesn't take. A fault in a log call would then end the game.
     bool Guarded(void (*work)(void*), void* context);
 }
