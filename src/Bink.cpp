@@ -19,13 +19,14 @@
 // The pause is applied by that thread at its BinkWait: Bink's calls on one movie belong on one thread. Only there: BinkPause
 // makes BinkWait answer "wait" and stops the sound, so a player that doesn't call BinkWait would keep its picture going, and
 // this Bink (2022.05) hangs a player that pauses and then stops calling BinkWait (fixed by RAD in 2025.05). A movie that
-// hasn't called BinkWait lately isn't paused at all. A resume is applied at the movie's next call of any kind. Esc is read on
-// the movie's own thread, so a silent game thread (a load, a wait for this very movie) neither keeps it from resuming nor
-// lifts the pause. A pause whose movie has made no Bink call for 2 s is dropped by the next Esc at the latest (its thread
-// reads nothing any more: Esc goes back to the game), and Pause.cpp drops it when the HUD draws again. A gamepad's Start
-// can't be read here (XInput goes through the game, and Steam Input may stand in for it): the engine's movie input takes
-// its press too, but its repeats and its release reach Console.InputKey, where Pause.cpp toggles the same pause through
-// Toggle, on the game thread. Every movie logs its threads, how often each call comes, and whether it was a fullscreen one.
+// hasn't called BinkWait lately isn't paused at all. A resume is applied at the movie's next call of any kind on the thread of
+// its BinkWait, and before its close at the latest. Esc is read on the movie's own thread, so a silent game thread (a load, a
+// wait for this very movie) neither keeps it from resuming nor lifts the pause. A pause whose movie has made no Bink call
+// for 2 s reads as over at once (PauseWanted), and is dropped by the next Esc at the latest (its thread reads nothing any
+// more: Esc goes back to the game). A gamepad's Start can't be read here (XInput goes through the game, and Steam Input may
+// stand in for it): the engine's movie input takes its press too, but its repeats and its release reach Console.InputKey,
+// where Pause.cpp toggles the same pause through Toggle, on the game thread. Every movie logs its threads, how often each
+// call comes, and whether it was a fullscreen one.
 // In LE2 (MoviePolicy::BinkAndEvent) most movies have no Bink audio: their sound is a Wwise event a Kismet movie action
 // posts beside the picture. There a fullscreen movie takes the pause keys only if we know its sound: the event latched for
 // it on the game thread, paused and resumed right after BinkPause (MovieSound.cpp), or Bink audio (the game's list). Any
@@ -59,8 +60,9 @@ namespace PauseAnytime::Bink
         /// A movie is paused only if it called BinkWait this recently: its player gates its frames on BinkWait. Polls of Esc
         /// further apart than this start over (a key already down then is no press), except while our movie pause is on.
         constexpr ULONGLONG WaitStaleMs = 500;
-        /// A movie pause whose movie has made no Bink call for this long is dropped by the next Esc at the latest (or another
-        /// movie's poll): nothing reads Esc for it any more, so Esc goes back to the game.
+        /// A movie pause whose movie has made no Bink call for this long (no BinkWait, while the pause is not applied yet) is
+        /// dropped by the next Esc at the latest (or another movie's poll), and PauseWanted reads it as over at once: nothing
+        /// reads Esc for it any more, so Esc goes back to the game.
         constexpr ULONGLONG PausedSilentMs = 2000;
         /// A press of Esc this soon after the last one acted on is a bounce.
         constexpr ULONGLONG DebounceMs = 150;
@@ -113,6 +115,9 @@ namespace PauseAnytime::Bink
             ULONGLONG LastWaitAt = 0;
             /// The latest hooked call of any kind: a pause whose movie stopped calling is dropped.
             ULONGLONG LastCallAt = 0;
+            /// The thread of its latest BinkWait. A resume is applied there only, as a pause is: BinkPause runs outside the
+            /// lock, and two threads applying at once could land BinkPause(1) after BinkPause(0).
+            DWORD WaitThread = 0;
 
             /// BinkAndEvent: the Wwise event paused with the picture, taken when the pause was asked (0: none, Bink audio);
             /// SoundPaused once its pause was sent, until its resume is.
@@ -135,6 +140,9 @@ namespace PauseAnytime::Bink
         unsigned SoundsSeen = 0;
         std::atomic<unsigned> Serial{ 0 };
         std::atomic<bool> Wanted{ false };
+        /// While Wanted: LifeOf the movie whose pause we want. PauseWanted reads it with no lock, so a pause that DropStale would
+        /// drop reads as over before anything calls DropStale.
+        std::atomic<ULONGLONG> WantedLife{ 0 };
         /// BinkPause, BinkWait's hook and BinkClose's are there.
         std::atomic<bool> CanPause{ false };
         /// Set by Install before any hook, under Lock: read under it. The Bink-audio movies as BaseName gives them.
@@ -335,6 +343,11 @@ namespace PauseAnytime::Bink
 
         bool MayPause(Movie const& m);
 
+        /// Under Lock, for a movie whose pause we want: its latest sign of life, from which DropStale counts its silence. Once
+        /// the pause is applied any Bink call counts. Before, only a BinkWait does, since only a BinkWait applies it: a movie
+        /// that calls BinkDoFrame alone would keep a pause it never applies, and the pause keys with it.
+        ULONGLONG LifeOf(Movie const& m) { return (std::max)(m.Paused ? m.LastCallAt : m.LastWaitAt, m.RequestedAt); }
+
         /// Under Lock.
         void Recount()
         {
@@ -342,7 +355,17 @@ namespace PauseAnytime::Bink
             SoundsSeen = MovieSound::Changes();
             OpenCount.store(static_cast<int>(Movies.size()), std::memory_order_relaxed);
             PausableCount.store(static_cast<int>(std::count_if(Movies.begin(), Movies.end(), MayPause)), std::memory_order_relaxed);
-            Wanted.store(std::any_of(Movies.begin(), Movies.end(), [](Movie const& m) { return m.Want; }), std::memory_order_release);
+            auto wanted = false;
+            ULONGLONG life = 0;
+            for (auto const& m : Movies)
+            {
+                if (!m.Want) continue;
+                wanted = true;
+                life = (std::max)(life, LifeOf(m));
+            }
+            // Before Wanted: its release store publishes it to PauseWanted.
+            WantedLife.store(life, std::memory_order_relaxed);
+            Wanted.store(wanted, std::memory_order_release);
         }
 
         /// Under Lock.
@@ -510,9 +533,10 @@ namespace PauseAnytime::Bink
             Poller.RefusedUnlogged = 0;
         }
 
-        /// Under Lock. A pause whose movie has made no Bink call for PausedSilentMs is dropped: its thread neither reads Esc
-        /// nor applies anything any more, and the pause keys must not stay the movies' (Pause.cpp asks OwnsKeys at each). The movie
-        /// stays as BinkPause left it: if it calls again, the resume is applied then.
+        /// Under Lock. A pause whose movie has made no Bink call for PausedSilentMs (LifeOf) is dropped: its thread neither reads
+        /// Esc nor applies anything any more, and the pause keys must not stay the movies' (Pause.cpp asks OwnsKeys at each). The
+        /// movie stays as BinkPause left it: if it calls again, the resume is applied then. A thread that only blocked that long
+        /// is resumed that way too, if anything called this meanwhile: from outside, a blocked thread and a gone one look alike.
         void DropStale(ULONGLONG now)
         {
             if (!Wanted.load(std::memory_order_relaxed)) return;
@@ -520,13 +544,14 @@ namespace PauseAnytime::Bink
             for (auto& m : Movies)
             {
                 if (!m.Want) continue;
-                auto const last = (std::max)(m.LastCallAt, m.RequestedAt);
+                auto const last = LifeOf(m);
                 if (Since(now, last) < PausedSilentMs) continue;
                 m.Want = false;
                 m.RequestedAt = now;
                 dropped = true;
-                LEASI_WARN("movie #{} '{}' has made no Bink call for {:.1f} s under our pause ({}): pause dropped, Esc and Start go back to the game, the resume is applied at its next call if any",
-                           m.Serial, m.Name, static_cast<double>(Since(now, last)) / 1000.0, m.Paused ? "applied" : "not applied yet");
+                LEASI_WARN("movie #{} '{}' has made no {} for {:.1f} s under our pause ({}): pause dropped, Esc and Start go back to the game{}", m.Serial, m.Name,
+                           m.Paused ? "Bink call" : "BinkWait", static_cast<double>(Since(now, last)) / 1000.0, m.Paused ? "applied" : "not applied yet",
+                           m.Paused ? ", the resume is applied at its next call if any" : "");
             }
             if (!dropped) return;
             Recount();
@@ -544,13 +569,23 @@ namespace PauseAnytime::Bink
 
         /// Under Lock, after DropStale. One press of a pause key: resumes every movie we paused (or asked to), else asks the
         /// pause of the newest fullscreen movie (not an older one still open). False when neither: no fullscreen movie, the
-        /// caller says so. <paramref name="what"/> opens the log line.
-        bool ToggleLocked(ULONGLONG now, std::string const& what)
+        /// caller says so. <paramref name="what"/> opens the log line. <paramref name="esc"/>: the press is Esc's, read by the
+        /// poll, and taken once the toggle acts.
+        bool ToggleLocked(ULONGLONG now, std::string const& what, bool esc)
         {
             auto const hud = HudSeen();
             auto const movies = ListMovies(now, hud);
+            // Esc's tick before Wanted changes, as Space's: the game thread reads Wanted without Lock, and the skip guard must
+            // see the press as ours by then, not only after the log line and its flush. Recount's release store of Wanted
+            // publishes the tick.
+            auto const take = [&] {
+                if (!esc) return;
+                Poller.Taken = true;
+                EscDownTick.store(now, std::memory_order_relaxed);
+            };
             if (Wanted.load(std::memory_order_relaxed))
             {
+                take();
                 ResumeLocked(now);
                 LEASI_INFO("{}: movie resume asked, applied at each paused movie's next call; {}; open: {}", what, HudText(now, hud), movies);
                 LEASI_FLUSH();
@@ -563,6 +598,7 @@ namespace PauseAnytime::Bink
                 if (NotPausable(m, now, hud) == nullptr && (target == nullptr || m.Serial > target->Serial)) target = &m;
             }
             if (target == nullptr) return false;
+            take();
             target->Want = true;
             target->RequestedAt = now;
             // The Wwise event to pause with it, as known now: the latch may change before the movie closes. A pause of it
@@ -631,47 +667,56 @@ namespace PauseAnytime::Bink
 
             DropStale(now);
             auto const wanted = Wanted.load(std::memory_order_relaxed);
+            // Both keys' edges before acting on either: an Esc press in the poll that Space resumes in is part of that resume.
+            // Left for the next poll, it would pause again at once.
+            auto const spacePressed = PollEdge(SpacePoller, space, now, wanted, SpaceDownTick);
+            auto const escPressed = PollEdge(Poller, down, now, wanted, EscDownTick);
             // Space with no movie pause of ours is the game's: it skips a movie the game lets skip.
-            if (PollEdge(SpacePoller, space, now, wanted, SpaceDownTick) && wanted && OurForeground())
+            if (spacePressed && wanted && OurForeground())
             {
                 auto const movies = ListMovies(now, hud);
                 // The tick first: the game thread reads Wanted without Lock, and once it is false only this tick says the
                 // press is ours (MovieInput.cpp's hook, Pause.cpp's TakeResumeKey). Its release store publishes the tick.
                 SpacePoller.Taken = true;
                 SpaceDownTick.store(now, std::memory_order_relaxed);
+                // Esc's press asked the same resume: it is taken with it, so the skips it is bound to are dropped too.
+                if (escPressed)
+                {
+                    Poller.Taken = true;
+                    EscDownTick.store(now, std::memory_order_relaxed);
+                }
                 ResumeLocked(now);
-                LEASI_INFO("Space pressed, read on thread {}: movie resume asked, applied at each paused movie's next call; {}; open: {}", ThreadText(thread),
-                           HudText(now, hud), movies);
+                LEASI_INFO("{}, read on thread {}: movie resume asked, applied at each paused movie's next call; {}; open: {}",
+                           escPressed ? "Space and Esc pressed" : "Space pressed", ThreadText(thread), HudText(now, hud), movies);
                 LEASI_FLUSH();
                 Overlay::UsePadPrompts(false);
                 return;
             }
-            if (!PollEdge(Poller, down, now, wanted, EscDownTick)) return;
+            if (!escPressed) return;
 
             if (!OurForeground())
             {
                 Refuse(now, thread, "another program's window is in the foreground");
                 return;
             }
-            if (!ToggleLocked(now, std::format("Esc pressed, read on thread {}", ThreadText(thread))))
+            if (!ToggleLocked(now, std::format("Esc pressed, read on thread {}", ThreadText(thread)), true))
             {
                 Refuse(now, thread, std::format("no fullscreen movie ({}); open: {}", HudText(now, hud), ListMovies(now, hud)));
                 return;
             }
-            Poller.Taken = true;
-            EscDownTick.store(now, std::memory_order_relaxed);
             // Console.InputKey never sees this press: the pause screen names the keyboard's key from here.
             Overlay::UsePadPrompts(false);
         }
 
         /// Before each BinkWait, BinkDoFrame and BinkDoFrameAsync, on the thread that plays the movie: applies what Esc asked,
-        /// a pause in BinkWait only, a resume in any of them. BinkPause is called outside the lock: the game thread may be
-        /// waiting for it (OwnsKeys, Toggle, RequestResume). So is the movie's Wwise event, right after it, paused or resumed
-        /// once each way. The tick is read under the lock: RequestedAt may have been set by the game thread while this one waited
-        /// for it. Returns whether the movie is paused now.
+        /// a pause in BinkWait only, a resume in any of them on the thread of the movie's BinkWait. BinkPause is called outside
+        /// the lock: the game thread may be waiting for it (OwnsKeys, Toggle, RequestResume). So is the movie's Wwise event,
+        /// right after it, paused or resumed once each way. The tick is read under the lock: RequestedAt may have been set by
+        /// the game thread while this one waited for it. Returns whether the movie is paused now.
         bool Apply(HBINK bink, Call call)
         {
             if (bink == nullptr) return false;
+            auto const thread = GetCurrentThreadId();
             ULONGLONG now = 0;
             bool pause = false;
             unsigned serial = 0;
@@ -688,11 +733,17 @@ namespace PauseAnytime::Bink
                     // movie must never be tracked without its close being seen.
                     if (BinkClose_orig.load(std::memory_order_acquire) == nullptr) return false;
                     m = &Track(bink, "(opened before Pause Anytime)", 0);
-                    LEASI_INFO("movie #{}: {} first seen in a player call, thread {}", m->Serial, bink, ThreadText(GetCurrentThreadId()));
+                    LEASI_INFO("movie #{}: {} first seen in a player call, thread {}", m->Serial, bink, ThreadText(thread));
                 }
                 m->LastCallAt = now;
+                if (call == Call::Wait) m->WaitThread = thread;
+                // A call of the movie whose pause we want keeps that pause alive for PauseWanted, as it does for DropStale.
+                if (m->Want) WantedLife.store(LifeOf(*m), std::memory_order_relaxed);
                 if (m->Want == m->Paused) return m->Paused;
                 if (m->Want && call != Call::Wait) return m->Paused;
+                // A resume waits for the thread of the movie's BinkWait, which applied the pause: a movie that calls Bink on
+                // two threads then never has two BinkPause calls in flight at once.
+                if (m->WaitThread != thread) return m->Paused;
                 if (BinkPause_fn.load(std::memory_order_acquire) == nullptr) return m->Paused;
                 pause = m->Want;
                 m->Paused = pause;
@@ -715,7 +766,7 @@ namespace PauseAnytime::Bink
             auto const wwise = sound != 0 ? std::format("; Wwise {} {}: AKRESULT {}", pause ? "pause" : "resume", sound, ak) : std::string{};
             static char const* const Where[] = { "BinkWait", "BinkDoFrame", "BinkDoFrameAsync" };
             LEASI_INFO("movie #{} '{}' {} in {} on thread {}, {} ms after the request: BinkPause returned {}, {}{}", serial, name,
-                       pause ? "PAUSED" : "RESUMED", Where[static_cast<int>(call)], ThreadText(GetCurrentThreadId()), Since(now, requestedAt), result,
+                       pause ? "PAUSED" : "RESUMED", Where[static_cast<int>(call)], ThreadText(thread), Since(now, requestedAt), result,
                        FrameText(bink), wwise);
             LEASI_FLUSH();
             return pause;
@@ -751,10 +802,14 @@ namespace PauseAnytime::Bink
         }
 
         /// A movie closed while its Wwise event is paused (a skip by the pad's X, its end) sends the resume nothing else would:
-        /// outside the lock, as Apply does.
+        /// outside the lock, as Apply does. A movie closed while BinkPause(1) holds it (a skip under the pause, the game quitting)
+        /// is resumed first: this Bink hangs a player that pauses and then stops calling BinkWait, and a close may be such a stop.
+        /// BinkClose never overlaps another call on the same movie (the original would free the handle under it), so it cannot
+        /// come between Apply's commit and its BinkPause and Wwise calls.
         void Closed(HBINK bink)
         {
             unsigned sound = 0;
+            bool paused = false;
             unsigned serial = 0;
             std::string name;
             {
@@ -771,19 +826,25 @@ namespace PauseAnytime::Bink
                                                       : std::format("never a fullscreen movie ({})", m->NotFullscreenWhy != nullptr ? m->NotFullscreenWhy : "Esc never read in its BinkWait");
                 LEASI_INFO("movie #{} '{}' closed after {:.1f} s on thread {}, {}{}", m->Serial, m->Name, static_cast<double>(Since(now, m->OpenedAt)) / 1000.0,
                            ThreadText(GetCurrentThreadId()), fullscreen, m->Want || m->Paused ? ": the movie pause ends with it" : "");
-                if (m->SoundPaused)
-                {
-                    sound = m->SoundId;
-                    serial = m->Serial;
-                    name = m->Name;
-                }
+                if (m->SoundPaused) sound = m->SoundId;
+                paused = m->Paused;
+                serial = m->Serial;
+                name = m->Name;
                 Movies.erase(Movies.begin() + (m - Movies.data()));
                 Recount();
                 LEASI_FLUSH();
             }
-            if (sound == 0) return;
-            auto const result = MovieSound::Set(sound, false);
-            LEASI_INFO("movie #{} '{}' closed paused: Wwise resume {} -> {}", serial, name, sound, result);
+            if (sound != 0)
+            {
+                auto const result = MovieSound::Set(sound, false);
+                LEASI_INFO("movie #{} '{}' closed paused: Wwise resume {} -> {}", serial, name, sound, result);
+                LEASI_FLUSH();
+            }
+            // Last, right before the original close: the movie's Bink audio plays as little as can be before it stops.
+            auto const pauseFn = BinkPause_fn.load(std::memory_order_acquire);
+            if (!paused || pauseFn == nullptr) return;
+            auto const result = pauseFn(bink, 0);
+            LEASI_INFO("movie #{} '{}' closed paused: BinkPause(0) before the close returned {}", serial, name, result);
             LEASI_FLUSH();
         }
 
@@ -878,6 +939,9 @@ namespace PauseAnytime::Bink
             moduleName = "bink2w64.dll";
             module = GetModuleHandleW(L"bink2w64.dll");
         }
+        // Before the module check: it reads only the exe's exports, and the Kismet latch's lines use its GetIDFromString
+        // even when no movie can be paused.
+        if (policy == MoviePolicy::BinkAndEvent) MovieSound::Install();
         if (module == nullptr)
         {
             LEASI_WARN("Bink: neither bink2w64_original.dll nor bink2w64.dll is loaded: movies can't be paused");
@@ -886,7 +950,6 @@ namespace PauseAnytime::Bink
 
         if (policy == MoviePolicy::BinkAndEvent)
         {
-            MovieSound::Install();
             std::string names;
             for (auto const& name : BinkAudio) names += (names.empty() ? "" : ", ") + name;
             LEASI_INFO("Bink: Esc and Start pause only a movie whose sound is known, a Wwise event latched for it or Bink audio ({}); any other stays the game's",
@@ -915,7 +978,13 @@ namespace PauseAnytime::Bink
 
     unsigned MovieSerial() { return Serial.load(std::memory_order_relaxed); }
 
-    bool PauseWanted() { return Wanted.load(std::memory_order_acquire); }
+    bool PauseWanted()
+    {
+        if (!Wanted.load(std::memory_order_acquire)) return false;
+        // DropStale runs only when a key or a movie's poll calls it: a pause it would drop reads as over now, so the pause
+        // screen doesn't stay up over a movie that stopped calling.
+        return Since(GetTickCount64(), WantedLife.load(std::memory_order_relaxed)) < PausedSilentMs;
+    }
 
     bool OwnsKeys()
     {
@@ -933,7 +1002,7 @@ namespace PauseAnytime::Bink
         std::scoped_lock lock{ Lock };
         auto const now = GetTickCount64();
         DropStale(now);
-        if (ToggleLocked(now, std::format("{} on thread {}", what, ThreadText(GetCurrentThreadId())))) return true;
+        if (ToggleLocked(now, std::format("{} on thread {}", what, ThreadText(GetCurrentThreadId())), false)) return true;
         auto const hud = HudSeen();
         LEASI_INFO("{} on thread {}: nothing to toggle, no fullscreen movie ({}); open: {}", what, ThreadText(GetCurrentThreadId()), HudText(now, hud),
                    ListMovies(now, hud));
