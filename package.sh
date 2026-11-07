@@ -65,11 +65,8 @@ for var in MELE_GAMES MELE_LEXASIS; do
     fi
 done
 
-# The games, passed to build.sh as --game. Each one needs its README.txt text. A release is one zip, so it holds them all.
+# The games, passed to build.sh as --game. A release is one zip, so it holds them all.
 pick_games "${names[@]}"
-for g in "${GAMES[@]}"; do
-    game_readme "$g" > /dev/null || die "no README.txt text for $g in scripts/games.sh (game_readme)"
-done
 [[ ! "$LABEL" =~ ^v[0-9]+$ || "${GAMES[*]}" == "${RELEASED_GAMES[*]}" ]] \
     || die "label $LABEL packs ${GAMES[*]}: a release zip needs every released game (${RELEASED_GAMES[*]})"
 
@@ -140,12 +137,6 @@ gamepad, to pause. Press Esc, Start, Space or A to resume at the same word. Whil
 paused, the picture is blurred and darkened under a pause screen. In a paused conversation or
 cutscene, press Y on a gamepad or F7 to open the game's photo mode on the paused shot.
 Loading-screen movies do not pause. Everywhere else the keys work as in the game without mods.
-
-EOF
-    for g in "${GAMES[@]}"; do
-        game_readme "$g"
-    done
-    cat <<'EOF'
 
 Every key in each game: https://github.com/Maxgoods62/mele-pause-anytime/blob/main/docs/using.md
 

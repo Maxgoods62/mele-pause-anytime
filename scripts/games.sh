@@ -39,30 +39,3 @@ pick_games() {
         if [[ "$picked" == *" $g "* ]]; then GAMES+=("$g"); fi
     done
 }
-
-# game_readme LE<n> prints the lines of the zip's README.txt that say what differs in that game. package.sh prints them
-# under the paragraph that holds for every game. A game gets its lines when it is released.
-game_readme() {
-    case "$1" in
-        LE1) cat <<'EOF'
-- LE1: the movies that pause include the galaxy map travel movie. A movie that Esc skips in
-  the game without mods is still skipped.
-EOF
-            ;;
-        LE2) cat <<'EOF'
-- LE2: the movies that pause include the mass relay jump. In a skippable cutscene, and in a
-  movie that Pause Anytime can pause, Esc pauses instead of skipping. Space, or X on a
-  gamepad, skips a cutscene or a movie when the game lets you skip it. In other movies Esc
-  skips as usual.
-EOF
-            ;;
-        LE3) cat <<'EOF'
-- LE3: the movies that pause include the mass relay jump. In a skippable cutscene, Esc pauses
-  instead of skipping. Space, or X on a gamepad, still skips the cutscene. In a test, Esc
-  during a movie inside a conversation paused the conversation, and the movie played on.
-  Other cases are not tested yet.
-EOF
-            ;;
-        *) return 1 ;;
-    esac
-}

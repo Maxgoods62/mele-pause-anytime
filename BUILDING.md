@@ -75,8 +75,7 @@ PauseAnytime-<label>.zip
   LICENSE\LICENSE-imgui.txt
 ```
 
-The `.pdb` files stay in `dist/stage`. The `README.txt` text is in `package.sh`, and each game's own lines are in
-`game_readme` in `scripts/games.sh`.
+The `.pdb` files stay in `dist/stage`. The `README.txt` text is in `package.sh`.
 
 GitHub builds and publishes the zips with this same script. The steps to publish a version, and the rules for every
 release, are on the toolkit's [releasing page](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/docs/releasing.md#publish-a-version).
@@ -193,10 +192,9 @@ need changes in `scripts/games.sh` and `build.sh`. A game needs these steps, in 
 4. Its name on the `GAMES` line of `asi_target` in `src/CMakeLists.txt`. Do steps 1 to 3 first: the `VisualStudio`
    preset turns every `LEASI_BUILD_LE<n>` on, so a listed game that does not compile breaks the tree's build in Visual
    Studio.
-5. Its `README.txt` lines in `game_readme` in `scripts/games.sh`. `package.sh` packs no game without them.
-6. Its name in `RELEASED_GAMES` in `scripts/games.sh`. A released game builds by default, and every release zip must
+5. Its name in `RELEASED_GAMES` in `scripts/games.sh`. A released game builds by default, and every release zip must
    hold it. A game that is only on the `GAMES` line builds when you name it.
-7. Its entry in the Game list of `.github/ISSUE_TEMPLATE/bug_report.yml`.
+6. Its entry in the Game list of `.github/ISSUE_TEMPLATE/bug_report.yml`.
 
 ## When something fails
 
@@ -238,7 +236,6 @@ and `checking out LExASIs ... and its submodules in ...` (the first build, a new
 | `label v... differs from ASI_VERSION ...` | Use `v<ASI_VERSION>`, or a label that is not `v` and a number. |
 | `no git commit in ...` | Run it in a git clone, with `git` in your shell. The zip's `README.txt` names the commit. |
 | `no python that runs: install python3` | Install Python. On Windows, `python3` can be the Microsoft Store stub, which does not run. |
-| `no README.txt text for LE<n> in scripts/games.sh` | Add that game's lines to `game_readme`. |
 | `label v... packs ...: a release zip needs every released game` | Leave out `--game`, or use another label. |
 | `missing ...` | A file to pack is not at that path. |
 
