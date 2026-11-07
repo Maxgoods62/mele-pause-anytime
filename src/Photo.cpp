@@ -53,6 +53,10 @@ namespace PauseAnytime::PhotoMode
             DoneTether = 1u << 6,
             DoneCamEnabled = 1u << 7, // the camera's bDisabled cleared
             DoneBlend = 1u << 8,      // a view target blend held
+            /// The controller's place and bPlayersOnly read at the entry. The exit's steps with no bit of their own (the
+            /// timers, bPlayersOnly, the controller's place) wait for it, or a stop before it would give back zeros. Never
+            /// cleared: after a fault in the exit, the raw give-back writes those fields again.
+            DoneRecorded = 1u << 9,
         };
 
         struct SavedBind
@@ -136,13 +140,15 @@ namespace PauseAnytime::PhotoMode
             CachedFunction SetStaticConsoleBinding;
         };
         PhotoFunctions PFn;
+        // The three flags below are written by the attach thread once the ProcessEvent hook is live, and read on the game
+        // thread: atomics, stored with release and loaded with acquire.
         /// The input hooks are in (see PauseLift): without them photo mode's camera gets no input under the world pause.
-        bool InputHooked = false;
+        std::atomic<bool> InputHooked{ false };
         /// The GUI tick hook is in (see PauseLift; LE3: GfxClock): without it photo mode's panel stands still under the world
         /// pause.
-        bool GuiTickHooked = false;
+        std::atomic<bool> GuiTickHooked{ false };
         /// The GUI sound hooks are in (see PlayGuiSound_hook): without them photo mode's sounds wait for the pause's end.
-        bool SoundHooked = false;
+        std::atomic<bool> SoundHooked{ false };
 #if PAUSEANYTIME_PHOTO_GUI_SOUNDS
         constexpr auto SoundNotHooked = "NOT hooked (they play when the pause ends: see the start of this log)";
 #else
@@ -281,6 +287,10 @@ namespace PauseAnytime::PhotoMode
         /// BioSFHandler_Conversation.Update) would move the conversation on. Every running timer of the controller is held,
         /// as the pause holds them without bAlwaysTick; the exit lets go of those held here. Photo mode's own run: LE3's
         /// Activated turns the modes' input back on 0.5 s later (EnableInputWrapper).
+        /// Each frame holds the new ones too, since the game may set one again during the session. So a timer that other
+        /// script sets on the controller then is held as well, and runs only once the world resumes. Kept so: holding only
+        /// the timers seen at the entry and SkipNode would let any other conversation timer move the conversation on under
+        /// photo mode, and LE1's photo mode script (PlayerPhotoMode, TakePhoto) sets none.
         void HoldTimers(ABioPlayerController* pc, PhotoSession& s)
         {
             auto& timers = pc->Timers;
@@ -347,6 +357,7 @@ namespace PauseAnytime::PhotoMode
             s.OldPcLocation = LocationOf(pc);
             s.OldPcRotation = pc->Rotation;
             s.OldPlayersOnly = world->bPlayersOnly != 0;
+            s.Done |= DoneRecorded;
             auto const subtitleChars = PhotoGui::KeepSubtitle(world);
             if (auto const input = BioInput(pc)) s.ConsoleBinds = SaveBinds(input->StaticConsoleBinds);
             auto const& pov = s.EnterPov;
@@ -361,7 +372,10 @@ namespace PauseAnytime::PhotoMode
 
             // 2. The conversation panel: no input (it would eat the sticks, and A or Enter would pick a reply), and hidden (the
             //    wheel, the subtitle). Activated does the input part itself, for ambient conversations only.
-            if (PhotoGui::SetAside(pc, gui)) s.Done |= DonePanel;
+            //    DonePanel before the call, as DoneShown: a fault inside LE3's SetVisible or SetInputEnabled still gets the
+            //    panel back. GiveBack gives back only a panel SetAside recorded, which it does before it changes anything.
+            s.Done |= DonePanel;
+            if (!PhotoGui::SetAside(pc, gui)) s.Done &= ~DonePanel;
 
             // 3. Photo above Conversation and Cinematic: EnableMode's own UpdateCurrentMode then makes it current.
             s.OldPriority = photo->Priority;
@@ -472,9 +486,10 @@ namespace PauseAnytime::PhotoMode
                        PathOf(camera->CurrentCameraMode), pcOff, pcTurn, Distance(LocationOf(camera->CameraCache.POV), LocationOf(pov)),
                        Turn(camera->CameraCache.POV.Rotation, pov.Rotation), camera->CameraCache.POV.FOV, PathOf(handler), s.Timers.size(),
                        s.OldIgnoreLook, s.OldIgnoreMove, gamepad ? "pad" : "keyboard",
-                       InputHooked ? "let past the pause" : "NOT hooked (the camera won't answer: see the start of this log)",
-                       GuiTickHooked ? "let past the pause" : "NOT hooked (tabs, options and prompts won't answer: see the start of this log)",
-                       SoundHooked ? "made realtime" : SoundNotHooked);
+                       InputHooked.load(std::memory_order_acquire) ? "let past the pause" : "NOT hooked (the camera won't answer: see the start of this log)",
+                       GuiTickHooked.load(std::memory_order_acquire) ? "let past the pause"
+                                                                     : "NOT hooked (tabs, options and prompts won't answer: see the start of this log)",
+                       SoundHooked.load(std::memory_order_acquire) ? "made realtime" : SoundNotHooked);
             return "entered photo mode";
         }
 
@@ -578,6 +593,7 @@ namespace PauseAnytime::PhotoMode
             s.Done &= ~DoneTether;
             if ((s.Done & DoneTicking) && pc != nullptr) pc->bAlwaysTick = s.OldAlwaysTick ? 1 : 0;
             s.Done &= ~DoneTicking;
+            if ((s.Done & DoneRecorded) == 0) return;
             if (pc != nullptr)
             {
                 ReleaseTimers(pc, s);
@@ -664,6 +680,11 @@ namespace PauseAnytime::PhotoMode
             }
             else if (!Guarded(ExitPhotoEntry, const_cast<char*>(why)))
             {
+                // A fault in the game's exit (HidePhotoMode, DisableMode) can leave its photo mode current with our session
+                // gone. bPlayersOnly still goes back to what it was: while that mode stays current, Validate resumes the
+                // world ("mode changed") under it, and its own Esc leaves it through the pause menu. Kept so: leaving
+                // bPlayersOnly on for a photo mode that the game may never deactivate could freeze the world with no key of
+                // ours to end it, and the game's exit just faulted, so it isn't called again.
                 LEASI_ERROR("access violation while leaving photo mode ({}): fields given back raw, photo mode may stay on", why);
                 if (!Guarded(RestoreFieldsEntry, nullptr)) LEASI_ERROR("access violation while giving back photo mode's fields");
             }
@@ -729,6 +750,10 @@ namespace PauseAnytime::PhotoMode
                 auto const world = World.Live();
                 if (world == nullptr) return;
                 if (world->Pauser != nullptr && world->Pauser != Pauser) Photo.InputPauserChanged++;
+                // A GameInfo.SetPause inside the call with another CanUnpause delegate also adds that delegate to the
+                // GameInfo's Pausers, which putting Pauser back does not undo: our resume would then leave the world paused,
+                // with "still paused by" in the log. Left so: no lifted bind or GUI tick is known to call it, and taking an
+                // entry out of that list could drop a pause that is not ours.
                 world->Pauser = Pauser;
             }
 
@@ -908,26 +933,28 @@ namespace PauseAnytime::PhotoMode
         constexpr auto noInput = "photo mode's camera under the pause won't answer it";
         auto const keys = HookNative(Init, "BioPlayerInput::InputKey", PhotoInputKeyRva, PhotoInputKeyStart, InputKey_hook, InputKey_orig, noInput);
         auto const axes = HookNative(Init, "UPlayerInput::InputAxis", PhotoInputAxisRva, PhotoInputAxisStart, InputAxis_hook, InputAxis_orig, noInput);
-        InputHooked = keys && axes;
-        if (InputHooked) LEASI_INFO("input hooked: photo mode's keys and axes get past the world pause");
+        InputHooked.store(keys && axes, std::memory_order_release);
+        if (keys && axes) LEASI_INFO("input hooked: photo mode's keys and axes get past the world pause");
 
-        GuiTickHooked = HookNative(Init, PAUSEANYTIME_PHOTO_GFX ? "the GFx movies' Tick" : "UBioSFManager::Tick", PhotoGuiTickRva, PhotoGuiTickStart,
-                                   GuiTick_hook, GuiTick_orig, "photo mode's panel under the pause won't answer (tabs, options, prompts)");
-        if (GuiTickHooked) LEASI_INFO("GUI tick hooked: photo mode's panel gets past the world pause");
+        auto const guiTick = HookNative(Init, PAUSEANYTIME_PHOTO_GFX ? "the GFx movies' Tick" : "UBioSFManager::Tick", PhotoGuiTickRva, PhotoGuiTickStart,
+                                        GuiTick_hook, GuiTick_orig, "photo mode's panel under the pause won't answer (tabs, options, prompts)");
+        GuiTickHooked.store(guiTick, std::memory_order_release);
+        if (guiTick) LEASI_INFO("GUI tick hooked: photo mode's panel gets past the world pause");
 
 #if PAUSEANYTIME_PHOTO_GUI_SOUNDS
         constexpr auto noSound = "photo mode's GUI sounds under the pause wait for its end";
         auto const play = HookNative(Init, "UBioSFManager::PlayGuiSound", PhotoPlayGuiSoundRva, PhotoPlayGuiSoundStart, PlayGuiSound_hook,
                                      PlayGuiSound_orig, noSound);
-        SoundHooked = play && HookNative(Init, "UAudioDevice::CreateComponent", PhotoCreateAudioComponentRva, PhotoCreateAudioComponentStart,
-                                         CreateAudioComponent_hook, CreateAudioComponent_orig, noSound);
-        if (SoundHooked) LEASI_INFO("GUI sounds hooked: photo mode's sounds play under the world pause");
+        auto const sound = play && HookNative(Init, "UAudioDevice::CreateComponent", PhotoCreateAudioComponentRva, PhotoCreateAudioComponentStart,
+                                              CreateAudioComponent_hook, CreateAudioComponent_orig, noSound);
+        SoundHooked.store(sound, std::memory_order_release);
+        if (sound) LEASI_INFO("GUI sounds hooked: photo mode's sounds play under the world pause");
 #else
         LEASI_INFO("GUI sounds: not hooked in the {} build, photo mode's sounds under the world pause are the game's", SDK_TARGET_NAME_A);
 #endif
     }
 
-    bool Answers() { return InputHooked && GuiTickHooked; }
+    bool Answers() { return InputHooked.load(std::memory_order_acquire) && GuiTickHooked.load(std::memory_order_acquire); }
 
     bool On() { return Photo.On; }
 
@@ -953,7 +980,7 @@ namespace PauseAnytime::PhotoMode
     bool PlayGuiSound(ABioPlayerController* pc, wchar_t const* row)
     {
 #if PAUSEANYTIME_PHOTO_GUI_SOUNDS
-        auto const gui = SoundHooked && pc != nullptr ? PhotoGui::Find(pc) : nullptr;
+        auto const gui = SoundHooked.load(std::memory_order_acquire) && pc != nullptr ? PhotoGui::Find(pc) : nullptr;
         if (gui == nullptr) return false;
         static CachedFunction cache;
         auto const function = FunctionOf(gui, L"PlayGuiSound", cache);
