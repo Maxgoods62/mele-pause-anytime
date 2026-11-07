@@ -19,14 +19,15 @@
 // The pause is applied by that thread at its BinkWait: Bink's calls on one movie belong on one thread. Only there: BinkPause
 // makes BinkWait answer "wait" and stops the sound, so a player that doesn't call BinkWait would keep its picture going, and
 // this Bink (2022.05) hangs a player that pauses and then stops calling BinkWait (fixed by RAD in 2025.05). A movie that
-// hasn't called BinkWait lately isn't paused at all. A resume is applied at the movie's next call of any kind on the thread of
-// its BinkWait, and before its close at the latest. Esc is read on the movie's own thread, so a silent game thread (a load, a
-// wait for this very movie) neither keeps it from resuming nor lifts the pause. A pause whose movie has made no Bink call
-// for 2 s reads as over at once (PauseWanted), and is dropped by the next Esc at the latest (its thread reads nothing any
-// more: Esc goes back to the game). A gamepad's Start can't be read here (XInput goes through the game, and Steam Input may
-// stand in for it): the engine's movie input takes its press too, but its repeats and its release reach Console.InputKey,
-// where Pause.cpp toggles the same pause through Toggle, on the game thread. Every movie logs its threads, how often each
-// call comes, and whether it was a fullscreen one.
+// hasn't called BinkWait lately isn't paused at all. A resume is applied at the movie's next call of any kind on the thread
+// of its BinkWait, and before its close at the latest: the one exception to the one thread, made by whichever thread closes
+// it, since no other call on that movie can overlap its BinkClose. Esc is read on the movie's own thread, so a silent game
+// thread (a load, a wait for this very movie) neither keeps it from resuming nor lifts the pause. A pause whose movie has
+// made no Bink call for 2 s reads as over at once (PauseWanted), and is dropped by the next Esc at the latest (its thread
+// reads nothing any more: Esc goes back to the game). A gamepad's Start can't be read here (XInput goes through the game,
+// and Steam Input may stand in for it): the engine's movie input takes its press too, but its repeats and its release reach
+// Console.InputKey, where Pause.cpp toggles the same pause through Toggle, on the game thread. Every movie logs its threads,
+// how often each call comes, and whether it was a fullscreen one.
 // In LE2 (MoviePolicy::BinkAndEvent) most movies have no Bink audio: their sound is a Wwise event a Kismet movie action
 // posts beside the picture. There a fullscreen movie takes the pause keys only if we know its sound: the event latched for
 // it on the game thread, paused and resumed right after BinkPause (MovieSound.cpp), or Bink audio (the game's list). Any
@@ -116,7 +117,8 @@ namespace PauseAnytime::Bink
             /// The latest hooked call of any kind: a pause whose movie stopped calling is dropped.
             ULONGLONG LastCallAt = 0;
             /// The thread of its latest BinkWait. A resume is applied there only, as a pause is: BinkPause runs outside the
-            /// lock, and two threads applying at once could land BinkPause(1) after BinkPause(0).
+            /// lock, and two threads applying at once could land BinkPause(1) after BinkPause(0). Closed is the exception, on
+            /// the closing thread, which no other call on the movie overlaps.
             DWORD WaitThread = 0;
 
             /// BinkAndEvent: the Wwise event paused with the picture, taken when the pause was asked (0: none, Bink audio);
@@ -143,8 +145,6 @@ namespace PauseAnytime::Bink
         /// MovieSound::Changes() when Recount last ran: under Lock.
         unsigned SoundsSeen = 0;
         std::atomic<unsigned> Serial{ 0 };
-        /// GetTickCount64 at the latest Track: LastOpened.
-        std::atomic<ULONGLONG> LastOpenAt{ 0 };
         std::atomic<bool> Wanted{ false };
         /// While Wanted: LifeOf the movie whose pause we want. PauseWanted reads it with no lock, so a pause that DropStale would
         /// drop reads as over before anything calls DropStale.
@@ -388,7 +388,6 @@ namespace PauseAnytime::Bink
             m.OpenThread = GetCurrentThreadId();
             m.OpenedAt = now;
             m.CountedSince = now;
-            LastOpenAt.store(now, std::memory_order_relaxed);
             Recount();
             return m;
         }
@@ -577,8 +576,10 @@ namespace PauseAnytime::Bink
         /// Under Lock, after DropStale. One press of a pause key: resumes every movie we paused (or asked to), else asks the
         /// pause of the newest fullscreen movie (not an older one still open). False when neither: no fullscreen movie, the
         /// caller says so. <paramref name="what"/> opens the log line. <paramref name="esc"/>: the press is Esc's, read by the
-        /// poll, and taken once the toggle acts.
-        bool ToggleLocked(ULONGLONG now, std::string const& what, bool esc)
+        /// poll, and taken once the toggle acts. <paramref name="pressedBy"/> (0: none): the press came by then, so a newest
+        /// movie opened after it may be younger than the press, and is not paused (true: there was a movie, the line is
+        /// logged here).
+        bool ToggleLocked(ULONGLONG now, std::string const& what, bool esc, ULONGLONG pressedBy)
         {
             auto const hud = HudSeen();
             auto const movies = ListMovies(now, hud);
@@ -605,6 +606,15 @@ namespace PauseAnytime::Bink
                 if (NotPausable(m, now, hud) == nullptr && (target == nullptr || m.Serial > target->Serial)) target = &m;
             }
             if (target == nullptr) return false;
+            // A Start press the game thread never saw (the engine's movie input took it) may have skipped the movie before
+            // this one: the movie it would pause opened after the press.
+            if (pressedBy != 0 && target->OpenedAt > pressedBy)
+            {
+                LEASI_INFO("{}: taken, not toggled, movie #{} '{}' opened {} ms ago may be younger than the press; {}; open: {}", what, target->Serial,
+                           target->Name, Since(now, target->OpenedAt), HudText(now, hud), movies);
+                LEASI_FLUSH();
+                return true;
+            }
             take();
             target->Want = true;
             target->RequestedAt = now;
@@ -717,7 +727,7 @@ namespace PauseAnytime::Bink
                 Refuse(now, thread, "another program's window is in the foreground");
                 return;
             }
-            if (!ToggleLocked(now, std::format("Esc pressed, read on thread {}", ThreadText(thread)), true))
+            if (!ToggleLocked(now, std::format("Esc pressed, read on thread {}", ThreadText(thread)), true, 0))
             {
                 Refuse(now, thread, std::format("no fullscreen movie ({}); open: {}", HudText(now, hud), ListMovies(now, hud)));
                 return;
@@ -996,8 +1006,6 @@ namespace PauseAnytime::Bink
 
     unsigned MovieSerial() { return Serial.load(std::memory_order_relaxed); }
 
-    ULONGLONG LastOpened() { return LastOpenAt.load(std::memory_order_relaxed); }
-
     bool PauseWanted()
     {
         if (!Wanted.load(std::memory_order_acquire)) return false;
@@ -1016,13 +1024,13 @@ namespace PauseAnytime::Bink
         return std::any_of(Movies.begin(), Movies.end(), [&](Movie const& m) { return m.Want || NotPausable(m, now, hud) == nullptr; });
     }
 
-    bool Toggle(char const* what)
+    bool Toggle(char const* what, ULONGLONG pressedBy)
     {
         if (!CanPause.load(std::memory_order_acquire)) return false;
         std::scoped_lock lock{ Lock };
         auto const now = GetTickCount64();
         DropStale(now);
-        if (ToggleLocked(now, std::format("{} on thread {}", what, ThreadText(GetCurrentThreadId())), false)) return true;
+        if (ToggleLocked(now, std::format("{} on thread {}", what, ThreadText(GetCurrentThreadId())), false, pressedBy)) return true;
         auto const hud = HudSeen();
         LEASI_INFO("{} on thread {}: nothing to toggle, no fullscreen movie ({}); open: {}", what, ThreadText(GetCurrentThreadId()), HudText(now, hud),
                    ListMovies(now, hud));

@@ -113,8 +113,9 @@ namespace PauseAnytime
     bool TakenLately(ULONGLONG tick, ULONGLONG now);
 
     /// The Steam overlay (PlayerController.bIsExternalUIOpen) or the console is open, as the game thread read it at its
-    /// latest tick: keys typed there are theirs, though the foreground window is still the game's. For Bink.cpp's polls,
-    /// which read no game object.
+    /// latest tick: keys typed there are theirs, though the foreground window is still the game's. False while the game
+    /// thread has been silent for over 250 ms, since what it read may be stale. For Bink.cpp's polls, which read no game
+    /// object.
     bool KeysElsewhere();
 
     // ! Engine.cpp: faults
@@ -167,8 +168,8 @@ namespace PauseAnytime
         /// screen is presented from here over its last frame (60 a second at most). Only on the thread that presents.
         void MovieIdle();
 
-        /// The pause screen started on the game's swap chain, hasn't failed, and that swap chain presented in the last 250 ms:
-        /// Pause.cpp's Canvas banner stays off.
+        /// The pause screen started on the game's swap chain, hasn't failed, and no other swap chain waits to replace it (one
+        /// that presents while ours has been silent for 250 ms): Pause.cpp's Canvas banner stays off.
         bool Drawing();
     }
 
@@ -198,10 +199,6 @@ namespace PauseAnytime
         /// Bumped at each BinkOpen: Pause.cpp logs once per movie whether the game thread still runs input and the HUD.
         unsigned MovieSerial();
 
-        /// GetTickCount64 at the latest BinkOpen, or at the first player call of a movie opened before Pause Anytime (0 if
-        /// none): Pause.cpp toggles no movie that a Start press it never saw may be older than.
-        ULONGLONG LastOpened();
-
         /// Esc or Start asked for the movie pause and nothing ended it since (a pause key again, close, SkipMovie, the HUD drawing again, its
         /// movie gone silent). Whether the movie's thread has applied it yet is in the log.
         bool PauseWanted();
@@ -215,8 +212,9 @@ namespace PauseAnytime
 
         /// Game thread: a press of Start during a fullscreen movie, as Esc's press is on the movie's thread. Resumes what we
         /// paused, else asks the pause of the newest fullscreen movie, applied at its next BinkWait. False (logged, with
-        /// <paramref name="what"/>) when there was nothing to toggle.
-        bool Toggle(char const* what);
+        /// <paramref name="what"/>) when there was nothing to toggle. With <paramref name="pressedBy"/> (a GetTickCount64 the
+        /// press came by), a newest movie opened after it is not paused (logged): the press may be older than that movie.
+        bool Toggle(char const* what, ULONGLONG pressedBy = 0);
 
         /// GetTickCount64 at the latest BinkWait that saw down a press of Esc the movie's thread acted on (0 if none). Kept
         /// fresh while that press is down, 2 s at most: Pause.cpp drops the skips Esc is bound to until a moment after.

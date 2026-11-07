@@ -71,11 +71,11 @@ namespace PauseAnytime::Overlay
         std::atomic<bool> Pad{ false };
         /// The overlay started on the game's swap chain and hasn't failed since.
         std::atomic<bool> Live{ false };
-        /// GetTickCount64 at the latest present on the swap chain we draw on (0 before the first): Drawing. While a new swap
-        /// chain waits to be taken (AdoptAfterMs), the one we draw on is silent, and the banner must show instead.
-        std::atomic<ULONGLONG> GameChainPresented{ 0 };
-        /// Drawing is true while that swap chain presented this recently: longer than any frame in play.
-        constexpr ULONGLONG DrawnLatelyMs = 250;
+        /// Another swap chain presents while the one we draw on has been silent for BannerAfterMs: the game's new one, maybe,
+        /// waiting to be taken (AdoptAfterMs). Nothing is drawn meanwhile, so Drawing is false and the banner shows. Cleared
+        /// when ours presents again or the new one is taken. Not set by a mere hitch, after which ours presents first.
+        std::atomic<bool> AdoptPending{ false };
+        constexpr ULONGLONG BannerAfterMs = 250;
         /// Install's, set before the hooks go live.
         std::atomic<OverlayLook> Look{ OverlayLook::LE1 };
 
@@ -373,8 +373,9 @@ namespace PauseAnytime::Overlay
             D3D11_TEXTURE2D_DESC CleanRefused{};
             bool HaveCleanRefused = false;
             /// The swap chain MovieIdle presents to: referenced in one of the game's own presents to it while its frames are
-            /// copied into Clean, so that it is still alive when the movie pauses and the game stops presenting. Dropped with
-            /// the copy, once the game presents with no such movie: then the game may replace its swap chain freely.
+            /// copied into Clean, so that it is still alive when the movie pauses and the game stops presenting. Held for the
+            /// whole movie (see Frame). Dropped with the copy, once the game presents with no such movie, or when another
+            /// swap chain is taken: then the game may replace its swap chain freely.
             IDXGISwapChain* MovieChain = nullptr;
             /// The game's last own present (not MovieIdle's), and the swap chain of the last present of all.
             LARGE_INTEGER LastGamePresent{};
@@ -958,9 +959,9 @@ namespace PauseAnytime::Overlay
             R.Native = &NativeLookOf(Look.load(std::memory_order_relaxed));
             R.Text = &LanguageTexts();
             QueryPerformanceCounter(&R.LastFrame);
-            LEASI_INFO("overlay ready: back buffer {}x{} format {}, present thread {}, {} look, text in {}, {}, {}", desc.BufferDesc.Width,
-                       desc.BufferDesc.Height, static_cast<int>(desc.BufferDesc.Format), GetCurrentThreadId(), R.Native->Name,
-                       R.Text->Language, R.Font.Embedded ? "Exo 2 embedded" : "default font", blur ? "blur ready" : "NO blur (plain darkening)");
+            LEASI_INFO("overlay ready: back buffer {}x{} format {}, swap effect {}, present thread {}, {} look, text in {}, {}, {}", desc.BufferDesc.Width,
+                       desc.BufferDesc.Height, static_cast<int>(desc.BufferDesc.Format), static_cast<int>(desc.SwapEffect), GetCurrentThreadId(),
+                       R.Native->Name, R.Text->Language, R.Font.Embedded ? "Exo 2 embedded" : "default font", blur ? "blur ready" : "NO blur (plain darkening)");
             LEASI_FLUSH();
             return true;
         }
@@ -1035,12 +1036,13 @@ namespace PauseAnytime::Overlay
             auto const now = GetTickCount64();
             if (chain != R.GameChain)
             {
+                if (now - R.GameChainSeen > BannerAfterMs) AdoptPending.store(true, std::memory_order_relaxed);
                 if (now - R.GameChainSeen < AdoptAfterMs) return;
                 Adopt(chain);
                 if (R.Failed || chain != R.GameChain) return;
             }
             R.GameChainSeen = now;
-            GameChainPresented.store(now, std::memory_order_relaxed);
+            AdoptPending.store(false, std::memory_order_relaxed);
             PresentThread.store(GetCurrentThreadId(), std::memory_order_relaxed);
 
             // As soon as they come, not at the first pause: a reference from here on keeps them.
@@ -1075,7 +1077,11 @@ namespace PauseAnytime::Overlay
                 {
                     KeepClean(chain);
                     // Referenced here, in a present of its own, never from its identity alone: a movie pauses in its BinkWait
-                    // with no present in between, and the game may let go of its swap chain once it stops presenting.
+                    // with no present in between, and the game may let go of its swap chain once it stops presenting. So the
+                    // reference is held for the whole movie, since the pause may come at any of its frames. Should the game
+                    // replace its swap chain during the movie, the old one lives on until the game presents with no such
+                    // movie; with a flip-model swap chain (one per window, the "overlay ready" line names the model) the new
+                    // one could not be made meanwhile. No game is known to do that during a movie.
                     if (R.MovieChain == nullptr)
                     {
                         chain->AddRef();
@@ -1281,7 +1287,7 @@ namespace PauseAnytime::Overlay
             return true;
         }
 
-        /// Our own work only: a fault below our Present hook (DXGI, the driver, other overlays) is theirs, not ours to swallow.
+        /// Our own work, before the present GuardedSelfPresent makes.
         bool GuardedPrepareIdle()
         {
             __try
@@ -1298,8 +1304,11 @@ namespace PauseAnytime::Overlay
         }
 
         /// MovieIdle's present, which the game never asked for: a fault below it (DXGI, the driver, another overlay) would go up
-        /// through BinkWait into the movie player and end the game, so here it turns the overlay off instead. No C++ object
-        /// may live in this frame.
+        /// through BinkWait into the movie player and end the game, so here it turns the overlay off instead. A fault below a
+        /// present the game makes is left to the game, since that present would run without us too. This one runs only
+        /// because of us, so its fault is taken, as the game thread's guards take one in a game native we call. The price is
+        /// the same: the module that faulted may keep a lock or a half-done state, so the game's next present could hang
+        /// where, unguarded, the game would have crashed now. No C++ object may live in this frame.
         void GuardedSelfPresent(IDXGISwapChain* chain)
         {
             __try
@@ -1498,12 +1507,5 @@ namespace PauseAnytime::Overlay
         chain->Release();
     }
 
-    bool Drawing()
-    {
-        if (!Live.load(std::memory_order_acquire)) return false;
-        // The render thread may have stored a tick taken after ours: no wrap-around.
-        auto const now = GetTickCount64();
-        auto const presented = GameChainPresented.load(std::memory_order_relaxed);
-        return presented != 0 && (now > presented ? now - presented : 0) <= DrawnLatelyMs;
-    }
+    bool Drawing() { return Live.load(std::memory_order_acquire) && !AdoptPending.load(std::memory_order_relaxed); }
 }

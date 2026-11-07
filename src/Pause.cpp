@@ -595,18 +595,13 @@ namespace PauseAnytime
             {
                 // A press never seen here: the engine's movie input took it. Not a press held into the movie (Vanilla).
                 if (ConsoleOpen(function) || !Bink::OwnsKeys()) return false;
-                // Its first event here comes at most StartRepeatMs after it, so a movie opened since then may be younger than
-                // the press: the engine's movie input then skipped the movie before with it, and this one isn't paused. Its
-                // events stay ours all the same, so they skip nothing. A resume of our movie pause is always the press's.
-                auto const opened = Bink::LastOpened();
-                auto const age = opened != 0 && opened < now ? now - opened : 0;
-                if (age < StartRepeatMs && !Bink::PauseWanted())
-                    LEASI_INFO("Start {} during a fullscreen movie, its press unseen here: taken, not toggled, movie #{} opened {} ms ago may be "
-                               "younger than the press",
-                               released ? "released" : "held", Bink::MovieSerial(), age);
-                else
-                    Bink::Toggle(released ? "Start released during a fullscreen movie, its press unseen here"
-                                          : "Start held during a fullscreen movie, its press unseen here");
+                // Its first event here comes at most StartRepeatMs after it, so the movie Toggle would pause may have opened
+                // after the press: the engine's movie input then skipped the movie before with it, and that one isn't paused
+                // (Toggle logs it). Its events stay ours all the same, so they skip nothing. A resume of our movie pause is
+                // always the press's.
+                Bink::Toggle(released ? "Start released during a fullscreen movie, its press unseen here"
+                                      : "Start held during a fullscreen movie, its press unseen here",
+                             now - StartRepeatMs);
                 if (!released)
                 {
                     k.Held = true;
@@ -929,8 +924,8 @@ namespace PauseAnytime
         }
 
         /// "PAUSE" near the top centre, and the keys under it: Start and Y when Start paused or the player uses a gamepad
-        /// (PlayerInput's bUsingGamepad, which the game's own button prompts follow), else Esc and F7. The HUD's own font,
-        /// position and colour are put back.
+        /// (PlayerInput's bUsingGamepad, which the game's own button prompts follow), else Esc and F7, the photo mode key only
+        /// where photo mode opens. The HUD's own font, position and colour are put back.
         void DrawBanner(ABioHUD* hud)
         {
             // With the per-frame checks off our state isn't kept up: as the pause screen then, only while the world we
@@ -969,7 +964,10 @@ namespace PauseAnytime
             DrawCentered(canvas, L"PAUSE", height * 0.08f, 2.5f * scale, Color(255, 255, 255, 235));
             auto const input = hud->PlayerOwner != nullptr ? hud->PlayerOwner->PlayerInput : nullptr;
             auto const gamepad = G.PausedByStart || (input != nullptr && input->bUsingGamepad != 0);
-            auto const keys = gamepad ? L"Start: resume     Y: photo mode" : L"Esc: resume     F7: photo mode";
+            // Photo mode's key only where it opens: its hooks are in, and the per-frame checks that watch it are on.
+            auto const photo = PhotoMode::Answers() && G.FrameFaults < MaxFrameFaults;
+            auto const keys = gamepad ? (photo ? L"Start: resume     Y: photo mode" : L"Start: resume")
+                                      : (photo ? L"Esc: resume     F7: photo mode" : L"Esc: resume");
             DrawCentered(canvas, keys, height * 0.08f + 48.0f * scale, 1.1f * scale, Color(200, 200, 200, 220));
 
             canvas->Font = savedFont;
@@ -1470,7 +1468,16 @@ namespace PauseAnytime
 
     ULONGLONG HudSeen() { return HudTick.load(std::memory_order_relaxed); }
 
-    bool KeysElsewhere() { return Elsewhere.load(std::memory_order_relaxed); }
+    bool KeysElsewhere()
+    {
+        if (!Elsewhere.load(std::memory_order_relaxed)) return false;
+        // Only while the game thread ticks, so the flag is a tick old at most. A silent one (a load, a wait for this very
+        // movie) may have read it before the overlay or the console closed. Kept, it would refuse every Esc and Space while
+        // nothing else could resume the movie. Keys typed into the overlay then reach the movie, as without this check.
+        auto const now = GetTickCount64();
+        auto const beat = GameThreadTick.load(std::memory_order_relaxed);
+        return beat != 0 && (now > beat ? now - beat : 0) <= GameStallMs;
+    }
 
     bool TakenLately(ULONGLONG tick, ULONGLONG now)
     {
