@@ -106,12 +106,16 @@ namespace PauseAnytime
     /// bind may run after Console.InputKey has seen the release.
     inline constexpr ULONGLONG ReleaseGraceMs = 250;
 
-    /// The press behind <paramref name="tick"/> (Bink::EscSeenDown, Bink::SpaceSeenDown) is down, or was a moment ago. The
-    /// tick comes from the movie's thread, so it can be newer than <paramref name="now"/>.
-    inline bool TakenLately(ULONGLONG tick, ULONGLONG now)
-    {
-        return tick != 0 && (tick >= now || now - tick < ReleaseGraceMs);
-    }
+    /// The press behind <paramref name="tick"/> (Bink::EscSeenDown, Bink::SpaceSeenDown) is down, or was a moment ago, or
+    /// the movie's thread acted on it while the game thread read no input: a gap of over 250 ms in its ProcessEvent calls,
+    /// still on or ended a moment ago, after which the key's queued events reach the game thread late. The tick comes from
+    /// the movie's thread, so it can be newer than <paramref name="now"/>. Game thread only: it reads Pause.cpp's state.
+    bool TakenLately(ULONGLONG tick, ULONGLONG now);
+
+    /// The Steam overlay (PlayerController.bIsExternalUIOpen) or the console is open, as the game thread read it at its
+    /// latest tick: keys typed there are theirs, though the foreground window is still the game's. For Bink.cpp's polls,
+    /// which read no game object.
+    bool KeysElsewhere();
 
     // ! Engine.cpp: faults
     // ========================================
@@ -193,6 +197,10 @@ namespace PauseAnytime
 
         /// Bumped at each BinkOpen: Pause.cpp logs once per movie whether the game thread still runs input and the HUD.
         unsigned MovieSerial();
+
+        /// GetTickCount64 at the latest BinkOpen, or at the first player call of a movie opened before Pause Anytime (0 if
+        /// none): Pause.cpp toggles no movie that a Start press it never saw may be older than.
+        ULONGLONG LastOpened();
 
         /// Esc or Start asked for the movie pause and nothing ended it since (a pause key again, close, SkipMovie, the HUD drawing again, its
         /// movie gone silent). Whether the movie's thread has applied it yet is in the log.

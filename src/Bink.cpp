@@ -143,6 +143,8 @@ namespace PauseAnytime::Bink
         /// MovieSound::Changes() when Recount last ran: under Lock.
         unsigned SoundsSeen = 0;
         std::atomic<unsigned> Serial{ 0 };
+        /// GetTickCount64 at the latest Track: LastOpened.
+        std::atomic<ULONGLONG> LastOpenAt{ 0 };
         std::atomic<bool> Wanted{ false };
         /// While Wanted: LifeOf the movie whose pause we want. PauseWanted reads it with no lock, so a pause that DropStale would
         /// drop reads as over before anything calls DropStale.
@@ -386,6 +388,7 @@ namespace PauseAnytime::Bink
             m.OpenThread = GetCurrentThreadId();
             m.OpenedAt = now;
             m.CountedSince = now;
+            LastOpenAt.store(now, std::memory_order_relaxed);
             Recount();
             return m;
         }
@@ -617,7 +620,11 @@ namespace PauseAnytime::Bink
 
         /// Under Lock. One key as the BinkWait polls see it: true for a press to act on (the up->down edge, not after a gap in
         /// the polls unless our movie pause is on, not within the debounce). Keeps <paramref name="downTick"/> fresh while a
-        /// press acted on (Taken) is down.
+        /// press acted on (Taken) is down. The game thread judges Esc's same press from its own reads a few ms apart
+        /// (Pause.cpp's Press asks OwnsKeys): a second press within the debounce, a tap shorter than the gap between two
+        /// polls, or a press on either side of the HUD's 250 ms or BinkWait's 500 ms edge can be taken there for the movie
+        /// and toggle nothing here. Left so: the player presses again, where acting on both sides could make one press two
+        /// toggles.
         bool PollEdge(EscPoll& k, bool down, ULONGLONG now, bool wanted, std::atomic<ULONGLONG>& downTick)
         {
             // After a gap in the polls, a key already down is no press: no poll saw it go down. Not while our movie pause is on:
@@ -675,6 +682,13 @@ namespace PauseAnytime::Bink
             // Left for the next poll, it would pause again at once.
             auto const spacePressed = PollEdge(SpacePoller, space, now, wanted, SpaceDownTick);
             auto const escPressed = PollEdge(Poller, down, now, wanted, EscDownTick);
+            // Typed into the Steam overlay or the open console, as the game thread saw them a tick ago: their keys, though
+            // the foreground window is still the game's.
+            if ((spacePressed || escPressed) && KeysElsewhere())
+            {
+                if (escPressed) Refuse(now, thread, "the Steam overlay or the console is open");
+                return;
+            }
             // Space with no movie pause of ours is the game's: it skips a movie the game lets skip.
             if (spacePressed && wanted && OurForeground())
             {
@@ -981,6 +995,8 @@ namespace PauseAnytime::Bink
     int PausableMovies() { return CanPause.load(std::memory_order_acquire) ? PausableCount.load(std::memory_order_relaxed) : 0; }
 
     unsigned MovieSerial() { return Serial.load(std::memory_order_relaxed); }
+
+    ULONGLONG LastOpened() { return LastOpenAt.load(std::memory_order_relaxed); }
 
     bool PauseWanted()
     {

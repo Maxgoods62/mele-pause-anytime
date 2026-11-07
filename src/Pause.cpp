@@ -46,6 +46,8 @@ namespace PauseAnytime
         /// ...counted from the end of a game-thread stall (no ProcessEvent for this long) when one ended after its last
         /// event: the pad is read once a frame, so a stall holds the repeats back too.
         constexpr ULONGLONG GameStallMs = 250;
+        /// The first repeat of a held gamepad button comes this long after its press.
+        constexpr ULONGLONG StartRepeatMs = 200;
 
         /// A movie pause is lifted once the HUD has drawn this long without a gap: no fullscreen movie covers the screen.
         constexpr ULONGLONG HudBackMs = 1000;
@@ -92,8 +94,11 @@ namespace PauseAnytime
             /// Tries of that end that did not play.
             unsigned AudioTries = 0;
 
-            /// The first game-thread ProcessEvent after a gap of more than GameStallMs.
+            /// The first game-thread ProcessEvent after a gap of more than GameStallMs, and the last one before it.
             ULONGLONG StallEndedAt = 0;
+            ULONGLONG StallStartedAt = 0;
+            /// A fault while reading the Steam overlay's and the console's state for the movie's thread: not read again.
+            bool ElsewhereOff = false;
 
             KeyState Esc;
             KeyState Start;
@@ -133,6 +138,8 @@ namespace PauseAnytime
         std::atomic<ULONGLONG> GameThreadTick{ 0 };
         /// The end of the latest BioHUD.PostRender: Bink.cpp's movie threads read it.
         std::atomic<ULONGLONG> HudTick{ 0 };
+        /// The Steam overlay or the console is open, read once a tick on the game thread: Bink.cpp's movie threads read it.
+        std::atomic<bool> Elsewhere{ false };
 
         // ! The player
         // ========================================
@@ -467,8 +474,9 @@ namespace PauseAnytime
             {
                 // Esc isn't toggled here: the movie's thread saw this press too and acts on it, so one press is one toggle.
                 // That thread can't read Start. A tap it misses (between two polls of a paused movie that calls BinkWait
-                // rarely, or within 150 ms of its last press) toggles nothing, and the player presses again: toggling here
-                // when its tick is not fresh would make a press it reads a moment later two toggles.
+                // rarely, or within 150 ms of its last press), or one the two threads judge on either side of the HUD's
+                // 250 ms or BinkWait's 500 ms edge, toggles nothing, and the player presses again: toggling here when its
+                // tick is not fresh would make a press it reads a moment later two toggles.
                 if (key == Key::Esc) action = "taken for the fullscreen movie, its thread toggles the movie pause";
                 else action = Bink::Toggle("Start pressed") ? "toggled the movie pause" : "taken for the fullscreen movie, nothing to toggle";
             }
@@ -529,6 +537,18 @@ namespace PauseAnytime
                 LEASI_INFO("Esc pressed in {}: the console is open, vanilla", PathOf(function));
                 return false;
             }
+            // A press the movie's thread toggled on, reaching us once its movie is gone (it closed right after, or during a
+            // stall of this thread): that press acted already, and the game must not act on it too (its pause menu, our
+            // world pause). The atomic first: OwnsKeys takes Bink.cpp's lock.
+            if (TakenLately(Bink::EscSeenDown(), now) && !Bink::OwnsKeys())
+            {
+                LEASI_INFO("Esc pressed: taken, the movie's thread acted on this press and its movie is gone (thread {})", GetCurrentThreadId());
+                LEASI_FLUSH();
+                k.Held = true;
+                k.PressedAt = now;
+                p->ReturnValue = 1;
+                return true;
+            }
             if (Press(console, function, Key::Esc) == nullptr) return false;
             k.Held = true;
             k.PressedAt = now;
@@ -575,8 +595,18 @@ namespace PauseAnytime
             {
                 // A press never seen here: the engine's movie input took it. Not a press held into the movie (Vanilla).
                 if (ConsoleOpen(function) || !Bink::OwnsKeys()) return false;
-                Bink::Toggle(released ? "Start released during a fullscreen movie, its press unseen here"
-                                      : "Start held during a fullscreen movie, its press unseen here");
+                // Its first event here comes at most StartRepeatMs after it, so a movie opened since then may be younger than
+                // the press: the engine's movie input then skipped the movie before with it, and this one isn't paused. Its
+                // events stay ours all the same, so they skip nothing. A resume of our movie pause is always the press's.
+                auto const opened = Bink::LastOpened();
+                auto const age = opened != 0 && opened < now ? now - opened : 0;
+                if (age < StartRepeatMs && !Bink::PauseWanted())
+                    LEASI_INFO("Start {} during a fullscreen movie, its press unseen here: taken, not toggled, movie #{} opened {} ms ago may be "
+                               "younger than the press",
+                               released ? "released" : "held", Bink::MovieSerial(), age);
+                else
+                    Bink::Toggle(released ? "Start released during a fullscreen movie, its press unseen here"
+                                          : "Start held during a fullscreen movie, its press unseen here");
                 if (!released)
                 {
                     k.Held = true;
@@ -781,6 +811,9 @@ namespace PauseAnytime
         /// Escape/Start, on an SFXGameMode. Returns true to drop the call.
         bool DropSkip(UObject* mode, UFunction* function, void* parms, bool guiKey)
         {
+            // The movie pause before the guard's ticks: the movie's thread stores Esc's tick before it changes the pause, so
+            // a pause asked by a press is seen here with that press's tick, and its SkipMovie doesn't resume it.
+            auto const wanted = Bink::PauseWanted();
             auto const ours = KeyGuard(GetTickCount64());
             if (guiKey)
             {
@@ -795,7 +828,7 @@ namespace PauseAnytime
             LEASI_INFO("{} on {}: {}{}", ToUtf8(std::wstring_view(name.Chars(), name.Length())), PathOf(mode),
                        ours != nullptr ? "dropped, our " : "passed", ours != nullptr ? ours : "");
             static SFXName const SkipMovie{ L"SkipMovie", 0 };
-            if (ours == nullptr && function->Name == SkipMovie && Bink::PauseWanted()) Bink::RequestResume("SkipMovie");
+            if (ours == nullptr && function->Name == SkipMovie && wanted) Bink::RequestResume("SkipMovie");
             return ours != nullptr;
         }
 
@@ -1227,6 +1260,13 @@ namespace PauseAnytime
             PhotoMode::Tick(c->Pc, c->DeltaTime);
         }
 
+        /// For KeysElsewhere: the Steam overlay or the console is open now.
+        void NoteKeysElsewhereEntry(void*)
+        {
+            auto const pc = LocalController(nullptr);
+            Elsewhere.store((pc != nullptr && pc->bIsExternalUIOpen) || ConsoleIsOpen(), std::memory_order_relaxed);
+        }
+
         void PublishBareEntry(void*)
         {
             auto const photoOn = PhotoMode::On();
@@ -1262,16 +1302,28 @@ namespace PauseAnytime
                 YieldProcessor();
                 orig = ProcessEvent_orig.load(std::memory_order_acquire);
             }
-            // The game thread's heartbeat for Bink.cpp's movie reports, written only when the tick count moved, and the end of
-            // its stalls for Start.
+            // The game thread's heartbeat for Bink.cpp's movie reports, written only when the tick count moved, and its stalls
+            // for Start and TakenLately. At each such tick too, what the movie's thread can't read: the Steam overlay and the
+            // console (a fullscreen movie draws no HUD, so the per-frame checks don't run under it).
             if (GetCurrentThreadId() == GameThreadId.load(std::memory_order_relaxed))
             {
                 auto const now = GetTickCount64();
                 auto const last = GameThreadTick.load(std::memory_order_relaxed);
                 if (last != now)
                 {
-                    if (last != 0 && now - last > GameStallMs) G.StallEndedAt = now;
+                    if (last != 0 && now - last > GameStallMs)
+                    {
+                        G.StallStartedAt = last;
+                        G.StallEndedAt = now;
+                    }
                     GameThreadTick.store(now, std::memory_order_relaxed);
+                    if (!G.ElsewhereOff && !Guarded(NoteKeysElsewhereEntry, nullptr))
+                    {
+                        G.ElsewhereOff = true;
+                        Elsewhere.store(false, std::memory_order_relaxed);
+                        LEASI_ERROR("access violation while reading the Steam overlay's and the console's state: off for the session, the movie's "
+                                    "thread reads Esc and Space there too");
+                    }
                 }
             }
             if (InOwnCall || Context == nullptr || Function == nullptr)
@@ -1417,4 +1469,30 @@ namespace PauseAnytime
     ULONGLONG GameThreadSeen() { return GameThreadTick.load(std::memory_order_relaxed); }
 
     ULONGLONG HudSeen() { return HudTick.load(std::memory_order_relaxed); }
+
+    bool KeysElsewhere() { return Elsewhere.load(std::memory_order_relaxed); }
+
+    bool TakenLately(ULONGLONG tick, ULONGLONG now)
+    {
+        if (tick == 0) return false;
+        if (tick >= now || now - tick < ReleaseGraceMs) return true;
+        // The game thread read no input from before that press until now (a load): the key's queued events reach it only
+        // now, and they are still the press the movie's thread acted on. The gap may still be on, since a native (the movie
+        // input) runs before the first ProcessEvent after it; else it ended a moment ago. The start is this thread's last
+        // ProcessEvent before the gap.
+        auto const beat = GameThreadTick.load(std::memory_order_relaxed);
+        auto const ongoing = beat != 0 && now > beat && now - beat > GameStallMs;
+        auto const ended = G.StallEndedAt != 0 && G.StallEndedAt <= now && now - G.StallEndedAt < ReleaseGraceMs;
+        auto const start = ongoing ? beat : ended ? G.StallStartedAt : 0;
+        if (start == 0 || tick < start) return false;
+        // Once a stall: each skip the guard drops after it asks again.
+        static ULONGLONG logged = 0;
+        if (logged != start)
+        {
+            logged = start;
+            LEASI_INFO("a press the movie's thread acted on {} ms ago reaches the game thread after its stall of {} ms: still ours", now - tick,
+                       (ongoing ? now : G.StallEndedAt) - start);
+        }
+        return true;
+    }
 }
