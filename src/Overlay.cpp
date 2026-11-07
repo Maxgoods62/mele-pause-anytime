@@ -4,7 +4,7 @@
 #include "PauseAnytime/Resources.h"
 
 #include <d3d11.h>
-#include <dxgi1_2.h>
+#include <dxgi1_4.h>
 
 #pragma warning(push, 0)
 #include "imgui.h"
@@ -39,11 +39,14 @@ namespace PauseAnytime::Overlay
         using t_Present = HRESULT STDMETHODCALLTYPE(IDXGISwapChain* chain, UINT sync, UINT flags);
         using t_Present1 = HRESULT STDMETHODCALLTYPE(IDXGISwapChain1* chain, UINT sync, UINT flags, DXGI_PRESENT_PARAMETERS const* parameters);
         using t_ResizeBuffers = HRESULT STDMETHODCALLTYPE(IDXGISwapChain* chain, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags);
+        using t_ResizeBuffers1 = HRESULT STDMETHODCALLTYPE(IDXGISwapChain3* chain, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags,
+                                                           UINT const* nodeMasks, IUnknown* const* queues);
 
         /// The loader makes a hook live before InstallHook hands back the original: a call arriving first waits for it.
         std::atomic<t_Present*> Present_orig{ nullptr };
         std::atomic<t_Present1*> Present1_orig{ nullptr };
         std::atomic<t_ResizeBuffers*> ResizeBuffers_orig{ nullptr };
+        std::atomic<t_ResizeBuffers1*> ResizeBuffers1_orig{ nullptr };
 
         template <class T>
         T* Wait(std::atomic<T*> const& slot)
@@ -68,6 +71,11 @@ namespace PauseAnytime::Overlay
         std::atomic<bool> Pad{ false };
         /// The overlay started on the game's swap chain and hasn't failed since.
         std::atomic<bool> Live{ false };
+        /// GetTickCount64 at the latest present on the swap chain we draw on (0 before the first): Drawing. While a new swap
+        /// chain waits to be taken (AdoptAfterMs), the one we draw on is silent, and the banner must show instead.
+        std::atomic<ULONGLONG> GameChainPresented{ 0 };
+        /// Drawing is true while that swap chain presented this recently: longer than any frame in play.
+        constexpr ULONGLONG DrawnLatelyMs = 250;
         /// Install's, set before the hooks go live.
         std::atomic<OverlayLook> Look{ OverlayLook::LE1 };
 
@@ -188,12 +196,10 @@ namespace PauseAnytime::Overlay
         constexpr unsigned MaxDrawFailures = 10;
         /// MovieIdle's presents a second, at most.
         constexpr LONGLONG IdleRate = 60;
-        /// MovieIdle starts only this soon after the game's last present: its swap chain is the one the movie paused on.
-        constexpr ULONGLONG IdleAdoptMs = 1000;
-        /// ... and only once the game has presented nothing for this long.
+        /// MovieIdle presents only once the game has presented nothing for this long.
         constexpr LONGLONG IdleQuietMs = 100;
-        /// A Present from another swap chain is the game's new one (a display mode change) once the one we draw on has been
-        /// silent this long; before, it is someone else's next to it, left alone.
+        /// A Present from another swap chain on the game's window is the game's new one (a display mode change) once the one
+        /// we draw on has been silent this long; before, it is someone else's next to it, left alone.
         constexpr ULONGLONG AdoptAfterMs = 500;
 
         struct Fonts
@@ -347,6 +353,9 @@ namespace PauseAnytime::Overlay
             /// Identity only: no reference is held through it.
             IDXGISwapChain* GameChain = nullptr;
             ULONGLONG GameChainSeen = 0;
+            /// The window the game's swap chain presents to: only a swap chain on it is taken for the game's new one (Adopt).
+            HWND GameWindow = nullptr;
+            bool ForeignLogged = false;
             ID3D11Texture2D* Back = nullptr;
             ID3D11RenderTargetView* Target = nullptr;
             LARGE_INTEGER LastFrame{};
@@ -359,8 +368,13 @@ namespace PauseAnytime::Overlay
             /// While a fullscreen movie plays: the game's last frame, copied before anything is drawn on it. A paused movie
             /// presents nothing, so MovieIdle presents this frame with the pause screen over it.
             ID3D11Texture2D* Clean = nullptr;
-            /// The swap chain MovieIdle presents to, referenced only while it does (a movie paused by us): the game may replace
-            /// its swap chain at any other time.
+            /// The size and format no copy could be made for (CreateTexture2D failed): not tried again at every frame, only
+            /// once they change or at the next movie (ReleaseMovie).
+            D3D11_TEXTURE2D_DESC CleanRefused{};
+            bool HaveCleanRefused = false;
+            /// The swap chain MovieIdle presents to: referenced in one of the game's own presents to it while its frames are
+            /// copied into Clean, so that it is still alive when the movie pauses and the game stops presenting. Dropped with
+            /// the copy, once the game presents with no such movie: then the game may replace its swap chain freely.
             IDXGISwapChain* MovieChain = nullptr;
             /// The game's last own present (not MovieIdle's), and the swap chain of the last present of all.
             LARGE_INTEGER LastGamePresent{};
@@ -386,6 +400,10 @@ namespace PauseAnytime::Overlay
         thread_local bool InPresent = false;
         /// MovieIdle's own present: the back buffer holds Clean already.
         thread_local bool SelfPresent = false;
+        /// The swap chain whose present on this thread came back DXGI_ERROR_WAS_STILL_DRAWING (DXGI_PRESENT_DO_NOT_WAIT):
+        /// nothing was shown and its back buffer holds our drawing already, so the present that retries it is not drawn on
+        /// again (the screen would be blurred and darkened twice). Cleared by that chain's next present with any other result.
+        thread_local IDXGISwapChain* NotShown = nullptr;
         /// The thread that presents the game's frames: the only one that may use the device's immediate context with us.
         std::atomic<DWORD> PresentThread{ 0 };
 
@@ -832,6 +850,15 @@ namespace PauseAnytime::Overlay
             if (R.MovieChain != nullptr) R.MovieChain->Release();
             R.Clean = nullptr;
             R.MovieChain = nullptr;
+            // The next movie tries the copy again.
+            R.HaveCleanRefused = false;
+        }
+
+        /// The same size, format and sampling: a copy of one fits the other.
+        bool SameKind(D3D11_TEXTURE2D_DESC const& a, D3D11_TEXTURE2D_DESC const& b)
+        {
+            return a.Width == b.Width && a.Height == b.Height && a.Format == b.Format && a.SampleDesc.Count == b.SampleDesc.Count &&
+                   a.SampleDesc.Quality == b.SampleDesc.Quality;
         }
 
         /// The game's frame, before we draw on it, copied into Clean (made or made again to the back buffer's size and format).
@@ -845,14 +872,14 @@ namespace PauseAnytime::Overlay
             {
                 D3D11_TEXTURE2D_DESC kept{};
                 R.Clean->GetDesc(&kept);
-                if (kept.Width != desc.Width || kept.Height != desc.Height || kept.Format != desc.Format || kept.SampleDesc.Count != desc.SampleDesc.Count ||
-                    kept.SampleDesc.Quality != desc.SampleDesc.Quality)
+                if (!SameKind(kept, desc))
                 {
                     R.Clean->Release();
                     R.Clean = nullptr;
                 }
             }
-            if (R.Clean == nullptr)
+            // A copy that could not be made (short of video memory) is not asked for again at every frame of the movie.
+            if (R.Clean == nullptr && !(R.HaveCleanRefused && SameKind(R.CleanRefused, desc)))
             {
                 desc.Usage = D3D11_USAGE_DEFAULT;
                 // A multisampled texture must be bindable as a render target.
@@ -863,6 +890,8 @@ namespace PauseAnytime::Overlay
                 if (FAILED(hr))
                 {
                     R.Clean = nullptr;
+                    R.CleanRefused = desc;
+                    R.HaveCleanRefused = true;
                     if (!R.CleanLogged)
                     {
                         R.CleanLogged = true;
@@ -925,6 +954,7 @@ namespace PauseAnytime::Overlay
             auto const blur = Blur::Init(R.Device);
 
             R.GameChain = chain;
+            R.GameWindow = desc.OutputWindow;
             R.Native = &NativeLookOf(Look.load(std::memory_order_relaxed));
             R.Text = &LanguageTexts();
             QueryPerformanceCounter(&R.LastFrame);
@@ -938,6 +968,20 @@ namespace PauseAnytime::Overlay
         /// The game's new swap chain (a display mode change): drawn on from now, on its device.
         void Adopt(IDXGISwapChain* chain)
         {
+            // Only one on the game's window, while that window lives: a swap chain of someone else's in the process that went on
+            // presenting, once taken, would keep the game's from ever being taken back.
+            DXGI_SWAP_CHAIN_DESC desc{};
+            if (FAILED(chain->GetDesc(&desc))) return;
+            if (desc.OutputWindow != R.GameWindow && IsWindow(R.GameWindow))
+            {
+                if (!R.ForeignLogged)
+                {
+                    R.ForeignLogged = true;
+                    LEASI_INFO("overlay: swap chain {} presents to window {}, not the game's {}: left alone", static_cast<void const*>(chain),
+                               static_cast<void const*>(desc.OutputWindow), static_cast<void const*>(R.GameWindow));
+                }
+                return;
+            }
             ID3D11Device* device = nullptr;
             // Not a D3D11 swap chain: not the game's.
             if (FAILED(chain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&device))) || device == nullptr) return;
@@ -965,6 +1009,7 @@ namespace PauseAnytime::Overlay
             }
             else device->Release();
             R.GameChain = chain;
+            R.GameWindow = desc.OutputWindow;
             LEASI_INFO("overlay: drawing on swap chain {} now (the one before went silent)", static_cast<void const*>(chain));
         }
 
@@ -995,6 +1040,7 @@ namespace PauseAnytime::Overlay
                 if (R.Failed || chain != R.GameChain) return;
             }
             R.GameChainSeen = now;
+            GameChainPresented.store(now, std::memory_order_relaxed);
             PresentThread.store(GetCurrentThreadId(), std::memory_order_relaxed);
 
             // As soon as they come, not at the first pause: a reference from here on keeps them.
@@ -1028,11 +1074,12 @@ namespace PauseAnytime::Overlay
                 if (Bink::PausableMovies() > 0 && quiet)
                 {
                     KeepClean(chain);
-                    // The game presents again: no movie paused by us.
-                    if (R.MovieChain != nullptr)
+                    // Referenced here, in a present of its own, never from its identity alone: a movie pauses in its BinkWait
+                    // with no present in between, and the game may let go of its swap chain once it stops presenting.
+                    if (R.MovieChain == nullptr)
                     {
-                        R.MovieChain->Release();
-                        R.MovieChain = nullptr;
+                        chain->AddRef();
+                        R.MovieChain = chain;
                     }
                 }
                 else if (R.Clean != nullptr || R.MovieChain != nullptr)
@@ -1040,7 +1087,10 @@ namespace PauseAnytime::Overlay
             }
             auto const shown = world || movie;
             if (shown) R.Photo = world && (flags & OfferPhoto) != 0;
-            R.Fade = (flags & HideNow) != 0 ? 0.f : Blur::Step(R.Fade, shown, seconds, shown ? FadeInSeconds : FadeOutSeconds);
+            // HideNow is our world pause's, published from the HUD's frames: over a movie pause the HUD is silent, so one seen
+            // there is left over from before the movie, and the movie's pause screen shows.
+            auto const hideNow = (flags & HideNow) != 0 && !movie;
+            R.Fade = hideNow ? 0.f : Blur::Step(R.Fade, shown, seconds, shown ? FadeInSeconds : FadeOutSeconds);
             if (shown != R.WasShown)
             {
                 R.WasShown = shown;
@@ -1048,7 +1098,7 @@ namespace PauseAnytime::Overlay
                     LEASI_INFO("overlay shown: {}, {} prompts{}", movie ? "movie pause" : "world pause", Pad.load(std::memory_order_relaxed) ? "gamepad" : "keyboard",
                                R.Photo ? ", photo mode offered" : "");
                 else
-                    LEASI_INFO("overlay hidden{}", (flags & HideNow) != 0 ? " at once (photo mode or the console)" : "");
+                    LEASI_INFO("overlay hidden{}", hideNow ? " at once (photo mode or the console)" : "");
             }
             if (R.Fade <= 0)
             {
@@ -1144,17 +1194,40 @@ namespace PauseAnytime::Overlay
             }
         }
 
+        /// Before the original present: the pause screen, once a frame. DXGI_PRESENT_TEST only asks whether presenting would
+        /// work: nothing is shown.
+        void BeforePresent(IDXGISwapChain* chain, UINT flags)
+        {
+            if (!(flags & DXGI_PRESENT_TEST) && chain != NotShown) Guarded(chain);
+        }
+
+        void AfterPresent(IDXGISwapChain* chain, UINT flags, HRESULT hr)
+        {
+            if (flags & DXGI_PRESENT_TEST) return;
+            if (hr == DXGI_ERROR_WAS_STILL_DRAWING) NotShown = chain;
+            else if (chain == NotShown) NotShown = nullptr;
+        }
+
         // The guard spans the original call too: an overlay or runtime between us and DXGI may present one way through the
-        // other (Present1 into Present, or back), and the frame must be drawn once.
+        // other (Present1 into Present, or back), and the frame must be drawn once. InPresent is cleared even when an
+        // exception raised below the original goes up through here to a handler above us: left set, no later present on this
+        // thread would be drawn on. No C++ object may live in these frames.
         HRESULT STDMETHODCALLTYPE Present_hook(IDXGISwapChain* chain, UINT sync, UINT flags)
         {
             auto const orig = Wait(Present_orig);
             if (InPresent) return orig(chain, sync, flags);
             InPresent = true;
-            // DXGI_PRESENT_TEST only asks whether presenting would work: nothing is shown.
-            if (!(flags & DXGI_PRESENT_TEST)) Guarded(chain);
-            auto const hr = orig(chain, sync, flags);
-            InPresent = false;
+            HRESULT hr = E_FAIL;
+            __try
+            {
+                BeforePresent(chain, flags);
+                hr = orig(chain, sync, flags);
+            }
+            __finally
+            {
+                InPresent = false;
+            }
+            AfterPresent(chain, flags, hr);
             return hr;
         }
 
@@ -1163,9 +1236,17 @@ namespace PauseAnytime::Overlay
             auto const orig = Wait(Present1_orig);
             if (InPresent) return orig(chain, sync, flags, parameters);
             InPresent = true;
-            if (!(flags & DXGI_PRESENT_TEST)) Guarded(chain);
-            auto const hr = orig(chain, sync, flags, parameters);
-            InPresent = false;
+            HRESULT hr = E_FAIL;
+            __try
+            {
+                BeforePresent(chain, flags);
+                hr = orig(chain, sync, flags, parameters);
+            }
+            __finally
+            {
+                InPresent = false;
+            }
+            AfterPresent(chain, flags, hr);
             return hr;
         }
 
@@ -1174,29 +1255,21 @@ namespace PauseAnytime::Overlay
         /// its own frames), or no frame of this back buffer's size kept.
         bool PrepareIdle()
         {
-            if (R.Failed || R.Clean == nullptr || R.GameChain == nullptr) return false;
+            if (R.Failed || R.Clean == nullptr || R.MovieChain == nullptr) return false;
             LARGE_INTEGER time, frequency;
             QueryPerformanceCounter(&time);
             QueryPerformanceFrequency(&frequency);
             if (time.QuadPart - R.LastFrame.QuadPart < frequency.QuadPart / IdleRate) return false;
             if (time.QuadPart - R.LastGamePresent.QuadPart < frequency.QuadPart * IdleQuietMs / 1000) return false;
-            if (R.MovieChain == nullptr)
-            {
-                // The movie presented to the game's swap chain a moment ago, as it paused, and nothing presented since: it is
-                // alive. Referenced from now until the game presents again (Frame), so it outlives our presents.
-                if (R.LastChain != R.GameChain || GetTickCount64() - R.GameChainSeen > IdleAdoptMs) return false;
-                R.GameChain->AddRef();
-                R.MovieChain = R.GameChain;
-            }
-            if (R.MovieChain != R.GameChain) return false;
+            // The movie presented to the swap chain we draw on (Frame referenced it there), and nothing presented elsewhere since.
+            if (R.MovieChain != R.GameChain || R.LastChain != R.MovieChain) return false;
             ID3D11Texture2D* back = nullptr;
             if (FAILED(R.MovieChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back))) || back == nullptr) return false;
             D3D11_TEXTURE2D_DESC desc{}, kept{};
             back->GetDesc(&desc);
             R.Clean->GetDesc(&kept);
             // Resized while paused: the copy would be dropped, and an undefined buffer blurred.
-            auto const same = desc.Width == kept.Width && desc.Height == kept.Height && desc.Format == kept.Format &&
-                              desc.SampleDesc.Count == kept.SampleDesc.Count && desc.SampleDesc.Quality == kept.SampleDesc.Quality;
+            auto const same = SameKind(desc, kept);
             if (same) R.Context->CopyResource(back, R.Clean);
             back->Release();
             if (!same) return false;
@@ -1224,11 +1297,38 @@ namespace PauseAnytime::Overlay
             }
         }
 
-        HRESULT STDMETHODCALLTYPE ResizeBuffers_hook(IDXGISwapChain* chain, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
+        /// MovieIdle's present, which the game never asked for: a fault below it (DXGI, the driver, another overlay) would go up
+        /// through BinkWait into the movie player and end the game, so here it turns the overlay off instead. No C++ object
+        /// may live in this frame.
+        void GuardedSelfPresent(IDXGISwapChain* chain)
         {
-            auto const orig = Wait(ResizeBuffers_orig);
-            // Our view and the blur's copies hold the old back buffer, which must be released before it can be resized. The
-            // movie's kept frame no longer fits it.
+            __try
+            {
+                SelfPresent = true;
+                chain->Present(1, 0);
+                SelfPresent = false;
+            }
+            __except (Fault::Filter(GetExceptionInformation()))
+            {
+                SelfPresent = false;
+                R.Failed = true;
+                Live.store(false, std::memory_order_release);
+                Fault::Log("overlay, a paused movie's present: off, the Canvas banner instead");
+            }
+        }
+
+        /// ResizeBuffers and ResizeBuffers1, before the original: our view and the blur's copies hold the old back buffer, which
+        /// must be released before it can be resized. The movie's kept frame no longer fits it.
+        void BeforeResize(IDXGISwapChain* chain, char const* what, UINT width, UINT height)
+        {
+            // Once, flushed ahead of the resize: which thread resizes, beside the one that presents, for a crash in there.
+            static std::atomic<bool> logged{ false };
+            if (!logged.exchange(true))
+            {
+                LEASI_INFO("overlay: the first {}, to {}x{}, runs on thread {}; frames are presented on {}; {}", what, width, height, GetCurrentThreadId(),
+                           PresentThread.load(std::memory_order_relaxed), chain == R.GameChain ? "the swap chain we draw on" : "another swap chain");
+                LEASI_FLUSH();
+            }
             if (chain == R.GameChain)
             {
                 ReleaseTarget();
@@ -1236,7 +1336,21 @@ namespace PauseAnytime::Overlay
                 if (R.Clean != nullptr) R.Clean->Release();
                 R.Clean = nullptr;
             }
+        }
+
+        HRESULT STDMETHODCALLTYPE ResizeBuffers_hook(IDXGISwapChain* chain, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
+        {
+            auto const orig = Wait(ResizeBuffers_orig);
+            BeforeResize(chain, "ResizeBuffers", width, height);
             return orig(chain, count, width, height, format, flags);
+        }
+
+        HRESULT STDMETHODCALLTYPE ResizeBuffers1_hook(IDXGISwapChain3* chain, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags,
+                                                      UINT const* nodeMasks, IUnknown* const* queues)
+        {
+            auto const orig = Wait(ResizeBuffers1_orig);
+            BeforeResize(chain, "ResizeBuffers1", width, height);
+            return orig(chain, count, width, height, format, flags, nodeMasks, queues);
         }
     }
 
@@ -1266,6 +1380,7 @@ namespace PauseAnytime::Overlay
         void* present = nullptr;
         void* present1 = nullptr;
         void* resize = nullptr;
+        void* resize1 = nullptr;
         IDXGISwapChain* chain = nullptr;
         ID3D11Device* device = nullptr;
         ID3D11DeviceContext* context = nullptr;
@@ -1273,7 +1388,8 @@ namespace PauseAnytime::Overlay
         if (FAILED(hr)) hr = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &desc, &chain, &device, nullptr, &context);
         if (SUCCEEDED(hr) && chain != nullptr)
         {
-            // IDXGISwapChain: Present is 8, ResizeBuffers 13; IDXGISwapChain1 adds Present1 at 22.
+            // IDXGISwapChain: Present is 8, ResizeBuffers 13; IDXGISwapChain1 adds Present1 at 22; IDXGISwapChain3 adds
+            // ResizeBuffers1 at 39.
             auto const table = *reinterpret_cast<void***>(chain);
             present = table[8];
             resize = table[13];
@@ -1282,6 +1398,12 @@ namespace PauseAnytime::Overlay
             {
                 present1 = (*reinterpret_cast<void***>(chain1))[22];
                 chain1->Release();
+            }
+            IDXGISwapChain3* chain3 = nullptr;
+            if (SUCCEEDED(chain->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&chain3))) && chain3 != nullptr)
+            {
+                resize1 = (*reinterpret_cast<void***>(chain3))[39];
+                chain3->Release();
             }
         }
         if (context != nullptr) context->Release();
@@ -1303,10 +1425,16 @@ namespace PauseAnytime::Overlay
             LEASI_ERROR("overlay: hooking IDXGISwapChain::ResizeBuffers failed: the Canvas banner instead");
             return;
         }
+        // A layer between the game and DXGI may resize through ResizeBuffers1: without this hook, a pause holding the back
+        // buffer would make that resize fail. The game itself resizes through ResizeBuffers, so the overlay goes on without it.
+        if (resize1 != nullptr && resize1 != resize)
+            ResizeBuffers1_orig.store(static_cast<t_ResizeBuffers1*>(Init.InstallHook("IDXGISwapChain3::ResizeBuffers1", resize1, ResizeBuffers1_hook)),
+                                      std::memory_order_release);
         Present_orig.store(static_cast<t_Present*>(Init.InstallHook("IDXGISwapChain::Present", present, Present_hook)), std::memory_order_release);
         if (present1 != nullptr && present1 != present)
             Present1_orig.store(static_cast<t_Present1*>(Init.InstallHook("IDXGISwapChain1::Present1", present1, Present1_hook)), std::memory_order_release);
-        LEASI_INFO("overlay: swap chain hooks Present {}, Present1 {}, ResizeBuffers true{}", Present_orig.load() != nullptr, Present1_orig.load() != nullptr,
+        LEASI_INFO("overlay: swap chain hooks Present {}, Present1 {}, ResizeBuffers true, ResizeBuffers1 {}{}", Present_orig.load() != nullptr,
+                   Present1_orig.load() != nullptr, ResizeBuffers1_orig.load() != nullptr,
                    Present_orig.load() == nullptr ? ": no Present, the Canvas banner instead" : "");
     }
 
@@ -1353,21 +1481,29 @@ namespace PauseAnytime::Overlay
         auto const presenter = PresentThread.load(std::memory_order_relaxed);
         if (GetCurrentThreadId() != presenter)
         {
-            static std::atomic<bool> logged{ false };
-            if (!logged.exchange(true))
-                LEASI_WARN("overlay: the paused movie plays on thread {}, frames are presented on {}: its pause screen shows only as it pauses",
+            // Once a movie, not once a session: a render thread the engine restarted (a resize) leaves the last presenter's id
+            // here until the game presents again, so one movie's line may be stale, and a later movie must still say what it finds.
+            static std::atomic<unsigned> loggedMovie{ 0 };
+            auto const movie = Bink::MovieSerial();
+            if (loggedMovie.exchange(movie, std::memory_order_relaxed) != movie)
+                LEASI_WARN("overlay: the paused movie plays on thread {}, frames were last presented on {}: its pause screen shows only as it pauses",
                            GetCurrentThreadId(), presenter);
             return;
         }
         if (!GuardedPrepareIdle()) return;
-        // Through our Present hook, which draws the pause screen; the game holds the swap chain too, our reference only for the call.
+        // Through our Present hook, which draws the pause screen; Frame holds the swap chain too, our reference only for the call.
         auto const chain = R.MovieChain;
         chain->AddRef();
-        SelfPresent = true;
-        chain->Present(1, 0);
-        SelfPresent = false;
+        GuardedSelfPresent(chain);
         chain->Release();
     }
 
-    bool Drawing() { return Live.load(std::memory_order_acquire); }
+    bool Drawing()
+    {
+        if (!Live.load(std::memory_order_acquire)) return false;
+        // The render thread may have stored a tick taken after ours: no wrap-around.
+        auto const now = GetTickCount64();
+        auto const presented = GameChainPresented.load(std::memory_order_relaxed);
+        return presented != 0 && (now > presented ? now - presented : 0) <= DrawnLatelyMs;
+    }
 }

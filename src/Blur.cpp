@@ -179,6 +179,10 @@ float4 PSComposite(VSOut i) : SV_Target
             /// A key no resources could be made for: not retried, not logged again, until the next Release.
             Key Refused;
             bool HaveRefused = false;
+            /// The back buffer and view formats of the last "not handled" warning: Release, at the end of each pause, forgets a
+            /// refused key, so the next pause tries again, but a format that can't change is not warned of again.
+            DXGI_FORMAT WarnedBack = DXGI_FORMAT_UNKNOWN;
+            DXGI_FORMAT WarnedView = DXGI_FORMAT_UNKNOWN;
             bool Direct = false;
             /// The target view is sRGB or float: the composite's colour math is on linear values.
             bool Linear = false;
@@ -492,8 +496,13 @@ float4 PSComposite(VSOut i) : SV_Target
             auto const encoding = EncodingOf(key.ViewFormat);
             if (family == DXGI_FORMAT_UNKNOWN || encoding.Chain == DXGI_FORMAT_UNKNOWN || Family(key.ViewFormat) != family)
             {
-                LEASI_WARN("pause blur: back buffer format {} with a view in {} not handled: no blur at this size", static_cast<int>(bb.Format),
-                           static_cast<int>(key.ViewFormat));
+                if (bb.Format != S.WarnedBack || key.ViewFormat != S.WarnedView)
+                {
+                    S.WarnedBack = bb.Format;
+                    S.WarnedView = key.ViewFormat;
+                    LEASI_WARN("pause blur: back buffer format {} with a view in {} not handled: no blur at this size", static_cast<int>(bb.Format),
+                               static_cast<int>(key.ViewFormat));
+                }
                 return false;
             }
 
