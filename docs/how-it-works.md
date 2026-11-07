@@ -43,18 +43,26 @@ hooks `ProcessEvent` and photo mode's natives. Then come `Bink::Install`, `Movie
 and the line `LE<n>PauseAnytime <version> ready`, even when a part turned itself off.
 
 A part that cannot hook logs what it loses and stays off. Only the core checks are fatal (GEngine, `ProcessEvent`, the
-SDK's globals): a failed one logs `failed to resolve <name>` and aborts the game. If the loader refuses the `ProcessEvent`
-hook, the attach logs `the loader refused the ProcessEvent hook` and stops there: no other part is hooked, no "ready"
-line is written, and the game goes on without Pause Anytime. The loader names each hook after the plugin name built
-into the file, so a second copy of the ASI under another file name asks for names that are taken. `ProcessEvent` and
-GEngine are at fixed RVAs of the pinned SDK, and nothing checks their bytes. Every other native has its first bytes
-compared before it is hooked, and on another build the log says `not found at RVA ... (another build of the game?)`.
-The RVAs come from a memory dump of the running game, since the exe's code is encrypted on disk.
+SDK's globals): a failed one logs `failed to resolve <name>` and aborts the game.
+
+The loader names each hook after the plugin name built into the file, so a second copy of the ASI under another file
+name would ask for names that are taken. So before it sets up the log, each copy makes a named semaphore for its game
+process. A copy that finds one there counts itself in it and stays off, with no log and no hook. After its "ready"
+line, the first copy warns `a second copy of LE<n>PauseAnytime.asi is in the ASI folder under another file name` when a
+copy has counted itself by then. If the loader still refuses the `ProcessEvent` hook, the attach logs `the loader
+refused the ProcessEvent hook` and stops there: no other part is hooked, no "ready" line is written, and the game goes
+on without Pause Anytime.
+
+`ProcessEvent` and GEngine are at fixed RVAs of the pinned SDK, and nothing checks their bytes. Every other native has
+its first bytes compared before it is hooked, and on another build the log says `not found at RVA ... (another build of
+the game?)`. The RVAs come from a memory dump of the running game, since the exe's code is encrypted on disk.
 
 ## The ProcessEvent hook
 
 One hook on `UObject::ProcessEvent` sees every UnrealScript call. Calls that Pause Anytime makes itself (`InOwnCall`)
-go straight to the game. On the game thread, each call notes the time, and a gap over 250 ms marks a stall. Then:
+go straight to the game. On the game thread, each call notes the time, and a gap over 250 ms marks a stall. When the
+time has moved, it also reads, under a guard, whether the Steam overlay or the console is open, for the movie's thread.
+Then:
 
 - LE2, LE3: `Activated` and `Deactivated` go to the Kismet movie latch, before the original.
 - Before the original: `InputKey` on a `Console` (the keys), `SkipMovie`, `SkipCinematic` and `GuiKey` on an
@@ -67,44 +75,56 @@ After each `BioHUD.PostRender` the hook notes the HUD's time, which the movie co
 1. lifts a movie pause once the HUD has drawn for 1 s;
 2. runs `Validate` and `PhotoMode::Frame`;
 3. publishes what the pause screen shows;
-4. reads the game's words, icons and fonts (3 tries each, each guarded).
+4. reads the game's words and fonts (3 tries each) and its gamepad icons (60 tries, about a second, since the renderer
+   may make their views a few frames late), each guarded.
 
 `CallGame` zeroes a function's `iNative` for the call, so `ProcessEvent` runs natives too, and puts it back in a
-`__finally`. A game object kept across frames (`Kept<T>`) holds its object index and is checked before each use,
-since a map change or a load replaces it.
+`__finally`. A game object kept across frames (`Kept<T>`) holds its object index and its class, and is checked before
+each use, since a map change or a load replaces it.
 
 ## Keys
 
 Pause Anytime watches six keys in `Console.InputKey`: `Escape`, `XboxTypeS_Start`, `XboxTypeS_Y`, `F7`, `SpaceBar` and
 `XboxTypeS_A`. A key it takes gets `ReturnValue` TRUE, and the game's `InputKey` is skipped. A press it acts on is
 taken with its repeats and its release. The controller is GEngine's first `LocalPlayer`. In the open console (`Typing`
-or `Open` state) the keys are the console's, but the movie's thread has no such check.
+or `Open` state) the keys are the console's. The movie's thread refuses Esc and Space while the console or the Steam
+overlay is open, as the game thread read them at its latest tick. It trusts that read only while the game thread has
+ticked in the last 250 ms, so a load that began with the overlay open cannot keep a paused movie from resuming.
 
 A press of Esc or Start runs `Validate`, then the first of these that applies:
 
-1. A fullscreen movie owns the pause keys (`Bink::OwnsKeys`). Esc is taken without a toggle, since the movie's thread
+1. Our photo session ran when the press came: the press ends it and does nothing more, so the world stays paused. If
+   `Validate` ended the session first (the world pause ended, or the game left photo mode), the press is only taken.
+2. `Validate` resumed our world pause because the mode changed: the press is taken, so the game does not act on it too.
+3. A fullscreen movie owns the pause keys (`Bink::OwnsKeys`). Esc is taken without a toggle, since the movie's thread
    saw the same press. Start toggles the movie pause through `Bink::Toggle`.
-2. Our photo session runs: it ends, and the world stays paused.
-3. Our world pause holds: resume.
-4. The mode is Conversation or Cinematic and `Pauser` is None: pause.
+4. Our world pause holds: resume.
+5. The mode is Conversation or Cinematic and `Pauser` is None: pause.
 
-Otherwise the key is the game's. During a fullscreen movie, every Esc event that reaches the console is taken.
+Photo mode comes before the movie: a session runs under our world pause, with no fullscreen movie, and a stall in it
+can make the HUD look silent. Otherwise the key is the game's. During a fullscreen movie, every Esc event that reaches
+the console is taken. So is an Esc press that the movie's thread acted on, when it reaches the console after its movie
+closed.
 
 A pad button repeats after 0.2 s, then every 0.1 s. So a Start press with no event for 500 ms counts as over (its
-release was lost), unless the game thread stalled.
+release was lost). The 500 ms run from its last event, or from the end of a later game-thread stall, since the pad is
+read once a frame.
 
 Space and A only resume. Under the movie pause any of their events resumes. Under the world pause only a press does,
-and not in photo mode, where Space takes the picture. Y and F7 open photo mode under our world pause, for the
-controller that paused, in Conversation or Cinematic, and never during a fullscreen movie. In our photo mode they leave
-it. Any event of Escape, F7 or SpaceBar switches the prompts to the keyboard, and any event of Start, Y or A to the
-gamepad.
+and not in photo mode, where Space takes the picture. As with Esc, a press on which `Validate` resumed the world is
+taken. Y and F7 open photo mode under our world pause, for the controller that paused, in Conversation or Cinematic.
+They never do during a fullscreen movie, or once the per-frame checks are off ([Crash guards](#crash-guards)). In our
+photo mode they leave it, before any movie check. Any event of Escape, F7 or SpaceBar switches the prompts to the
+keyboard, and any event of Start, Y or A to the gamepad.
 
 ### Skip guard
 
 The guard is armed while a press of Esc, Start, Space or A that Pause Anytime took is down (2 s at most), and for
 250 ms after its release. It drops `SkipMovie`, `SkipCinematic`, and the `GuiKey` calls with the Escape and Start
 events of the always-on binds (ids in `LE<n>.hpp`). An Esc or Space press that only the movie's thread saw arms it
-too. Y and F7 do not arm it.
+too. That press also counts when the game thread read no input since before it: a stall of over 250 ms that is still
+on, or ended less than 250 ms ago. The key's queued events then reach the game thread late, and they are still that
+press. Y and F7 do not arm it.
 
 The guard exists for two reasons. The `OnRelease` half of a bind may run after the console saw the release. And it is
 not settled whether the console's TRUE return keeps a key from PlayerInput's binds. `GuiKey` is matched by event
@@ -124,9 +144,10 @@ the call (another pause, such as the Steam overlay), the world stays paused with
 command then resumes it.
 
 `Validate` runs every frame and on every press of a watched key. It ends our pause when the paused WorldInfo is gone (a
-map change or a load), or when `Pauser` became None without us. That happens through the game, a load, or the Steam
-overlay closing (`ClearPause` drops every `CanUnpause` that agrees). If the mode left Conversation and Cinematic outside
-our photo session, `Validate` resumes the world.
+map change or a load), or when `Pauser` became None without us. That happens through the game, a load, the console's
+`pause`, or the Steam overlay closing (`ClearPause` drops every `CanUnpause` that agrees). If the mode left
+Conversation and Cinematic outside our photo session, `Validate` resumes the world. No mode at all (no mode manager to
+read) is not a change.
 
 ### The audio hold and the Steam overlay
 
@@ -147,6 +168,11 @@ Closing the Steam overlay ends our pause with no key that Pause Anytime sees. So
 - `Validate` with the overlay open;
 - `Validate` finding the pause already over, which gives back only the rest of the audio.
 
+When it does not play (no controller or GUI manager, as after a load), the hold stays, and the next `Validate` tries
+again, 3 times at most. Then the log warns `game audio still held`, and the audio waits for a game menu to play its own
+sound. The console's `pause` ends our pause with no key of ours too, and nothing hears of it before the next frame's
+`Validate`, so a voice line the hold still held may be lost there.
+
 Posting it as each pause starts would also keep the line, but the pause would not be silent: ambient sound went on
 under it (in LE2, a peak of 0.018 against 0.000).
 
@@ -163,21 +189,29 @@ paused.
 
 The thread that plays the movie reads Esc and Space in each `BinkWait`, with `GetAsyncKeyState`. A press is the key
 going down while a game window is in front, at least 150 ms after the last one. One Esc press toggles: it resumes
-what Pause Anytime paused, or asks for a pause of the newest fullscreen movie. Space only resumes.
+what Pause Anytime paused, or asks for a pause of the newest fullscreen movie. Space only resumes. An Esc press read in
+the same poll as a Space press that resumes is part of that resume. Neither key counts while the Steam overlay or the
+console is open ([Keys](#keys)).
 
 This thread reads no game object. It reads only what the game thread shares with it: the HUD's time, the requests of
-`Bink::Toggle` and `Bink::RequestResume`, and a copy of the movie latch. LE3's log lines also read two movie player
-fields there, under a guard.
+`Bink::Toggle` and `Bink::RequestResume`, a copy of the movie latch, and whether the Steam overlay or the console is
+open, with the time of the game thread's latest tick. LE3's log lines also read two movie player fields there, under a
+guard.
 
 Start cannot be read there (XInput goes through the game, and Steam Input may stand in for it). So Start toggles on the
 game thread, through `Bink::Toggle`. In LE1 the engine's movie input takes Start's press, so its first repeat or its
-release toggles. In LE2 and LE3 the movie input hook lets the press through, and it toggles at once.
+release toggles. Such an event pauses no movie that opened after the press could have been made, 0.2 s before it: that
+press may have skipped the movie before. In LE2 and LE3 the movie input hook lets the press through, and it toggles at
+once.
 
 The movie's thread applies the pause with `BinkPause(movie, 1)` at its `BinkWait` and only there, since Bink's calls on
 one movie belong on one thread. `BinkPause` only makes `BinkWait` answer "wait" and stops the Bink audio. The games'
 Bink (2022.05) hangs a player that pauses and then stops calling `BinkWait`, a bug RAD fixed in 2025.05. So a movie
-that has not called `BinkWait` lately is never paused. A resume is applied at its next Bink call of any kind. In LE2
-and LE3 the movie's Wwise event is paused right after `BinkPause` and resumed with it.
+that has not called `BinkWait` lately is never paused. A resume is applied at its next Bink call of any kind, on the
+thread of its `BinkWait`. A movie that closes while `BinkPause` holds it is resumed right before `BinkClose`, in case
+the close is such a stop. That call comes from the thread that closes the movie, the one exception to the rule, and no
+other call on the movie can overlap its close. In LE2 and LE3 the movie's Wwise event is paused right after
+`BinkPause` and resumed with it.
 
 The movie pause ends:
 
@@ -188,8 +222,14 @@ The movie pause ends:
 - after a fault in the per-frame checks.
 
 If a movie makes no Bink call for 2 s under the pause, its pause is dropped: Esc and Start go back to the game, and the
-resume is applied if it calls Bink again. A silent game thread (a load) does not end the pause, since Esc is read on
-the movie's thread.
+resume is applied if it calls Bink again. A pause not applied yet counts only `BinkWait`, since only `BinkWait` applies
+it. From the 2 s mark the pause reads as over everywhere (the pause screen, the movie input hook, the game thread), and
+the next Esc, Start or movie poll drops it. A movie thread that only blocked that long is resumed the same way. A
+silent game thread (a load) does not end the pause, since Esc is read on the movie's thread.
+
+One press can do nothing when the two threads judge it apart: a second Esc within 150 ms, a tap shorter than the gap
+between two `BinkWait` polls, or a press at the HUD's 250 ms or `BinkWait`'s 500 ms edge. Acting on both sides could
+make one press two toggles, so it is left so, and the player presses again.
 
 ### LE2 and LE3: movie sound and movie input
 
@@ -238,13 +278,15 @@ stop halfway gives back only what was done, and a refused entry brings the pause
 8. The camera: `LastTransitionTime` is pushed back (the game's clock stands still), `UpdateCamera(0)` switches to the
    photo camera, a 0.001 s step ends its "instant" transition, and the photo cameras get the shot's field of view.
 
-Each frame sets again what the game may have changed, such as LE3's conversation movie showing itself. The camera
-follows each `PlayerTick` on our controller in the same frame.
+Each frame sets again what the game may have changed, such as LE3's conversation movie showing itself or turning its
+input on. It holds the controller's new timers too, so a timer that other script sets during the session runs only
+once the world resumes. The camera follows each `PlayerTick` on our controller in the same frame.
 
 The engine drops input while `Pauser` is set, and the GUI manager's tick stops. While the session runs, some natives
 run with `Pauser` cleared, and it is put back as they return: `BioPlayerInput::InputKey` and `UPlayerInput::InputAxis`
 on our controller's `PlayerInput`, and `UBioSFManager::Tick` on our GUI manager (LE1, LE2). The game thread runs them
-between the world's ticks, so nothing else sees the world unpaused.
+between the world's ticks, so nothing else sees the world unpaused. A `SetPause` with another delegate inside such a
+call would add a pause that putting `Pauser` back does not undo. None of these natives is known to call it.
 
 LE3's GFx movies advance on `WorldInfo.TimeSeconds`, which stands still, so `GfxClock` feeds their tick the real time.
 
@@ -262,26 +304,32 @@ frame or two behind.
 
 The session also ends when the world pause ends without us, when the world or the controller is gone, when the mode
 leaves Photo, or on a fault. While the world is being torn down, the session writes fields only on objects that are
-still alive, and calls nothing. Photo mode opened from the game's own pause menu stays the game's.
+still alive, and calls nothing. If the game's own exit faults, its photo mode may stay current. `Validate` then
+resumes the world, and the game's Esc leaves photo mode through its pause menu. Photo mode opened from the game's own
+pause menu stays the game's.
 
 ## Pause screen
 
 The game thread publishes what the screen shows through atomics (`Overlay::Publish` and the `Use...` calls). The render
 thread draws it from the hooked `Present`. It touches no game object there, only the D3D11 views of two game textures.
 
-The screen shows under our world pause while the HUD has drawn in the last 250 ms, so a flag left over from a load
-shows nothing. It shows under our movie pause while the HUD is silent. It goes at once, with no fade, during our photo
-session, for 3 frames after it, and while the console is open. Photo mode's key shows only where photo mode answers
-(its input and GUI tick hooks are installed), for the controller that paused, in Conversation or Cinematic, and never
-over a movie.
+The screen shows under our world pause while the HUD has drawn in the last 250 ms, so a flag left over from a load shows
+nothing. It shows under our movie pause while the HUD is silent. Under our world pause it goes at once, with no fade,
+during our photo session, for 3 frames after it, and while the console is open. The HUD's frames ask for that, so over a
+movie pause, where the HUD is silent, a request left from before the movie is ignored. Photo mode's key shows only where
+photo mode answers (its input and GUI tick hooks are installed), for the controller that paused, in Conversation or
+Cinematic, and never over a movie.
 
 ### Drawing
 
 `Overlay::Install` reads the swap chain's methods from a throwaway device on a hidden window, and hooks
-`ResizeBuffers`, `Present` and `Present1`. It starts on the first swap chain that presents, with no `imgui.ini` or ImGui
-log, and compiles its shaders at the game's first frame. It moves to another swap chain (after a display mode change)
-only once ours has been silent for 500 ms. `d3dcompiler_47.dll` is delay-loaded and bound to the copy in System32,
-never to one next to the game.
+`ResizeBuffers`, `ResizeBuffers1` (where DXGI has it), `Present` and `Present1`. It starts on the first swap chain that
+presents, with no `imgui.ini` or ImGui log, and compiles its shaders at the game's first frame. It moves to another
+swap chain (after a display mode change) only once ours has been silent for 500 ms, and only to one on the game's
+window while that window exists. While another swap chain presents and ours has been silent for 250 ms, the Canvas
+banner shows instead, until ours presents again or the other one is taken. A present that comes back
+`DXGI_ERROR_WAS_STILL_DRAWING` showed nothing, so the present that retries it is not drawn on again.
+`d3dcompiler_47.dll` is delay-loaded and bound to the copy in System32, never to one next to the game.
 
 Each game has its own look (`Game::Look`), with colours and sizes read from its menus. The layout is the same in all
 three, set for 1080 lines and scaled by the height. The frame is blurred, half as bright, 30 % desaturated and
@@ -313,9 +361,10 @@ the overlay makes on the same device. Both views must pass, or neither is used a
 ### A paused movie's frame
 
 A paused movie presents nothing: its thread only polls `BinkWait`. So while a pausable movie is open and the HUD has
-been silent for 125 ms, each frame is copied before anything is drawn on it. While the movie pause holds and the game
-has presented nothing for 100 ms, the `BinkWait` hook presents that copy with the pause screen over it, 60 times a
-second at most.
+been silent for 125 ms, each frame is copied before anything is drawn on it. The swap chain is referenced in one of
+those presents and held until the game presents with no such movie, since the pause can come at any frame and the
+movie then stops presenting. While the movie pause holds and the game has presented nothing for 100 ms, the `BinkWait`
+hook presents that copy with the pause screen over it, 60 times a second at most.
 
 This works only on the thread that presents the game's frames, which in LE1 is the movie's thread. Elsewhere the pause
 screen shows only as the movie pauses. After a resize the copy no longer fits, and nothing more is presented.
@@ -326,19 +375,22 @@ screen shows only as the movie pauses. After a resize the copy no longer fits, a
   font stands in for Exo 2.
 - Without the blur (a format it does not handle, a shader that fails), the backdrop is black at 60 %.
 - Without the overlay (a hook that fails, no `d3dcompiler_47.dll` in System32, 10 frames with no view on the back
-  buffer, a fault), `Pause.cpp` draws an English banner on the HUD's Canvas: `PAUSE`, then `Esc: resume` and
-  `F7: photo mode`, or Start and Y when Start paused or a gamepad is in use. It shows under our world pause outside
-  photo mode, never over a movie.
+  buffer, a fault), or while a new swap chain waits to be taken, `Pause.cpp` draws an English banner on the HUD's
+  Canvas: `PAUSE`, then `Esc: resume` and, where photo mode opens, `F7: photo mode`. It names Start and Y instead when
+  Start paused or a gamepad is in use. It shows under our world pause outside photo mode, never over a movie.
 
 ## Crash guards
 
 Each part runs under a `__try` guard that takes access violations only, and other exceptions go on up to the game.
 Each fault logs the module and offset where it was raised, and whose code that is. A fault in the game's code can
-still come from a stale pointer of ours.
+still come from a stale pointer of ours. The present that the `BinkWait` hook makes for a paused movie runs under the
+pause screen's guard, also for a fault in DXGI, the driver or another overlay, since that present runs only because of
+Pause Anytime. A fault below a present the game makes goes on up to the game.
 
 | Where the fault happens | What Pause Anytime does |
 |---|---|
-| Key handling | Passes the key to the game, leaves photo mode |
+| Key handling | Passes the key to the game, or takes it when its press already paused or resumed the world; leaves photo mode |
+| Reading the Steam overlay's and the console's state | Off for the session; the movie's thread reads Esc and Space there too |
 | Per-frame checks | Leaves photo mode, resumes and drops the world pause, resumes the movie |
 | The resume after that fault | Logs it; if the world stays paused, the console's `pause` resumes it |
 | The photo camera | Leaves photo mode |
@@ -347,9 +399,10 @@ still come from a stale pointer of ours.
 | The pause screen | Off for the session; the banner takes over |
 | The banner | Off for the session |
 
-After 3 faults the per-frame checks stay off for the session. Esc and Start still pause and resume. The pause screen
-then shows a pause only while its world exists and is paused, and without photo mode's key. The HUD drawing again no
-longer lifts a movie pause.
+After 3 faults the per-frame checks stay off for the session. Esc and Start still pause and resume, but Y and F7 no
+longer open photo mode, since nothing would watch the session. The pause screen and the banner then show a pause only
+while its world exists and is paused, and without photo mode's key. The HUD drawing again no longer lifts a movie
+pause.
 
 ## Engine facts it relies on
 
