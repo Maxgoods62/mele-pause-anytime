@@ -36,25 +36,28 @@ namespace PauseAnytime
 
     std::string PathOf(UObject const* object);
 
-    /// Still the object the index pointed at: not destroyed, not replaced by a map change.
-    bool Alive(UObject* object, int index);
+    /// Still the object the index pointed at, of the class it had: not destroyed, not replaced by a map change. An object
+    /// that took both the freed index and the freed memory since is caught only when its class differs.
+    bool Alive(UObject* object, int index, UClass const* cls);
 
     std::string NameText(SFXName const& name);
 
-    /// A game object we changed, with its object index: checked again before each write back.
+    /// A game object we changed, with its object index and class: checked again before each use.
     template <class T>
     struct Kept
     {
         T* Object = nullptr;
         int Index = -1;
+        UClass const* Class = nullptr;
 
         void Set(T* object)
         {
             Object = object;
             Index = object != nullptr ? object->ObjectInternalInteger : -1;
+            Class = object != nullptr ? object->Class : nullptr;
         }
 
-        T* Live() const { return Alive(Object, Index) ? Object : nullptr; }
+        T* Live() const { return Alive(Object, Index, Class) ? Object : nullptr; }
     };
 
     // ! Calls
@@ -66,10 +69,12 @@ namespace PauseAnytime
     /// The most derived function of that name: what a console command would run.
     UFunction* FindFunction(UClass* cls, SFXName const& name);
 
-    /// A function of an object's class, looked up again when the class changes.
+    /// A function of an object's class, looked up again when the class changes: another class at the same address has
+    /// another object index, unless it took the freed one too.
     struct CachedFunction
     {
         UClass* Class = nullptr;
+        int ClassIndex = -1;
         UFunction* Function = nullptr;
     };
 

@@ -76,13 +76,11 @@ namespace PauseAnytime
 
         struct State
         {
-            /// Our world pause: the WorldInfo we paused (with its index, checked again before each use: a map change or a load
-            /// replaces it) and the controller that paused it, which resumes it.
+            /// Our world pause: the WorldInfo we paused (checked again before each use: a map change or a load replaces it)
+            /// and the controller that paused it, which resumes it.
             bool WorldPaused = false;
-            AWorldInfo* World = nullptr;
-            int WorldIndex = -1;
-            ABioPlayerController* Controller = nullptr;
-            int ControllerIndex = -1;
+            Kept<AWorldInfo> World;
+            Kept<ABioPlayerController> Controller;
             unsigned char PausedMode = NoMode;
             ULONGLONG PausedAt = 0;
             /// Start paused it: the banner names Start, also before PlayerInput has seen the pad (our press never reaches it).
@@ -222,10 +220,8 @@ namespace PauseAnytime
         void EndWorldPause()
         {
             G.WorldPaused = false;
-            G.World = nullptr;
-            G.WorldIndex = -1;
-            G.Controller = nullptr;
-            G.ControllerIndex = -1;
+            G.World.Set(nullptr);
+            G.Controller.Set(nullptr);
             G.PausedMode = NoMode;
         }
 
@@ -253,7 +249,7 @@ namespace PauseAnytime
             if (!G.AudioHeld) return;
             G.AudioHeld = false;
             LEASI_INFO("game audio released: {}", why);
-            if (pc == nullptr && Alive(G.Controller, G.ControllerIndex)) pc = G.Controller;
+            if (pc == nullptr) pc = G.Controller.Live();
             if (pc == nullptr) pc = LocalController(nullptr);
             if (PlayPauseSound(pc, ResumeSound)) G.AudioTries = 0;
             else if (++G.AudioTries < MaxAudioTries) G.AudioHeld = true;
@@ -276,10 +272,8 @@ namespace PauseAnytime
                 return false;
             }
             G.WorldPaused = true;
-            G.World = world;
-            G.WorldIndex = world->ObjectInternalInteger;
-            G.Controller = pc;
-            G.ControllerIndex = pc->ObjectInternalInteger;
+            G.World.Set(world);
+            G.Controller.Set(pc);
             G.PausedMode = mode;
             G.PausedAt = GetTickCount64();
             LEASI_INFO("world paused in mode {} ({}): Pauser {} ({}), {}, thread {}", mode, ModeName(mode), PathOf(world->Pauser),
@@ -299,11 +293,11 @@ namespace PauseAnytime
             if (!G.WorldPaused) return;
             auto const mode = G.PausedMode;
             auto const since = G.PausedAt;
-            auto const world = G.World;
-            auto const controller = G.Controller;
+            auto const world = G.World.Live();
+            auto const controller = G.Controller.Live();
             auto const audioHeld = G.AudioHeld;
-            auto const worldAlive = Alive(G.World, G.WorldIndex);
-            auto const controllerAlive = Alive(G.Controller, G.ControllerIndex);
+            auto const worldAlive = world != nullptr;
+            auto const controllerAlive = controller != nullptr;
             auto const giveAudioBack = [&]
             {
                 if (audioHeld && !PlayPauseSound(controllerAlive ? controller : LocalController(nullptr), ResumeSound)) G.AudioHeld = true;
@@ -346,17 +340,17 @@ namespace PauseAnytime
         /// world pause itself (the mode changed): a press that met that pause is ours all the same.
         bool Validate(ABioPlayerController* pc, char const* where)
         {
-            PhotoMode::Check(G.WorldPaused, G.World);
+            PhotoMode::Check(G.WorldPaused, G.World.Object);
             if (G.WorldPaused)
             {
-                if (!Alive(G.World, G.WorldIndex))
+                if (G.World.Live() == nullptr)
                 {
                     LEASI_INFO("world pause ended ({}): the WorldInfo we paused is gone (map change or load), thread {}", where, GetCurrentThreadId());
                     ReleaseAudio(pc, "our world pause ended with its world");
                     EndWorldPause();
                     LEASI_FLUSH();
                 }
-                else if (G.World->Pauser == nullptr)
+                else if (G.World.Object->Pauser == nullptr)
                 {
                     // Besides the Steam overlay closing, the console's "pause" (or the engine's pause on a focus loss, where
                     // it is on: LE1's and LE2's BIOEngine.ini turn it off) clears our CanUnpause too. Nothing of ours hears of
@@ -375,7 +369,7 @@ namespace PauseAnytime
                         ReleaseAudio(pc, "the Steam overlay is open, the world still held");
                         LEASI_FLUSH();
                     }
-                    if (!PhotoMode::On() && pc != nullptr && pc->WorldInfo == G.World)
+                    if (!PhotoMode::On() && pc != nullptr && pc->WorldInfo == G.World.Object)
                     {
                         // NoMode: no mode manager to read, which is not a mode change.
                         auto const mode = ModeOf(pc);
@@ -621,7 +615,7 @@ namespace PauseAnytime
                 action = "taken: photo mode had ended before this press";
             else if (Bink::OwnsKeys())
                 action = nullptr;
-            else if (G.WorldPaused && pc == G.Controller && Alive(G.Controller, G.ControllerIndex) && (mode == ModeConversation || mode == ModeCinematic))
+            else if (G.WorldPaused && pc != nullptr && pc == G.Controller.Live() && (mode == ModeConversation || mode == ModeCinematic))
             {
                 if (G.FrameFaults >= MaxFrameFaults)
                 {
@@ -908,7 +902,7 @@ namespace PauseAnytime
         {
             // With the per-frame checks off our state isn't kept up: as the pause screen then, only while the world we
             // paused still exists and is paused.
-            if (G.FrameFaults >= MaxFrameFaults && (!Alive(G.World, G.WorldIndex) || G.World->Pauser == nullptr)) return;
+            if (G.FrameFaults >= MaxFrameFaults && (G.World.Live() == nullptr || G.World.Object->Pauser == nullptr)) return;
             auto const canvas = hud->Canvas;
             if (canvas == nullptr || canvas->SizeX <= 0 || canvas->SizeY <= 0) return;
             if (!Fn.Tried)
@@ -980,7 +974,7 @@ namespace PauseAnytime
             else if (G.PhotoHideFrames > 0) G.PhotoHideFrames--;
             auto const hidden = G.WorldPaused && (photoOn || G.PhotoHideFrames > 0 || ConsoleIsOpen());
             auto const mode = ModeOf(pc);
-            auto const photo = PhotoMode::Answers() && pc == G.Controller && Alive(G.Controller, G.ControllerIndex) && (mode == ModeConversation || mode == ModeCinematic);
+            auto const photo = PhotoMode::Answers() && pc != nullptr && pc == G.Controller.Live() && (mode == ModeConversation || mode == ModeCinematic);
             Overlay::Publish(G.WorldPaused && !hidden, G.WorldPaused && !hidden && photo, hidden);
         }
 
@@ -1236,7 +1230,7 @@ namespace PauseAnytime
         void PublishBareEntry(void*)
         {
             auto const photoOn = PhotoMode::On();
-            Overlay::Publish(G.WorldPaused && !photoOn && Alive(G.World, G.WorldIndex) && G.World->Pauser != nullptr, false, photoOn);
+            Overlay::Publish(G.WorldPaused && !photoOn && G.World.Live() != nullptr && G.World.Object->Pauser != nullptr, false, photoOn);
         }
 
         /// After an access violation in the per-frame checks: our state may be what faulted, so it ends here, photo mode
