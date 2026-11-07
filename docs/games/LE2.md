@@ -141,7 +141,8 @@ Sizes are at 1080 lines, and the title is 1.5 times the wheel's, with its spacin
   Russian, Polish and Japanese.
 - The sounds `InGameGuiEnter` and `InGameGuiExit` are the ones `ShowBrowserWheel` and `HideBrowserWheel` play,
   through `BioSFManager.PlaySound`. The first starts with a Wwise Pause All and the second with a Resume All. So every
-  end of the pause posts `InGameGuiExit` once.
+  end of the pause posts `InGameGuiExit` once. If it does not play, as after a load, it is tried again on the next
+  frames, 3 times at most.
 
 ## Engine facts
 

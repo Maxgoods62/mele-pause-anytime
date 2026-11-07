@@ -20,6 +20,8 @@ namespace PauseAnytime::PhotoGui
             /// The handler's SetVisible(FALSE) clears these: they say whether the wheel (or its investigate submenu) is up.
             bool OldWheel = false;
             bool OldInvestigate = false;
+            /// Frames on which Hold found the movie's input on again and turned it off.
+            unsigned InputHolds = 0;
         };
 
         GuiState State;
@@ -73,11 +75,12 @@ namespace PauseAnytime::PhotoGui
         USFXGUIMovie_execGetVisible_Parms visible;
         USFXGUIMovie_execGetInputEnabled_Parms input;
         if (!Call(panel, L"GetVisible", GFn.GetVisible, visible) || !Call(panel, L"GetInputEnabled", GFn.GetInputEnabled, input)) return false;
-        State.Panel.Set(panel);
         State.OldVisible = visible.ReturnValue != 0;
         State.OldInputEnabled = input.ReturnValue != 0;
         State.OldWheel = panel->m_bDisplayingWheel != 0;
         State.OldInvestigate = panel->m_bDisplayInvestigateSubMenu != 0;
+        // Recorded once all of it is read, before the calls change it: GiveBack is owed from before this function.
+        State.Panel.Set(panel);
         SetPanel(panel, false, false);
         LEASI_INFO("photo mode: conversation movie {} set aside (it was {}, input {}, wheel {}, investigate {})", PathOf(panel),
                    State.OldVisible ? "visible" : "hidden", State.OldInputEnabled ? "on" : "off", State.OldWheel, State.OldInvestigate);
@@ -104,11 +107,24 @@ namespace PauseAnytime::PhotoGui
         auto const panel = State.Panel.Live();
         if (panel == nullptr) return false;
         USFXGUIMovie_execGetVisible_Parms visible;
-        if (!Call(panel, L"GetVisible", GFn.GetVisible, visible) || visible.ReturnValue == 0) return false;
-        UBioSFHandler_Conversation_eventSetVisible_Parms v;
-        v.bVal = 0;
-        Call(panel, L"SetVisible", GFn.SetVisible, v);
-        return true;
+        auto const shown = Call(panel, L"GetVisible", GFn.GetVisible, visible) && visible.ReturnValue != 0;
+        if (shown)
+        {
+            UBioSFHandler_Conversation_eventSetVisible_Parms v;
+            v.bVal = 0;
+            Call(panel, L"SetVisible", GFn.SetVisible, v);
+        }
+        // Its input too, which the game may turn on with the picture or alone: the sticks and the mouse would move the hidden
+        // wheel's highlight. No reply is picked: that bind is the conversation mode's, not current under photo mode.
+        USFXGUIMovie_execGetInputEnabled_Parms input;
+        if (Call(panel, L"GetInputEnabled", GFn.GetInputEnabled, input) && input.ReturnValue != 0)
+        {
+            USFXGUIMovie_execSetInputEnabled_Parms off;
+            off.bEnabled = 0;
+            Call(panel, L"SetInputEnabled", GFn.SetInputEnabled, off);
+            if (State.InputHolds++ == 0) LEASI_INFO("photo mode: the game turned the conversation movie's input on again, turned off again");
+        }
+        return shown;
     }
 
     void Hide(ABioPlayerController* pc, UObject* gui)

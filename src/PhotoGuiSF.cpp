@@ -64,10 +64,11 @@ namespace PauseAnytime::PhotoGui
         LEASI_UNUSED(pc);
         auto const panel = Game::ConversationPanelOf(static_cast<UMassEffectGuiManager*>(gui));
         if (panel == nullptr) return false;
-        State.Panel.Set(panel);
         State.OldPanelInputDisabled = panel->bInputDisabled != 0;
         State.OldPanelHandleInput = panel->bHandleInputThisFrame != 0;
         State.OldPanelVisible = panel->IsVisible != 0;
+        // Recorded once its flags are read, before they change: GiveBack is owed from before this function.
+        State.Panel.Set(panel);
         panel->bInputDisabled = 1;
         panel->bHandleInputThisFrame = 1;
         panel->IsVisible = 0;

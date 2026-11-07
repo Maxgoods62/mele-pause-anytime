@@ -106,12 +106,17 @@ namespace PauseAnytime
     /// bind may run after Console.InputKey has seen the release.
     inline constexpr ULONGLONG ReleaseGraceMs = 250;
 
-    /// The press behind <paramref name="tick"/> (Bink::EscSeenDown, Bink::SpaceSeenDown) is down, or was a moment ago. The
-    /// tick comes from the movie's thread, so it can be newer than <paramref name="now"/>.
-    inline bool TakenLately(ULONGLONG tick, ULONGLONG now)
-    {
-        return tick != 0 && (tick >= now || now - tick < ReleaseGraceMs);
-    }
+    /// The press behind <paramref name="tick"/> (Bink::EscSeenDown, Bink::SpaceSeenDown) is down, or was a moment ago, or
+    /// the movie's thread acted on it while the game thread read no input: a gap of over 250 ms in its ProcessEvent calls,
+    /// still on or ended a moment ago, after which the key's queued events reach the game thread late. The tick comes from
+    /// the movie's thread, so it can be newer than <paramref name="now"/>. Game thread only: it reads Pause.cpp's state.
+    bool TakenLately(ULONGLONG tick, ULONGLONG now);
+
+    /// The Steam overlay (PlayerController.bIsExternalUIOpen) or the console is open, as the game thread read it at its
+    /// latest tick: keys typed there are theirs, though the foreground window is still the game's. False while the game
+    /// thread has been silent for over 250 ms, since what it read may be stale. For Bink.cpp's polls, which read no game
+    /// object.
+    bool KeysElsewhere();
 
     // ! Engine.cpp: faults
     // ========================================
@@ -132,8 +137,8 @@ namespace PauseAnytime
 
     namespace Overlay
     {
-        /// Hooks the swap chain's Present, Present1 and ResizeBuffers: the pause screen is drawn into the back buffer, in
-        /// <paramref name="look"/>. Without them (logged) Pause.cpp draws its Canvas banner.
+        /// Hooks the swap chain's Present, Present1, ResizeBuffers and ResizeBuffers1: the pause screen is drawn into the back
+        /// buffer, in <paramref name="look"/>. Without them (logged) Pause.cpp draws its Canvas banner.
         void Install(::LESDK::Initializer& Init, OverlayLook look);
 
         /// The title and the two labels in the game's own words, read from its string table (UTF-8). Each one replaces ours
@@ -163,7 +168,8 @@ namespace PauseAnytime
         /// screen is presented from here over its last frame (60 a second at most). Only on the thread that presents.
         void MovieIdle();
 
-        /// The pause screen started on the game's swap chain and hasn't failed: Pause.cpp's Canvas banner stays off.
+        /// The pause screen started on the game's swap chain, hasn't failed, and no other swap chain waits to replace it (one
+        /// that presents while ours has been silent for 250 ms): Pause.cpp's Canvas banner stays off.
         bool Drawing();
     }
 
@@ -206,8 +212,9 @@ namespace PauseAnytime
 
         /// Game thread: a press of Start during a fullscreen movie, as Esc's press is on the movie's thread. Resumes what we
         /// paused, else asks the pause of the newest fullscreen movie, applied at its next BinkWait. False (logged, with
-        /// <paramref name="what"/>) when there was nothing to toggle.
-        bool Toggle(char const* what);
+        /// <paramref name="what"/>) when there was nothing to toggle. With <paramref name="pressedBy"/> (a GetTickCount64 the
+        /// press came by), a newest movie opened after it is not paused (logged): the press may be older than that movie.
+        bool Toggle(char const* what, ULONGLONG pressedBy = 0);
 
         /// GetTickCount64 at the latest BinkWait that saw down a press of Esc the movie's thread acted on (0 if none). Kept
         /// fresh while that press is down, 2 s at most: Pause.cpp drops the skips Esc is bound to until a moment after.

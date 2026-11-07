@@ -17,7 +17,8 @@ set_target_properties (PauseAnytimeImGui PROPERTIES FOLDER "External")
 # One target per game from the same sources, PauseAnytime-LE<n>, which builds LE<n>PauseAnytime.asi and .pdb: LExASIs'
 # default names, so the games' files never collide in Build/<CONFIG>. List a game only once it has game/LE<n>.hpp (the
 # names LE1.hpp defines) and its branch in game/Game.hpp: the VisualStudio preset turns every LEASI_BUILD_LE<n> on.
-# Listed is not released: a plain ../build.sh builds RELEASED_GAMES (../scripts/games.sh).
+# Listed is not released: a plain ../build.sh builds RELEASED_GAMES (../scripts/games.sh). They keep the default /EHsc, not
+# /EHa: Guarded in Engine.hpp says why.
 asi_target (PauseAnytime
   SHARED
   GAMES "LE1" "LE2" "LE3"

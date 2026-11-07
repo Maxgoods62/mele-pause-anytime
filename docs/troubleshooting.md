@@ -26,9 +26,10 @@ the log can be missing.
 | A movie does not pause | Pause Anytime cannot pause that movie | See [which movies pause](using.md#movies). |
 | Esc closes the console | The console was open | Esc closes it, as in the game without mods. Press Esc again to pause. |
 | The game crashes with Pause Anytime installed | An old Visual C++ runtime | Install the latest [Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe). |
-| The log says `the loader refused the ProcessEvent hook` | Two copies of Pause Anytime are in one `ASI` folder, under different file names | Keep only one copy in each `ASI` folder. The copy that loaded first still works. |
+| The log warns `a second copy of LE<n>PauseAnytime.asi is in the ASI folder`, or says `the loader refused the ProcessEvent hook` | Two copies of Pause Anytime are in one `ASI` folder, under different file names | Keep only one copy in each `ASI` folder. The copy that loaded first still works. |
 | The game closes at start, and the log ends with `failed to resolve` and `Fatal assertion` lines | Pause Anytime could not start in this build of the game | Report it with the log. |
 | The scene stays paused after a resume | Another pause holds the game, or Pause Anytime met an error | See [The scene stays paused](#the-scene-stays-paused). |
+| LE2 or LE3 stays silent after a pause, and the log warns `game audio still held` | The game's resume sound could not play, so the game's audio stays held | Open and close the game's pause menu: its closing sound should give the audio back. |
 | A plain "PAUSE" text shows instead of the pause screen | The pause screen cannot be drawn | The pause still works. See [Plain PAUSE text](#plain-pause-text). |
 | The picture is only darker, not blurred | The blur could not start on this screen | The pause still works. The log says why, in lines that start with `pause blur:`. |
 | No photo mode key on the pause screen, or the photo camera does not move | A part of photo mode turned itself off | See [After a game update](#after-a-game-update). |
@@ -43,10 +44,11 @@ Please report it, with the log.
 
 ### Plain PAUSE text
 
-When Pause Anytime cannot draw its pause screen, it shows a plain "PAUSE" text with two keys under it. This text is
-always in English, and it names the photo mode key even where photo mode cannot open. One cause is a Windows install
+When Pause Anytime cannot draw its pause screen, it shows a plain "PAUSE" text with the keys under it. This text is
+always in English, and it names the photo mode key only where photo mode can open. One cause is a Windows install
 with no `d3dcompiler_47.dll` in `System32`. Pause Anytime also shows this text when its pause screen fails to start,
-or fails while the game runs. The log then has a line with `the Canvas banner instead`.
+or fails while the game runs. The log then has a line with `the Canvas banner instead`. The text can also show for a
+moment when the game changes its display mode during a pause.
 
 A paused movie gets no such text. If the pause screen cannot be drawn, the movie only stops on its picture.
 
@@ -77,8 +79,9 @@ If the game crashes at start after an update, delete the Pause Anytime file and 
   inside a cutscene or a conversation are not tested yet.
 - In the first moment of a movie (a quarter second at most), Esc works as in the game without mods, so it can skip a
   movie that the game lets you skip.
-- During a movie that Pause Anytime can pause, Esc counts only while the game's window is in front. Then every Esc
-  counts, even one meant to close the console or the Steam overlay.
+- During a movie that Pause Anytime can pause, Esc counts only while the game's window is in front, and not while
+  the console or the Steam overlay is open. While the game is busy loading, Pause Anytime cannot tell whether they are
+  open, and Esc counts there too.
 - With a menu open over a fullscreen movie, Esc and Start go to the movie.
 - In an LE1 movie, Start acts when you let go of it, or after about 0.2 s if you hold it.
 - Closing the Steam overlay during a pause ends the pause, and the scene goes on by itself.

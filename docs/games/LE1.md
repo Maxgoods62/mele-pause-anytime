@@ -53,9 +53,11 @@ nothing keeps a key from it.
 - A movie that the game skips on Esc is still skipped by that press. In the log, such a movie closes right after an
   "Esc pressed, read on thread ..." line, and the pause it asked for ends with the movie.
 - Start: the movie's thread cannot read it, and the engine takes its press. Its first repeat or its release toggles
-  the pause on the game thread (`Bink::Toggle`). A tap acts on its release, a held press after about 0.2 s.
-- A Start press with no event for 500 ms counts as over, unless the game thread stalled for 250 ms. A Start press that
-  the game had before the movie stays the game's until its release.
+  the pause on the game thread (`Bink::Toggle`). A tap acts on its release, a held press after about 0.2 s. Such an
+  event pauses no movie that opened less than 0.2 s before it, since its press may have skipped the movie before.
+- A Start press with no event for 500 ms counts as over. After a game-thread stall of over 250 ms since its last event,
+  the 500 ms run from the stall's end. A Start press that the game had before the movie stays the game's until its
+  release.
 - Space: the movie's thread reads it too, and it only resumes. A resumes from `Console.InputKey`: on its press, or on
   the repeat or release of a press that the engine took.
 

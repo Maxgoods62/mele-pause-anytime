@@ -80,11 +80,12 @@ namespace PauseAnytime
         return ToUtf8(std::wstring_view(path.Chars(), path.Length()));
     }
 
-    bool Alive(UObject* object, int index)
+    bool Alive(UObject* object, int index, UClass const* cls)
     {
         auto& objects = *UObject::GObjObjects;
+        // The class last: an object still at its index is a live one, so its Class can be read.
         return object != nullptr && index >= 0 && static_cast<UINT>(index) < objects.Count() && objects.GetData()[index] == object
-            && !Common::IsDestroyed(object);
+            && !Common::IsDestroyed(object) && object->Class == cls;
     }
 
     std::string NameText(SFXName const& name)
@@ -107,9 +108,10 @@ namespace PauseAnytime
 
     UFunction* FunctionOf(UObject* object, wchar_t const* name, CachedFunction& cache)
     {
-        if (object->Class != cache.Class)
+        if (object->Class != cache.Class || object->Class->ObjectInternalInteger != cache.ClassIndex)
         {
             cache.Class = object->Class;
+            cache.ClassIndex = object->Class->ObjectInternalInteger;
             cache.Function = FindFunction(object->Class, SFXName{ name, 0 });
             if (cache.Function == nullptr) LEASI_ERROR("no {} function in {}", ToUtf8(name), PathOf(object->Class));
         }

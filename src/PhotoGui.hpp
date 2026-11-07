@@ -22,7 +22,9 @@ namespace PauseAnytime::PhotoGui
     std::size_t KeepSubtitle(AWorldInfo* world);
 
     /// Before the game's entry: the conversation's panel loses its input (it would eat the sticks, and A or Enter would
-    /// pick a reply) and its picture (the wheel, the subtitle). True when a panel was set aside: GiveBack is then owed.
+    /// pick a reply) and its picture (the wheel, the subtitle). True when a panel was set aside. Photo.cpp owes GiveBack
+    /// from before the call, so a fault inside still gets the panel back: the panel is recorded before anything on it
+    /// changes.
     bool SetAside(ABioPlayerController* pc, UObject* gui);
 
     /// The game's entry: EnableMode(Photo), then photo mode's panel. handler gets what the game returned, for the log.
@@ -32,8 +34,9 @@ namespace PauseAnytime::PhotoGui
     /// After Show, with the panel set aside: what the game's entry undid there (LE1's Activated clears the subtitle line).
     void AfterShow();
 
-    /// Each frame of the session, with the panel set aside: hides it again if the game showed it. True when it had to (LE3's
-    /// conversation movie, which advances again under photo mode, can show itself).
+    /// Each frame of the session, with the panel set aside: hides it again if the game showed it, and turns its input off
+    /// again if the game turned it on. True when it had to hide it (LE3's conversation movie, which advances again under
+    /// photo mode, can show itself).
     bool Hold();
 
     /// The game's exit: photo mode's panel removed, and Photo disabled while its panel was there.
@@ -41,6 +44,7 @@ namespace PauseAnytime::PhotoGui
 
     /// The conversation's panel as SetAside found it, if still alive: its fields, and with calls what only a call gives back
     /// (LE3's movie keeps its visibility and input natively). Without calls, a world being torn down: nothing is called.
+    /// Nothing either when SetAside recorded no panel.
     void GiveBack(bool calls);
 
     /// The subtitle line kept at the entry, shown again unless another one shows now.

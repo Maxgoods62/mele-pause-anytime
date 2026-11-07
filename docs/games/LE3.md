@@ -95,7 +95,8 @@ Y or F7 under the world pause opens the game's photo mode on the paused shot, fo
 - The conversation panel is the `BioSFHandler_Conversation` movie from `GetConversationHandler(PC)`. It is set aside
   with `SetVisible(FALSE)` and `SetInputEnabled(FALSE)`, which clear `m_bDisplayingWheel` and
   `m_bDisplayInvestigateSubMenu`. The exit writes those back.
-- That movie advances under photo mode and can show itself again, so it is hidden again on each frame.
+- That movie advances under photo mode and can show itself again, so it is hidden again on each frame, and its input
+  is turned off again when the game turned it on. The first time in a session, the log says so.
 - The subtitle is left alone, photo mode's GUI sounds are not hooked, and the tether is widened on foot only.
 - `Activated` turns the modes' input back on after 0.5 s (`EnableInputWrapper`): photo mode's timers are not held.
 
@@ -141,7 +142,8 @@ Sizes are at 1080 lines, and the title is 1.5 times the wheel's.
 - The title is Pause Anytime's own word. "Pause" (174771) stays English in Russian, Polish and Japanese, and "Pause
   Game" (687508) is a sentence in French.
 - The sounds `InGameGuiEnter` and `InGameGuiExit` play through `SFXGUIInteraction.PlayGuiSound`. The first starts
-  with a Wwise Pause All and the second with a Resume All. So every end of the pause posts `InGameGuiExit` once.
+  with a Wwise Pause All and the second with a Resume All. So every end of the pause posts `InGameGuiExit` once. If it
+  does not play, as after a load, it is tried again on the next frames, 3 times at most.
 
 ## Engine facts
 

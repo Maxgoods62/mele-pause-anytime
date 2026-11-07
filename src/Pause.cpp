@@ -43,9 +43,11 @@ namespace PauseAnytime
         /// A held gamepad button repeats after 0.2 s, then every 0.1 s: a press of Start with no event for this long is over,
         /// its release lost (focus change)...
         constexpr ULONGLONG StartStaleMs = 500;
-        /// ...unless the game thread stalled since its last event (no ProcessEvent for this long): the pad is read once a
-        /// frame, so a stall holds the repeats back too.
+        /// ...counted from the end of a game-thread stall (no ProcessEvent for this long) when one ended after its last
+        /// event: the pad is read once a frame, so a stall holds the repeats back too.
         constexpr ULONGLONG GameStallMs = 250;
+        /// The first repeat of a held gamepad button comes this long after its press.
+        constexpr ULONGLONG StartRepeatMs = 200;
 
         /// A movie pause is lifted once the HUD has drawn this long without a gap: no fullscreen movie covers the screen.
         constexpr ULONGLONG HudBackMs = 1000;
@@ -53,6 +55,9 @@ namespace PauseAnytime
         /// Frames the pause screen stays hidden after photo mode ends: the render thread presents a frame or two behind this
         /// one, and photo mode's last frames must not show it.
         constexpr unsigned PhotoHideGrace = 3;
+
+        /// Access violations in the per-frame checks that turn them off for the session (State::FrameFaults).
+        constexpr unsigned MaxFrameFaults = 3;
 
         // ! State
         // ========================================
@@ -73,22 +78,27 @@ namespace PauseAnytime
 
         struct State
         {
-            /// Our world pause: the WorldInfo we paused (with its index, checked again before each use: a map change or a load
-            /// replaces it) and the controller that paused it, which resumes it.
+            /// Our world pause: the WorldInfo we paused (checked again before each use: a map change or a load replaces it)
+            /// and the controller that paused it, which resumes it.
             bool WorldPaused = false;
-            AWorldInfo* World = nullptr;
-            int WorldIndex = -1;
-            ABioPlayerController* Controller = nullptr;
-            int ControllerIndex = -1;
+            Kept<AWorldInfo> World;
+            Kept<ABioPlayerController> Controller;
             unsigned char PausedMode = NoMode;
             ULONGLONG PausedAt = 0;
             /// Start paused it: the banner names Start, also before PlayerInput has seen the pad (our press never reaches it).
             bool PausedByStart = false;
-            /// The pause's sound holds the game's audio (Game::PauseSoundHoldsAudio) and its end is not posted yet.
+            /// The pause's sound holds the game's audio (Game::PauseSoundHoldsAudio) and its end has not played yet. It outlives
+            /// our pause while that end found nothing to play it (no controller or GUI manager, as after a load): the next
+            /// Validate tries again (MaxAudioTries).
             bool AudioHeld = false;
+            /// Tries of that end that did not play.
+            unsigned AudioTries = 0;
 
-            /// The first game-thread ProcessEvent after a gap of more than GameStallMs.
+            /// The first game-thread ProcessEvent after a gap of more than GameStallMs, and the last one before it.
             ULONGLONG StallEndedAt = 0;
+            ULONGLONG StallStartedAt = 0;
+            /// A fault while reading the Steam overlay's and the console's state for the movie's thread: not read again.
+            bool ElsewhereOff = false;
 
             KeyState Esc;
             KeyState Start;
@@ -128,6 +138,8 @@ namespace PauseAnytime
         std::atomic<ULONGLONG> GameThreadTick{ 0 };
         /// The end of the latest BioHUD.PostRender: Bink.cpp's movie threads read it.
         std::atomic<ULONGLONG> HudTick{ 0 };
+        /// The Steam overlay or the console is open, read once a tick on the game thread: Bink.cpp's movie threads read it.
+        std::atomic<bool> Elsewhere{ false };
 
         // ! The player
         // ========================================
@@ -211,15 +223,13 @@ namespace PauseAnytime
             return true;
         }
 
+        /// Our world pause's state ends. The audio hold is not part of it: it ends when the resume's sound plays.
         void EndWorldPause()
         {
             G.WorldPaused = false;
-            G.World = nullptr;
-            G.WorldIndex = -1;
-            G.Controller = nullptr;
-            G.ControllerIndex = -1;
+            G.World.Set(nullptr);
+            G.Controller.Set(nullptr);
             G.PausedMode = NoMode;
-            G.AudioHeld = false;
         }
 
         /// The game's GUI sound for our world pause starting or ending (game/LE<n>.hpp; none for null): the pause's heard at
@@ -232,17 +242,30 @@ namespace PauseAnytime
             return played;
         }
 
+        /// Validates on which the end of the pause's sound is tried again when it did not play.
+        constexpr unsigned MaxAudioTries = 3;
+
         /// Posts the end of what the pause's sound holds, once, for what Validate meets: ResumeWorld does it for a resume of
         /// ours, in the frame the world resumes. Here it is the Steam overlay while it is open and the world is still held, as
         /// a voice line still held when the world runs again is lost and a posting after that saves it no more
-        /// (docs/how-it-works.md), or a pause already over, which gives back the rest of the audio.
+        /// (docs/how-it-works.md), or a pause already over, which gives back the rest of the audio, or an end that did not
+        /// play before. The hold is cleared before the call, so a fault in it ends the tries; it is set again when the sound
+        /// did not play, for the next Validate.
         void ReleaseAudio(ABioPlayerController* pc, char const* why)
         {
             if (!G.AudioHeld) return;
             G.AudioHeld = false;
             LEASI_INFO("game audio released: {}", why);
-            if (pc == nullptr && Alive(G.Controller, G.ControllerIndex)) pc = G.Controller;
-            PlayPauseSound(pc, ResumeSound);
+            if (pc == nullptr) pc = G.Controller.Live();
+            if (pc == nullptr) pc = LocalController(nullptr);
+            if (PlayPauseSound(pc, ResumeSound)) G.AudioTries = 0;
+            else if (++G.AudioTries < MaxAudioTries) G.AudioHeld = true;
+            else
+            {
+                G.AudioTries = 0;
+                LEASI_WARN("game audio still held: {} did not play in {} tries, the game's audio waits for a game menu to play it", ToUtf8(ResumeSound),
+                           MaxAudioTries);
+            }
         }
 
         bool PauseWorld(ABioPlayerController* pc, unsigned char mode)
@@ -256,34 +279,39 @@ namespace PauseAnytime
                 return false;
             }
             G.WorldPaused = true;
-            G.World = world;
-            G.WorldIndex = world->ObjectInternalInteger;
-            G.Controller = pc;
-            G.ControllerIndex = pc->ObjectInternalInteger;
+            G.World.Set(world);
+            G.Controller.Set(pc);
             G.PausedMode = mode;
             G.PausedAt = GetTickCount64();
             LEASI_INFO("world paused in mode {} ({}): Pauser {} ({}), {}, thread {}", mode, ModeName(mode), PathOf(world->Pauser),
                        static_cast<void const*>(world->Pauser), PathOf(world), GetCurrentThreadId());
-            G.AudioHeld = PlayPauseSound(pc, PauseSound) && PauseSoundHoldsAudio;
+            // A hold whose end is still being tried stays held: this pause's end gives it back too.
+            if (PlayPauseSound(pc, PauseSound) && PauseSoundHoldsAudio) G.AudioHeld = true;
+            G.AudioTries = 0;
             return true;
         }
 
         /// Toggles the pause back through the controller that paused, only while the world is still paused: Pause on an
         /// unpaused world would pause it again. Our state ends before the call, so a fault inside it can't leave it armed. A
         /// key's resume (<paramref name="byKey"/>) plays the game's sound for it, and so does any resume while its pause's
-        /// sound holds the game's audio.
+        /// sound holds the game's audio. When that sound does not play, the hold stays for the next Validate (ReleaseAudio).
         void ResumeWorld(char const* why, bool byKey = false)
         {
             if (!G.WorldPaused) return;
             auto const mode = G.PausedMode;
             auto const since = G.PausedAt;
-            auto const world = G.World;
-            auto const controller = G.Controller;
+            auto const world = G.World.Live();
+            auto const controller = G.Controller.Live();
             auto const audioHeld = G.AudioHeld;
-            auto const worldAlive = Alive(G.World, G.WorldIndex);
-            auto const controllerAlive = Alive(G.Controller, G.ControllerIndex);
-            auto const giveAudioBack = [&] { if (audioHeld) PlayPauseSound(controllerAlive ? controller : LocalController(nullptr), ResumeSound); };
+            auto const worldAlive = world != nullptr;
+            auto const controllerAlive = controller != nullptr;
+            auto const giveAudioBack = [&]
+            {
+                if (audioHeld && !PlayPauseSound(controllerAlive ? controller : LocalController(nullptr), ResumeSound)) G.AudioHeld = true;
+            };
             EndWorldPause();
+            // The hold ends with the rest, and is set again below only when the resume's sound does not play.
+            G.AudioHeld = false;
             if (!worldAlive || world->Pauser == nullptr)
             {
                 LEASI_INFO("world resume ({}): nothing to do, the world is gone or no longer paused", why);
@@ -304,7 +332,7 @@ namespace PauseAnytime
             else
                 LEASI_INFO("world resumed ({}) after {:.1f} s, paused in mode {} ({}), thread {}", why, HeldFor(since), mode, ModeName(mode),
                            GetCurrentThreadId());
-            if (PauseSoundHoldsAudio ? audioHeld : byKey && pauser == nullptr) PlayPauseSound(controller, ResumeSound);
+            if ((PauseSoundHoldsAudio ? audioHeld : byKey && pauser == nullptr) && !PlayPauseSound(controller, ResumeSound)) G.AudioHeld = audioHeld;
         }
 
         // ! World pause: checks
@@ -315,21 +343,26 @@ namespace PauseAnytime
         /// Conversation and Cinematic under it (Photo is ours while our photo session runs). Our photo session ends first,
         /// with the world or the mode it stands on. The movie pause isn't checked here: Bink.cpp ends it (close, Esc, its
         /// movie gone silent), and SkipMovie and the HUD drawing again do. An open Steam overlay will end the pause when it
-        /// closes, with no key of ours: the audio goes back first, while the world is held.
-        void Validate(ABioPlayerController* pc, char const* where)
+        /// closes, with no key of ours: the audio goes back first, while the world is held. Returns true when it resumed our
+        /// world pause itself (the mode changed): a press that met that pause is ours all the same.
+        bool Validate(ABioPlayerController* pc, char const* where)
         {
-            PhotoMode::Check(G.WorldPaused, G.World);
+            PhotoMode::Check(G.WorldPaused, G.World.Object);
             if (G.WorldPaused)
             {
-                if (!Alive(G.World, G.WorldIndex))
+                if (G.World.Live() == nullptr)
                 {
                     LEASI_INFO("world pause ended ({}): the WorldInfo we paused is gone (map change or load), thread {}", where, GetCurrentThreadId());
                     ReleaseAudio(pc, "our world pause ended with its world");
                     EndWorldPause();
                     LEASI_FLUSH();
                 }
-                else if (G.World->Pauser == nullptr)
+                else if (G.World.Object->Pauser == nullptr)
                 {
+                    // Besides the Steam overlay closing, the console's "pause" (or the engine's pause on a focus loss, where
+                    // it is on: LE1's and LE2's BIOEngine.ini turn it off) clears our CanUnpause too. Nothing of ours hears of
+                    // that before this frame's check, after the world has run a frame: a voice line the audio hold still held
+                    // may be lost, and only the rest of the audio comes back.
                     LEASI_INFO("world pause ended ({}) after {:.1f} s: WorldInfo.Pauser became None without us, thread {}", where, HeldFor(G.PausedAt),
                                GetCurrentThreadId());
                     ReleaseAudio(pc, "our world pause ended without us");
@@ -343,18 +376,26 @@ namespace PauseAnytime
                         ReleaseAudio(pc, "the Steam overlay is open, the world still held");
                         LEASI_FLUSH();
                     }
-                    if (!PhotoMode::On() && pc != nullptr && pc->WorldInfo == G.World)
+                    if (!PhotoMode::On() && pc != nullptr && pc->WorldInfo == G.World.Object)
                     {
+                        // NoMode: no mode manager to read, which is not a mode change.
                         auto const mode = ModeOf(pc);
-                        if (mode != ModeConversation && mode != ModeCinematic)
+                        if (mode != ModeConversation && mode != ModeCinematic && mode != NoMode)
                         {
                             LEASI_WARN("mode is {} ({}) under our world pause ({}): resuming", mode, ModeName(mode), where);
                             ResumeWorld("mode changed");
                             LEASI_FLUSH();
+                            return true;
                         }
                     }
                 }
             }
+            else if (G.AudioHeld)
+            {
+                ReleaseAudio(pc, "our world pause is over and the end of its sound did not play: tried again");
+                LEASI_FLUSH();
+            }
+            return false;
         }
 
         // ! Esc and Start
@@ -399,13 +440,16 @@ namespace PauseAnytime
             }
         }
 
-        /// A fresh press of Esc or Start, outside the open console: the fullscreen movie's, else it leaves our photo mode, else
-        /// it resumes our world pause, else pauses the world in a conversation or a cutscene. Returns what it did, or null for
-        /// a press left to the game.
+        /// A fresh press of Esc or Start, outside the open console: it leaves our photo mode, else it is the fullscreen movie's,
+        /// else it resumes our world pause, else pauses the world in a conversation or a cutscene. Returns what it did, or null
+        /// for a press left to the game.
         char const* Press(UConsole* console, UFunction* function, Key key)
         {
             auto const pc = LocalController(console);
-            Validate(pc, KeyName(key));
+            // Noted before Validate: a session it ends now (the game left photo mode, or the world pause ended without us)
+            // was this press's to end, and the press must not then resume or pause the world as well.
+            auto const wasPhoto = PhotoMode::On();
+            auto const resumed = Validate(pc, KeyName(key));
             auto const mode = ModeOf(pc);
             auto const world = pc != nullptr ? pc->WorldInfo : nullptr;
             auto const pauser = world != nullptr ? world->Pauser : nullptr;
@@ -413,18 +457,28 @@ namespace PauseAnytime
             auto const movie = MovieMode(pc);
 
             char const* action = nullptr;
-            if (Bink::OwnsKeys())
-            {
-                // Esc isn't toggled here: the movie's thread saw this press too and acts on it, so one press is one toggle.
-                // That thread can't read Start.
-                if (key == Key::Esc) action = "taken for the fullscreen movie, its thread toggles the movie pause";
-                else action = Bink::Toggle("Start pressed") ? "toggled the movie pause" : "taken for the fullscreen movie, nothing to toggle";
-            }
-            else if (PhotoMode::On())
+            // Photo mode before the movie: a session runs under our world pause, with no fullscreen movie, and a stall in it
+            // (a screenshot) can make the HUD look silent to the movie code.
+            if (PhotoMode::On())
             {
                 // Photo mode's own Esc and Start (ShowMenuGui) would open the pause menu over the conversation.
                 PhotoMode::Drop(KeyName(key), false);
                 action = "left photo mode, the world stays paused";
+            }
+            else if (wasPhoto)
+                action = "taken: photo mode had ended before this press";
+            // Validate resumed the world on this press: the game must not act on it too (open its menu, skip).
+            else if (resumed)
+                action = "taken: the world resumed, the mode had changed";
+            else if (Bink::OwnsKeys())
+            {
+                // Esc isn't toggled here: the movie's thread saw this press too and acts on it, so one press is one toggle.
+                // That thread can't read Start. A tap it misses (between two polls of a paused movie that calls BinkWait
+                // rarely, or within 150 ms of its last press), or one the two threads judge on either side of the HUD's
+                // 250 ms or BinkWait's 500 ms edge, toggles nothing, and the player presses again: toggling here when its
+                // tick is not fresh would make a press it reads a moment later two toggles.
+                if (key == Key::Esc) action = "taken for the fullscreen movie, its thread toggles the movie pause";
+                else action = Bink::Toggle("Start pressed") ? "toggled the movie pause" : "taken for the fullscreen movie, nothing to toggle";
             }
             else if (G.WorldPaused)
             {
@@ -472,13 +526,28 @@ namespace PauseAnytime
             }
 
             // A fresh press: a release we never saw (focus lost) ends the last one here, and so does the grace after one we
-            // saw. Only a press we take sets the guard again: a vanilla press must keep its GuiKey and skips.
+            // saw. Only a press we take sets the guard again: a vanilla press must keep its GuiKey and skips. The other keys'
+            // guards stay (Start's press does the same), since their binds' late OnRelease may still come: a vanilla press
+            // within 250 ms of another key's taken release, or of an Esc or Space the movie's thread acted on, loses its
+            // GuiKey Escape or Start events. Clearing them all here would let that late OnRelease skip.
             k.Held = false;
             k.ReleasedAt = 0;
             if (ConsoleOpen(function))
             {
                 LEASI_INFO("Esc pressed in {}: the console is open, vanilla", PathOf(function));
                 return false;
+            }
+            // A press the movie's thread toggled on, reaching us once its movie is gone (it closed right after, or during a
+            // stall of this thread): that press acted already, and the game must not act on it too (its pause menu, our
+            // world pause). The atomic first: OwnsKeys takes Bink.cpp's lock.
+            if (TakenLately(Bink::EscSeenDown(), now) && !Bink::OwnsKeys())
+            {
+                LEASI_INFO("Esc pressed: taken, the movie's thread acted on this press and its movie is gone (thread {})", GetCurrentThreadId());
+                LEASI_FLUSH();
+                k.Held = true;
+                k.PressedAt = now;
+                p->ReturnValue = 1;
+                return true;
             }
             if (Press(console, function, Key::Esc) == nullptr) return false;
             k.Held = true;
@@ -493,7 +562,7 @@ namespace PauseAnytime
         bool TakeStart(UConsole* console, UFunction* function, UConsole_execInputKey_Parms* p, ULONGLONG now)
         {
             auto& k = G.Start;
-            if ((k.Held || k.Vanilla) && now - k.LastEventAt > StartStaleMs && G.StallEndedAt <= k.LastEventAt)
+            if ((k.Held || k.Vanilla) && now - (std::max)(k.LastEventAt, G.StallEndedAt) > StartStaleMs)
             {
                 k.Held = false;
                 k.Vanilla = false;
@@ -526,8 +595,13 @@ namespace PauseAnytime
             {
                 // A press never seen here: the engine's movie input took it. Not a press held into the movie (Vanilla).
                 if (ConsoleOpen(function) || !Bink::OwnsKeys()) return false;
+                // Its first event here comes at most StartRepeatMs after it, so the movie Toggle would pause may have opened
+                // after the press: the engine's movie input then skipped the movie before with it, and that one isn't paused
+                // (Toggle logs it). Its events stay ours all the same, so they skip nothing. A resume of our movie pause is
+                // always the press's.
                 Bink::Toggle(released ? "Start released during a fullscreen movie, its press unseen here"
-                                      : "Start held during a fullscreen movie, its press unseen here");
+                                      : "Start held during a fullscreen movie, its press unseen here",
+                             now - StartRepeatMs);
                 if (!released)
                 {
                     k.Held = true;
@@ -546,32 +620,46 @@ namespace PauseAnytime
         void PublishOverlay(ABioPlayerController* pc);
 
         /// A fresh press of Y or F7, outside the open console: in our photo mode it leaves it, under our pause of a
-        /// conversation or a cutscene it enters it. Anywhere else, and during a fullscreen movie, the key is the game's.
+        /// conversation or a cutscene it enters it. Anywhere else, during a fullscreen movie, and once the per-frame checks are
+        /// off for the session, the key is the game's.
         char const* PressPhoto(UConsole* console, UFunction* function, Key key)
         {
             auto const pc = LocalController(console);
+            // As in Press: a session Validate ends now was this press's to end, and the press must not open a new one.
+            auto const wasPhoto = PhotoMode::On();
             Validate(pc, KeyName(key));
             auto const mode = ModeOf(pc);
             char const* action = nullptr;
-            if (Bink::OwnsKeys())
-                action = nullptr;
-            else if (PhotoMode::On())
+            // Photo mode before the movie, as in Press.
+            if (PhotoMode::On())
             {
                 PhotoMode::Drop(KeyName(key), false);
                 action = "left photo mode, the world stays paused";
             }
-            else if (G.WorldPaused && pc != nullptr && pc == G.Controller && (mode == ModeConversation || mode == ModeCinematic))
+            else if (wasPhoto)
+                action = "taken: photo mode had ended before this press";
+            else if (Bink::OwnsKeys())
+                action = nullptr;
+            else if (G.WorldPaused && pc != nullptr && pc == G.Controller.Live() && (mode == ModeConversation || mode == ModeCinematic))
             {
-                // The pause screen goes before photo mode shows anything: its first screenshot must not catch it.
-                G.PhotoHideFrames = PhotoHideGrace;
-                Overlay::Publish(false, false, true);
-                action = PhotoMode::Enter(pc, mode, key == Key::Y);
-                // What Enter got to before it stopped. The pause screen comes back this frame, not three frames later.
-                if (action == nullptr)
+                if (G.FrameFaults >= MaxFrameFaults)
                 {
-                    PhotoMode::Drop("refused", false);
-                    G.PhotoHideFrames = 0;
-                    PublishOverlay(pc);
+                    // Nothing would watch the session: its checks and its per-frame work run after BioHUD.PostRender.
+                    LEASI_WARN("{} pressed: photo mode refused, the per-frame checks are off for the session", KeyName(key));
+                }
+                else
+                {
+                    // The pause screen goes before photo mode shows anything: its first screenshot must not catch it.
+                    G.PhotoHideFrames = PhotoHideGrace;
+                    Overlay::Publish(false, false, true);
+                    action = PhotoMode::Enter(pc, mode, key == Key::Y);
+                    // What Enter got to before it stopped. The pause screen comes back this frame, not three frames later.
+                    if (action == nullptr)
+                    {
+                        PhotoMode::Drop("refused", false);
+                        G.PhotoHideFrames = 0;
+                        PublishOverlay(pc);
+                    }
                 }
             }
             LEASI_INFO("{} pressed: mode {} ({}), world paused by us {}, {}: {} (function {}, thread {})", KeyName(key), mode, ModeName(mode), G.WorldPaused,
@@ -643,8 +731,10 @@ namespace PauseAnytime
             else if (pressed && G.WorldPaused && !PhotoMode::On())
             {
                 auto const pc = LocalController(console);
-                Validate(pc, KeyName(key));
-                if (G.WorldPaused)
+                // Validate resumed the world on this press: the game must not act on it too.
+                if (Validate(pc, KeyName(key)))
+                    action = "taken: the world resumed, the mode had changed";
+                else if (G.WorldPaused)
                 {
                     ResumeWorld(KeyName(key), true);
                     action = "resumed the world";
@@ -666,7 +756,8 @@ namespace PauseAnytime
         }
 
         /// Returns true when the key is ours: the caller skips the original, which tells the viewport the key was handled.
-        bool TakeKey(UConsole* console, UFunction* function, UConsole_execInputKey_Parms* p)
+        /// <paramref name="watched"/> is set to that key's state when it is one of ours, for a fault after its press acted.
+        bool TakeKey(UConsole* console, UFunction* function, UConsole_execInputKey_Parms* p, KeyState*& watched)
         {
             static SFXName const Escape{ L"Escape", 0 };
             static SFXName const Start{ L"XboxTypeS_Start", 0 };
@@ -674,6 +765,8 @@ namespace PauseAnytime
             static SFXName const F7{ L"F7", 0 };
             static SFXName const SpaceBar{ L"SpaceBar", 0 };
             static SFXName const PadA{ L"XboxTypeS_A", 0 };
+            watched = p->Key == Escape ? &G.Esc : p->Key == Start ? &G.Start : p->Key == PadY ? &G.Y : p->Key == F7 ? &G.F7
+                    : p->Key == SpaceBar ? &G.Space : p->Key == PadA ? &G.A : nullptr;
             GameThreadId.store(GetCurrentThreadId(), std::memory_order_relaxed);
             NoteInputDuringMovie(console, p);
             // Any event of those keys, not only presses: during a movie the engine's movie input takes Start's press.
@@ -713,6 +806,9 @@ namespace PauseAnytime
         /// Escape/Start, on an SFXGameMode. Returns true to drop the call.
         bool DropSkip(UObject* mode, UFunction* function, void* parms, bool guiKey)
         {
+            // The movie pause before the guard's ticks: the movie's thread stores Esc's tick before it changes the pause, so
+            // a pause asked by a press is seen here with that press's tick, and its SkipMovie doesn't resume it.
+            auto const wanted = Bink::PauseWanted();
             auto const ours = KeyGuard(GetTickCount64());
             if (guiKey)
             {
@@ -727,7 +823,7 @@ namespace PauseAnytime
             LEASI_INFO("{} on {}: {}{}", ToUtf8(std::wstring_view(name.Chars(), name.Length())), PathOf(mode),
                        ours != nullptr ? "dropped, our " : "passed", ours != nullptr ? ours : "");
             static SFXName const SkipMovie{ L"SkipMovie", 0 };
-            if (ours == nullptr && function->Name == SkipMovie && Bink::PauseWanted()) Bink::RequestResume("SkipMovie");
+            if (ours == nullptr && function->Name == SkipMovie && wanted) Bink::RequestResume("SkipMovie");
             return ours != nullptr;
         }
 
@@ -745,12 +841,15 @@ namespace PauseAnytime
             auto const movie = action.Movie != nullptr ? ToUtf8(std::wstring_view(action.Movie->Chars(), action.Movie->Length())) : std::string{};
             if (!activated)
             {
-                LEASI_INFO("movie event {}: {} (Deactivated), {}, thread {}", MovieSound::Unlatch(movie) ? "cleared" : "not cleared, the latch is not this movie's",
-                           movie, PathOf(object), GetCurrentThreadId());
+                // As below: the object read first, so a fault in it clears nothing.
+                auto const path = PathOf(object);
+                auto const cleared = MovieSound::Unlatch(movie);
+                LEASI_INFO("movie event {}: {} (Deactivated), {}, thread {}", cleared ? "cleared" : "not cleared, the latch is not this movie's", movie, path,
+                           GetCurrentThreadId());
                 LEASI_FLUSH();
                 return;
             }
-            MovieSound::Latch(movie, action.EventId, action.Beside != nullptr);
+            // The latch comes last, after all that reads the game's objects for the line: a fault on the way latches nothing.
             std::string check = "no Wwise event";
             if (action.Event != nullptr)
             {
@@ -771,7 +870,9 @@ namespace PauseAnytime
                                                                : std::format("its {} output starts", ToUtf8(action.Via));
                 check += std::format("; its sound is not known: {} {}", via, PathOf(action.Beside));
             }
-            LEASI_INFO("movie event latched: {} id {} ({}), {}, thread {}", movie, action.EventId, check, PathOf(object), GetCurrentThreadId());
+            auto const path = PathOf(object);
+            MovieSound::Latch(movie, action.EventId, action.Beside != nullptr);
+            LEASI_INFO("movie event latched: {} id {} ({}), {}, thread {}", movie, action.EventId, check, path, GetCurrentThreadId());
             LEASI_FLUSH();
         }
 
@@ -823,10 +924,13 @@ namespace PauseAnytime
         }
 
         /// "PAUSE" near the top centre, and the keys under it: Start and Y when Start paused or the player uses a gamepad
-        /// (PlayerInput's bUsingGamepad, which the game's own button prompts follow), else Esc and F7. The HUD's own font,
-        /// position and colour are put back.
+        /// (PlayerInput's bUsingGamepad, which the game's own button prompts follow), else Esc and F7, the photo mode key only
+        /// where photo mode opens. The HUD's own font, position and colour are put back.
         void DrawBanner(ABioHUD* hud)
         {
+            // With the per-frame checks off our state isn't kept up: as the pause screen then, only while the world we
+            // paused still exists and is paused.
+            if (G.FrameFaults >= MaxFrameFaults && (G.World.Live() == nullptr || G.World.Object->Pauser == nullptr)) return;
             auto const canvas = hud->Canvas;
             if (canvas == nullptr || canvas->SizeX <= 0 || canvas->SizeY <= 0) return;
             if (!Fn.Tried)
@@ -860,7 +964,10 @@ namespace PauseAnytime
             DrawCentered(canvas, L"PAUSE", height * 0.08f, 2.5f * scale, Color(255, 255, 255, 235));
             auto const input = hud->PlayerOwner != nullptr ? hud->PlayerOwner->PlayerInput : nullptr;
             auto const gamepad = G.PausedByStart || (input != nullptr && input->bUsingGamepad != 0);
-            auto const keys = gamepad ? L"Start: resume     Y: photo mode" : L"Esc: resume     F7: photo mode";
+            // Photo mode's key only where it opens: its hooks are in, and the per-frame checks that watch it are on.
+            auto const photo = PhotoMode::Answers() && G.FrameFaults < MaxFrameFaults;
+            auto const keys = gamepad ? (photo ? L"Start: resume     Y: photo mode" : L"Start: resume")
+                                      : (photo ? L"Esc: resume     F7: photo mode" : L"Esc: resume");
             DrawCentered(canvas, keys, height * 0.08f + 48.0f * scale, 1.1f * scale, Color(200, 200, 200, 220));
 
             canvas->Font = savedFont;
@@ -898,7 +1005,7 @@ namespace PauseAnytime
             else if (G.PhotoHideFrames > 0) G.PhotoHideFrames--;
             auto const hidden = G.WorldPaused && (photoOn || G.PhotoHideFrames > 0 || ConsoleIsOpen());
             auto const mode = ModeOf(pc);
-            auto const photo = PhotoMode::Answers() && pc != nullptr && pc == G.Controller && (mode == ModeConversation || mode == ModeCinematic);
+            auto const photo = PhotoMode::Answers() && pc != nullptr && pc == G.Controller.Live() && (mode == ModeConversation || mode == ModeCinematic);
             Overlay::Publish(G.WorldPaused && !hidden, G.WorldPaused && !hidden && photo, hidden);
         }
 
@@ -959,8 +1066,9 @@ namespace PauseAnytime
             return nullptr;
         }
 
-        /// Frames on which ReadGameIcons may try: the textures load with the game, before the first HUD.
-        constexpr unsigned MaxGameIconTries = 3;
+        /// Frames on which ReadGameIcons may try: the textures load with the game, before the first HUD, but the renderer may
+        /// make their views some frames later. About a second, once a session; each try searches the object list twice.
+        constexpr unsigned MaxGameIconTries = 60;
 
         /// The texture's D3D11 view, read raw (Game::TextureView), or null where a method table isn't the expected one
         /// (another build of the game) or nothing is there yet. Overlay.cpp checks the view itself.
@@ -1110,12 +1218,14 @@ namespace PauseAnytime
             UFunction* Function;
             UConsole_execInputKey_Parms* Parms;
             bool Taken;
+            /// The key's state, when it is one of the keys we watch.
+            KeyState* Watched;
         };
 
         void TakeKeyEntry(void* context)
         {
             auto const c = static_cast<KeyCall*>(context);
-            c->Taken = TakeKey(c->Console, c->Function, c->Parms);
+            c->Taken = TakeKey(c->Console, c->Function, c->Parms, c->Watched);
         }
 
         void AfterPostRenderEntry(void* context) { AfterPostRender(static_cast<ABioHUD*>(context)); }
@@ -1148,12 +1258,17 @@ namespace PauseAnytime
             PhotoMode::Tick(c->Pc, c->DeltaTime);
         }
 
-        constexpr unsigned MaxFrameFaults = 3;
+        /// For KeysElsewhere: the Steam overlay or the console is open now.
+        void NoteKeysElsewhereEntry(void*)
+        {
+            auto const pc = LocalController(nullptr);
+            Elsewhere.store((pc != nullptr && pc->bIsExternalUIOpen) || ConsoleIsOpen(), std::memory_order_relaxed);
+        }
 
         void PublishBareEntry(void*)
         {
             auto const photoOn = PhotoMode::On();
-            Overlay::Publish(G.WorldPaused && !photoOn && Alive(G.World, G.WorldIndex) && G.World->Pauser != nullptr, false, photoOn);
+            Overlay::Publish(G.WorldPaused && !photoOn && G.World.Live() != nullptr && G.World.Object->Pauser != nullptr, false, photoOn);
         }
 
         /// After an access violation in the per-frame checks: our state may be what faulted, so it ends here, photo mode
@@ -1185,16 +1300,28 @@ namespace PauseAnytime
                 YieldProcessor();
                 orig = ProcessEvent_orig.load(std::memory_order_acquire);
             }
-            // The game thread's heartbeat for Bink.cpp's movie reports, written only when the tick count moved, and the end of
-            // its stalls for Start.
+            // The game thread's heartbeat for Bink.cpp's movie reports, written only when the tick count moved, and its stalls
+            // for Start and TakenLately. At each such tick too, what the movie's thread can't read: the Steam overlay and the
+            // console (a fullscreen movie draws no HUD, so the per-frame checks don't run under it).
             if (GetCurrentThreadId() == GameThreadId.load(std::memory_order_relaxed))
             {
                 auto const now = GetTickCount64();
                 auto const last = GameThreadTick.load(std::memory_order_relaxed);
                 if (last != now)
                 {
-                    if (last != 0 && now - last > GameStallMs) G.StallEndedAt = now;
+                    if (last != 0 && now - last > GameStallMs)
+                    {
+                        G.StallStartedAt = last;
+                        G.StallEndedAt = now;
+                    }
                     GameThreadTick.store(now, std::memory_order_relaxed);
+                    if (!G.ElsewhereOff && !Guarded(NoteKeysElsewhereEntry, nullptr))
+                    {
+                        G.ElsewhereOff = true;
+                        Elsewhere.store(false, std::memory_order_relaxed);
+                        LEASI_ERROR("access violation while reading the Steam overlay's and the console's state: off for the session, the movie's "
+                                    "thread reads Esc and Space there too");
+                    }
                 }
             }
             if (InOwnCall || Context == nullptr || Function == nullptr)
@@ -1228,11 +1355,25 @@ namespace PauseAnytime
             {
                 if (Parms != nullptr && Context->IsA(UConsole::StaticClass()))
                 {
-                    KeyCall call{ static_cast<UConsole*>(Context), Function, static_cast<UConsole_execInputKey_Parms*>(Parms), false };
+                    KeyCall call{ static_cast<UConsole*>(Context), Function, static_cast<UConsole_execInputKey_Parms*>(Parms), false, nullptr };
+                    auto const wasPaused = G.WorldPaused;
                     if (!Guarded(TakeKeyEntry, &call))
                     {
-                        LEASI_ERROR("access violation while reading a key: passed to the game{}", PhotoMode::On() ? ", photo mode left" : "");
-                        call.Taken = false;
+                        // A fault after the press paused or resumed the world: that press acted, so it stays ours with its
+                        // repeats and its release (and the skip guard), or the game would act on it too.
+                        call.Taken = G.WorldPaused != wasPaused;
+                        LEASI_ERROR("access violation while reading a key: {}{}", call.Taken ? "taken, its press paused or resumed the world" : "passed to the game",
+                                    PhotoMode::On() ? ", photo mode left" : "");
+                        if (call.Taken)
+                        {
+                            call.Parms->ReturnValue = 1;
+                            if (call.Watched != nullptr)
+                            {
+                                call.Watched->Held = true;
+                                call.Watched->Vanilla = false;
+                                call.Watched->PressedAt = GetTickCount64();
+                            }
+                        }
                         PhotoMode::Drop("fault while reading a key", false);
                     }
                     if (call.Taken) return;
@@ -1326,4 +1467,39 @@ namespace PauseAnytime
     ULONGLONG GameThreadSeen() { return GameThreadTick.load(std::memory_order_relaxed); }
 
     ULONGLONG HudSeen() { return HudTick.load(std::memory_order_relaxed); }
+
+    bool KeysElsewhere()
+    {
+        if (!Elsewhere.load(std::memory_order_relaxed)) return false;
+        // Only while the game thread ticks, so the flag is a tick old at most. A silent one (a load, a wait for this very
+        // movie) may have read it before the overlay or the console closed. Kept, it would refuse every Esc and Space while
+        // nothing else could resume the movie. Keys typed into the overlay then reach the movie, as without this check.
+        auto const now = GetTickCount64();
+        auto const beat = GameThreadTick.load(std::memory_order_relaxed);
+        return beat != 0 && (now > beat ? now - beat : 0) <= GameStallMs;
+    }
+
+    bool TakenLately(ULONGLONG tick, ULONGLONG now)
+    {
+        if (tick == 0) return false;
+        if (tick >= now || now - tick < ReleaseGraceMs) return true;
+        // The game thread read no input from before that press until now (a load): the key's queued events reach it only
+        // now, and they are still the press the movie's thread acted on. The gap may still be on, since a native (the movie
+        // input) runs before the first ProcessEvent after it; else it ended a moment ago. The start is this thread's last
+        // ProcessEvent before the gap.
+        auto const beat = GameThreadTick.load(std::memory_order_relaxed);
+        auto const ongoing = beat != 0 && now > beat && now - beat > GameStallMs;
+        auto const ended = G.StallEndedAt != 0 && G.StallEndedAt <= now && now - G.StallEndedAt < ReleaseGraceMs;
+        auto const start = ongoing ? beat : ended ? G.StallStartedAt : 0;
+        if (start == 0 || tick < start) return false;
+        // Once a stall: each skip the guard drops after it asks again.
+        static ULONGLONG logged = 0;
+        if (logged != start)
+        {
+            logged = start;
+            LEASI_INFO("a press the movie's thread acted on {} ms ago reaches the game thread after its stall of {} ms: still ours", now - tick,
+                       (ongoing ? now : G.StallEndedAt) - start);
+        }
+        return true;
+    }
 }
