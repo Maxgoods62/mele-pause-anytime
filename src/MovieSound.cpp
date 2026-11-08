@@ -13,6 +13,10 @@
 // and queued: they apply at the audio thread's next pass. The game object is AK_INVALID_GAME_OBJECT, which the Wwise
 // headers say "may also mean all game objects": the one the native code posted the event on is unknown. Only under
 // MoviePolicy::BinkAndEvent: LE1's movies carry Bink audio, and nothing here runs there.
+// Pauses are taken to count, a plain Resume taking back one Pause action: so Wwise 2025.1's docs read for Resume actions.
+// It is assumed of ExecuteActionOnEvent's Resume in the game's Wwise 2019, whose header we have says nothing of it. So
+// Bink.cpp pairs them: no pause while one of ours is owed or out, and a resume only for a pause Wwise queued. Its AK_Success
+// means queued (2025.1's docs again), not heard to stop.
 namespace PauseAnytime::MovieSound
 {
     namespace

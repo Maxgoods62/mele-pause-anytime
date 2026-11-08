@@ -20,6 +20,48 @@ For the release gate, test the zip instead, and copy its files as [install.md](i
 The log is `<LE folder>\Game\ME<n>\Binaries\Win64\Logs\PauseAnytime.log`. Pause Anytime rewrites it each time the game
 starts, so copy it before you start the game again.
 
+## The automated checks
+
+Each build runs `PauseAnytimeTests.exe` after the ASIs, and one failed check stops the build before anything is
+staged. GitHub's build runs them too, since `package.sh` calls `build.sh`. A game run can't choose which thread gets
+somewhere first, so the checks set the order themselves.
+
+They check the rules in `src/KeyRules.hpp` that decide whose a key press is when the movie's thread and the game thread
+both see it:
+
+- Space resuming a paused movie, with the movie's thread 4 or 5 ms ahead (as in LE2's logs) or behind (as in LE3's), in
+  LE2, where Space reaches the movie input as Enter, and in LE3.
+- The movie's resume landing between any two of the game thread's reads.
+- Space and X with nothing paused, Esc and Space in one poll, a bounce, a gap in the polls and a held key.
+- A press the movie's thread acted on during a game-thread stall, a Start press whose release was lost, and the skip
+  guard's 2 s and 250 ms.
+
+With the rules from before v18's Space fix, these checks fail.
+
+They check `src/MovieRules.hpp`, the rules for a movie's pause and its Wwise event, which the movie's thread, the game
+thread and the movie's close share. A small model of one movie goes through every state it can reach and every step
+from each, so every order of the steps is covered, of any length. A step is Wwise accepting or refusing a call, a
+press, a resume, a dropped pause, a new latch, the close or 100 ms going by, with `BinkWait` on one thread, then on two.
+After each step it checks that:
+
+- Wwise never holds two of our pauses on one event, and never gets a resume without one.
+- The picture pauses only once its sound has.
+- A refused resume is sent again three times at most, and once more when the movie closes.
+- Nothing of ours is left paused once the movie is closed.
+
+Named cases run too: Start pressed while a resume is on its way, Wwise refusing a pause or a resume, a pause asked while
+a resume is owed, the movie closing while our calls are out, and `BinkWait` on a second thread.
+
+And they check `src/OverlayRules.hpp`: the gate that lets one thread at a time draw the pause screen, on eight threads
+at once; a resize's wait for the gate, its take from a holder stuck in a call to DXGI and never from one in the
+overlay's own work, on two threads too; a resize while a paused movie presents; the rule that picks the game's swap
+chain; and the rules for another swap chain once the overlay draws.
+
+They can't show how the threads are timed in the game, which thread makes the game's window, what the engine and the
+game do with a key, or how Bink and Wwise answer our calls: the model takes Wwise to count pauses, as
+`src/MovieSound.cpp` assumes. S3, S5 and the [checks of the build after v1.0](#the-build-after-v10) look at those in the
+game.
+
 ## Keep the game in front
 
 Keep the game window in front for the whole test. In the background, LE1 holds the world still every frame, so a pause
@@ -211,13 +253,19 @@ In this order:
 
 ### At the first frames
 
+- `overlay: swap chain ... presents to window ..., made by thread ...: the game's (main thread ..., game thread ...)`,
+  where the window's thread is the main thread, or the game thread once it is known. A warning that ends in `taken
+  anyway, ... the foreground window` in its place means the rule picked no window of the game's for 5 s: it is wrong for
+  that setup, so note the threads both lines name. A line `not the game's, left alone` before it names a swap chain of
+  another program or tool in the game;
 - `overlay ready: back buffer ..., LE<n> look, text in <language>, Exo 2 embedded, blur ready`;
 - `first BioHUD.PostRender on thread ...: HUD owner ..., GEngine's local player controller ... (same)`. "DIFFERENT" in
   place of "same" means Esc would read the wrong controller;
 - `the game's string table: title "", resume "...", photo mode "..."`, with the two words in the game's language. The
   title is empty in all three games;
-- `overlay: the game's gamepad icons: A fine, Y fine: used`. A view that failed its checks gives "refused" and "ours
-  drawn instead". Textures that gave no view give a warning that starts "no view of the game's gamepad icons";
+- `overlay: the game's gamepad icons: A fine, Y fine: used`. A view that failed its checks gives "refused", the reason
+  in brackets, and "ours drawn instead". Textures that gave no view give a warning that starts "no view of the game's
+  gamepad icons". With ReShade, a line before it says `our views report device ..., the swap chain gave device ...`;
 - LE3: `the game's fonts: loaded their package in ... ms: ...`;
 - a warning that ends in "the pause screen keeps Exo 2" if the game's fonts could not be read.
 
@@ -260,7 +308,11 @@ In this order:
 - one `Esc pressed, read on thread ...` line for each press: `movie pause asked` or `movie resume asked`;
 - Start in LE1: `Start held during a fullscreen movie, its press unseen here on thread ...` (or `released`), then
   `movie pause asked` or `movie resume asked`. Start in LE2 and LE3: `Start pressed on thread ...: movie pause asked`;
-- the `PAUSED` and `RESUMED` lines, which in LE2 and LE3 end with `AKRESULT 1`, and the reports between them;
+- the `PAUSED` and `RESUMED` lines, and the reports between them. In LE2 and LE3, `PAUSED` gives `Wwise pause N:
+  AKRESULT 1` before `BinkPause returned 1`, and `RESUMED` ends with `Wwise resume N: AKRESULT 1`. A warning in their
+  place means Wwise refused: `NOT PAUSED` (the movie plays on, and the next press tries again), or `RESUMED` with
+  `refused`, then up to three `Wwise resume N sent again` lines and, if Wwise refuses those too, `closed with its Wwise
+  event paused by us` at the close. `closed with our Wwise ... still out` means a Bink call overlapped the close;
 - once, `overlay: the paused movie presents nothing: its last frame is presented from its BinkWait, with the pause
   screen`. Where another thread presents the frames, a warning `overlay: the paused movie plays on thread ...` comes
   instead, and the pause screen shows only as the movie pauses;
@@ -283,6 +335,55 @@ logged.
 
 Results per game, oldest first. Some test builds carried the next version's code under the old number, such as "v9's
 code, numbered 8". The v8 results name the per-game zips of that time. A release now has one zip.
+
+### The build after v1.0
+
+This build, still numbered 1.0, changes four things. In LE2 and LE3 a movie's Wwise event pauses before its picture,
+and Wwise's answers are checked. The pause screen's work runs behind a gate, one thread at a time, and starts only on
+the game's window. The key rules moved to `src/KeyRules.hpp`, with no change meant. With ReShade, the pause screen
+takes the game's gamepad icons again. Its automated checks pass.
+
+Run on 2026-11-08 in all three games, with ReShade 6.8 in each, keyboard only:
+
+- Step 1: in each game A was B was C (LE1 61580, LE2 11544, LE3 51816), and no `not the game's` line.
+- Step 2: the pause screen over a conversation in each game (LE2 the C-Sec desk, LE3 and LE1 on the Normandy), and the
+  line went on when it resumed, with Esc and with Space.
+- Step 3, with Esc only (no gamepad): LE2 1 pause in each of two relay jumps, LE3 2 in one, every line in the order
+  above with `AKRESULT 1`; LE1 2 in its travel movie. The whoosh stopped and started with the picture (by ear). Start
+  is not run yet.
+- Step 4: 15 pauses in `CitHub_Arrival`, each resumed without a skip, frames going on from where they stopped. The
+  movie then ended at frame 319 of 1143: a Space pressed 1 s after a resume, with nothing paused, skipped it as Space
+  does.
+- Step 5 in LE2: Alt+Enter under a movie pause, with the movie then played on a new thread, and Space resumed it there;
+  a window resize under the world pause, with the screen back at 1582x903. No hang.
+- Step 6: no such warning in any of the three logs.
+
+With ReShade, every game logged `the game's gamepad icons: A refused, Y refused: ours drawn instead`, as main's build
+did that morning. The cause: ReShade 6.8 hands the swap chain its own device, while the game's views report the device
+beneath, so the device check refused them. The fix compares the game's views with a view of our own. Run after it in
+LE2 only, with ReShade: the log said `our views report device ..., the swap chain gave device ...` and `A fine, Y
+fine: used`, and a pause with gamepad prompts (Start sent through `Console.InputKey`) showed the game's A and Y; A
+resumed. LE1 and LE3 are not run with the fix yet.
+
+1. LE1, LE2 and LE3, at the first frames: `overlay: swap chain ... presents to window ..., made by thread A: the
+   game's (main thread B, game thread C)`, where A is B, or A is C and the line counts the presents refused before.
+   Note A, B and C for each game. There is no `not the game's, left alone` line, unless another program or tool draws
+   in the game.
+2. LE1, LE2 and LE3: S1 steps 1, 2 and 5. The pause screen shows over the paused line and goes when it resumes.
+3. LE2 and LE3: S3 steps 1, 2 and 4 in the relay jump, with Esc, then with Start. Each `PAUSED` line has `Wwise pause
+   N: AKRESULT 1` before `BinkPause returned 1`, and the `RESUMED` line after it ends with `Wwise resume N: AKRESULT
+   1`, with the same N. There are as many `PAUSED` lines as `RESUMED` lines, and by ear the whoosh stops and starts
+   with the picture. In LE1, do the same in the travel movie: its lines have no Wwise part.
+4. LE2: in `CitHub_Arrival`, pause with Esc and resume with Space, 10 times. The movie never skips: it plays to its
+   last frame, and each Space press has a `kept from the engine's movie input` line.
+5. Under the world pause, then under a movie pause in LE2 or LE3: switch between windowed and fullscreen, or resize the
+   window. The game neither hangs nor crashes. The world pause screen comes back at the new size. Over the movie it
+   does not come back until the movie goes on ([known issues](troubleshooting.md#known-issues)), and Esc still resumes
+   the movie. The log has `overlay: the first ResizeBuffers` (or `ResizeBuffers1`) once, or `overlay: drawing on swap
+   chain ... now` if the game made a new swap chain. A line `overlay: a paused movie's frame on thread ... found the
+   gate held` is no fault.
+6. In every log of these runs, no warning holds `NOT PAUSED`, `taken anyway`, `waited 250 ms` or `is not a step we
+   take`.
 
 ### v18 gate
 

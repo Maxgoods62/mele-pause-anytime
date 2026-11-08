@@ -61,8 +61,9 @@ nothing keeps a key from it.
 - Space: the movie's thread reads it too, and it only resumes. A resumes from `Console.InputKey`: on its press, or on
   the repeat or release of a press that the engine took.
 
-In LE1 the thread that plays the movie also presents the game's frames. So while the movie stays paused, the
-`BinkWait` hook presents its last frame with the pause screen over it, up to 60 times a second.
+In LE1 the thread that plays the movie also presents the game's frames, as in LE2 and LE3. The logs show it, but
+nothing in the engine promises it. So while the movie stays paused, the `BinkWait` hook presents its last frame with
+the pause screen over it, up to 60 times a second ([how](../how-it-works.md#a-paused-movies-frame)).
 
 ## Photo mode
 

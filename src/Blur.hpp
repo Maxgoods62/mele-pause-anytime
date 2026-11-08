@@ -3,7 +3,8 @@
 #include <d3d11.h>
 
 // The pause backdrop: the whole frame blurred (dual Kawase), darkened, a little desaturated, with a soft vignette, drawn into the
-// back buffer from the IDXGISwapChain::Present detour, before the ImGui text and icons. Render thread only: nothing is locked.
+// back buffer from the IDXGISwapChain::Present detour, before the ImGui text and icons. Called only by the holder of
+// Overlay.cpp's gate, on whichever thread that is (a present, a paused movie's frame, a resize): nothing here is locked.
 namespace PauseAnytime::Blur
 {
     struct Settings
