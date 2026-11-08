@@ -381,8 +381,10 @@ letter by letter with the font's kerning pairs. Both fonts must load and draw th
 text.
 
 The A and Y prompts use the view that the renderer holds of the game's own textures. The game thread follows
-`UTexture.Resource` to it (`Game::TextureView`). The render thread takes it only if its method table matches a view
-the overlay makes on the same device. Both views must pass, or neither is used and drawn discs take their place.
+`UTexture.Resource` to it (`Game::TextureView`). The render thread takes it only if its method table and the device
+it reports match those of a view the overlay makes itself. A layer such as ReShade 6.8 hands the overlay its own device
+through the swap chain, while every view reports the device beneath, so the game's views are compared with ours, not
+with the swap chain's device. Both views must pass, or neither is used and drawn discs take their place.
 
 ### A paused movie's frame
 

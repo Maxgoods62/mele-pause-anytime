@@ -706,9 +706,18 @@ namespace PauseAnytime::Overlay
             }
         }
 
-        /// The method table of this device's views, read off a view of our own on a one-pixel texture. Null without one. Any
-        /// overlay or driver in between shows here as it shows on the game's.
-        void const* ViewTable()
+        /// What a view of ours shows: its method table and the device it reports.
+        struct ViewShape
+        {
+            void const* Table = nullptr;
+            ID3D11Device const* Device = nullptr;
+        };
+
+        /// A view of our own on a one-pixel texture, read and let go; an empty shape without one. Any overlay or driver in
+        /// between shows here as it shows on the game's views. That includes the device: a layer such as ReShade gives its
+        /// own device from the swap chain (R.Device), while a view, ours or the game's, may report the device beneath it. Our
+        /// views and the game's are made through the same device, so they report the same one.
+        ViewShape OwnViewShape()
         {
             D3D11_TEXTURE2D_DESC desc{};
             desc.Width = 1;
@@ -720,28 +729,62 @@ namespace PauseAnytime::Overlay
             desc.Usage = D3D11_USAGE_DEFAULT;
             desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
             ID3D11Texture2D* texture = nullptr;
-            if (FAILED(R.Device->CreateTexture2D(&desc, nullptr, &texture)) || texture == nullptr) return nullptr;
+            if (FAILED(R.Device->CreateTexture2D(&desc, nullptr, &texture)) || texture == nullptr) return {};
             ID3D11ShaderResourceView* view = nullptr;
             auto const hr = R.Device->CreateShaderResourceView(texture, nullptr, &view);
             texture->Release();
-            if (FAILED(hr) || view == nullptr) return nullptr;
-            auto const table = TableOf(view);
+            if (FAILED(hr) || view == nullptr) return {};
+            ViewShape shape;
+            shape.Table = TableOf(view);
+            ID3D11Device* device = nullptr;
+            view->GetDevice(&device);
+            if (device != nullptr) device->Release();
+            shape.Device = device;
             view->Release();
-            return table;
+            return shape;
         }
 
-        /// The game's pointer, referenced, if it is a view as ours are, of a 2D texture, on the device we draw with. Nothing of
-        /// it is called before its method table matched.
-        ID3D11ShaderResourceView* TakeView(void* candidate, void const* table)
+        /// Why TakeView gave nothing.
+        enum class Refusal : unsigned char { None, NoOwnView, NotAView, OtherDevice, NotFlat };
+
+        char const* RefusalText(Refusal why)
         {
-            if (candidate == nullptr || table == nullptr || TableOf(candidate) != table) return nullptr;
+            switch (why)
+            {
+            case Refusal::None: return "fine";
+            case Refusal::NoOwnView: return "refused (no view of our own to compare with)";
+            case Refusal::NotAView: return "refused (not a view as ours are)";
+            case Refusal::OtherDevice: return "refused (on another device than our views)";
+            case Refusal::NotFlat: return "refused (not of a 2D texture)";
+            }
+            return "refused";
+        }
+
+        /// The game's pointer, referenced, if it is a view as ours are (OwnViewShape: same method table, same device
+        /// reported), of a 2D texture. Nothing of it is called before its method table matched.
+        ID3D11ShaderResourceView* TakeView(void* candidate, ViewShape const& own, Refusal& why)
+        {
+            why = Refusal::NoOwnView;
+            if (own.Table == nullptr || own.Device == nullptr) return nullptr;
+            why = Refusal::NotAView;
+            if (candidate == nullptr || TableOf(candidate) != own.Table) return nullptr;
             auto const view = static_cast<ID3D11ShaderResourceView*>(candidate);
             ID3D11Device* device = nullptr;
             view->GetDevice(&device);
             if (device != nullptr) device->Release();
+            if (device != own.Device)
+            {
+                why = Refusal::OtherDevice;
+                return nullptr;
+            }
             D3D11_SHADER_RESOURCE_VIEW_DESC desc{};
             view->GetDesc(&desc);
-            if (device != R.Device || desc.ViewDimension != D3D11_SRV_DIMENSION_TEXTURE2D) return nullptr;
+            if (desc.ViewDimension != D3D11_SRV_DIMENSION_TEXTURE2D)
+            {
+                why = Refusal::NotFlat;
+                return nullptr;
+            }
+            why = Refusal::None;
             view->AddRef();
             return view;
         }
@@ -761,13 +804,19 @@ namespace PauseAnytime::Overlay
             auto const game = GameIcon.load(std::memory_order_acquire);
             if (game == nullptr) return;
             R.GameIconsSeen = true;
-            auto const table = ViewTable();
-            R.IconA = TakeView(game->PadA, table);
-            R.IconY = TakeView(game->PadY, table);
+            auto const own = OwnViewShape();
+            if (own.Device != nullptr && own.Device != R.Device)
+                LEASI_INFO("overlay: our views report device {}, the swap chain gave device {}: a layer sits between the game and "
+                           "D3D11 (ReShade 6.8 does)",
+                           static_cast<void const*>(own.Device), static_cast<void const*>(R.Device));
+            auto whyA = Refusal::NotAView;
+            auto whyY = Refusal::NotAView;
+            R.IconA = TakeView(game->PadA, own, whyA);
+            R.IconY = TakeView(game->PadY, own, whyY);
             auto const a = R.IconA != nullptr;
             auto const y = R.IconY != nullptr;
             if (!a || !y) ReleaseGameIcons();
-            LEASI_INFO("overlay: the game's gamepad icons: A {}, Y {}: {}", a ? "fine" : "refused", y ? "fine" : "refused", a && y ? "used" : "ours drawn instead");
+            LEASI_INFO("overlay: the game's gamepad icons: A {}, Y {}: {}", RefusalText(whyA), RefusalText(whyY), a && y ? "used" : "ours drawn instead");
         }
 
         /// A fault in there costs the icons, not the overlay. No C++ object may live in this frame.

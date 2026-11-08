@@ -259,8 +259,9 @@ In this order:
   place of "same" means Esc would read the wrong controller;
 - `the game's string table: title "", resume "...", photo mode "..."`, with the two words in the game's language. The
   title is empty in all three games;
-- `overlay: the game's gamepad icons: A fine, Y fine: used`. A view that failed its checks gives "refused" and "ours
-  drawn instead". Textures that gave no view give a warning that starts "no view of the game's gamepad icons";
+- `overlay: the game's gamepad icons: A fine, Y fine: used`. A view that failed its checks gives "refused", the reason
+  in brackets, and "ours drawn instead". Textures that gave no view give a warning that starts "no view of the game's
+  gamepad icons". With ReShade, a line before it says `our views report device ..., the swap chain gave device ...`;
 - LE3: `the game's fonts: loaded their package in ... ms: ...`;
 - a warning that ends in "the pause screen keeps Exo 2" if the game's fonts could not be read.
 
@@ -333,9 +334,10 @@ code, numbered 8". The v8 results name the per-game zips of that time. A release
 
 ### The build after v1.0
 
-This build, still numbered 1.0, changes three things. In LE2 and LE3 a movie's Wwise event pauses before its picture,
+This build, still numbered 1.0, changes four things. In LE2 and LE3 a movie's Wwise event pauses before its picture,
 and Wwise's answers are checked. The pause screen's work runs behind a gate, one thread at a time, and starts only on
-the game's window. The key rules moved to `src/KeyRules.hpp`, with no change meant. Its automated checks pass.
+the game's window. The key rules moved to `src/KeyRules.hpp`, with no change meant. With ReShade, the pause screen
+takes the game's gamepad icons again. Its automated checks pass.
 
 Run on 2026-11-08 in all three games, with ReShade 6.8 in each, keyboard only:
 
@@ -353,7 +355,11 @@ Run on 2026-11-08 in all three games, with ReShade 6.8 in each, keyboard only:
 - Step 6: no such warning in any of the three logs.
 
 With ReShade, every game logged `the game's gamepad icons: A refused, Y refused: ours drawn instead`, as main's build
-did that morning; the icon code did not change here.
+did that morning. The cause: ReShade 6.8 hands the swap chain its own device, while the game's views report the device
+beneath, so the device check refused them. The fix compares the game's views with a view of our own. Run after it in
+LE2 only, with ReShade: the log said `our views report device ..., the swap chain gave device ...` and `A fine, Y
+fine: used`, and a pause with gamepad prompts (Start sent through `Console.InputKey`) showed the game's A and Y; A
+resumed. LE1 and LE3 are not run with the fix yet.
 
 1. LE1, LE2 and LE3, at the first frames: `overlay: swap chain ... presents to window ..., made by thread A: the
    game's (main thread B, game thread C)`, where A is B, or A is C and the line counts the presents refused before.
