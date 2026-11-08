@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <utility>
 
-// The source is a GFX movie (Scaleform's SWF, version 8, or 15 for LE3's font library) with one DefineFont3 tag per font:
+// The source is a GFX movie (Scaleform's SWF, version 8, or 15 for LE3's font library) with one DefineFont3 tag per font.
+// A font mod may save it as a plain uncompressed SWF ('FWS' for 'GFX', all else the same: Myriad Pro Begone does in LE1),
+// which the game loads all the same. Compressed movies ('CWS', 'CFX', 'ZWS') are refused: nothing here inflates.
 //   FontID u16, flags u8, language u8, name length u8, name, glyph count N u16,
 //   offset table u32[N], code table offset u32, N SHAPEs, code table u16[N],
 //   ascent, descent, leading u16, advances u16[N], N RECTs, kerning count u16, kerning (u16, u16, s16)[count].
@@ -13,7 +15,7 @@
 //
 // Three things differ from the SWF spec or from what one expects of it, all measured on the game's 13 language files:
 //  - Advances are unsigned. Biomass's W, Æ, Œ, Ŵ, Ж and Щ go past 32767 and are right only when read as u16.
-//  - The bounds table holds zeros only, so the boxes are computed from the outlines.
+//  - The bounds table holds zeros only (a font mod may fill it), so the boxes are computed from the outlines.
 //  - A glyph's first contour can start at the origin with no MoveTo (л in Biomass, Æ and Ǽ in Myriad).
 //
 // Coordinates are 20480 per EM, y down, all multiples of 10 in the game's fonts. So 2048 units per EM keeps them exactly, and
@@ -273,7 +275,10 @@ namespace PauseAnytime::GameFont
             auto const signature = reader.Take(3);
             auto const version = reader.U8();
             reader.U32(); // file length: the span's size is what counts
-            if (reader.Failed() || signature[0] != 'G' || signature[1] != 'F' || signature[2] != 'X' || (version != 8 && version != 15)) return false;
+            if (reader.Failed() || (version != 8 && version != 15)) return false;
+            auto const gfx = signature[0] == 'G' && signature[1] == 'F' && signature[2] == 'X';
+            auto const swf = signature[0] == 'F' && signature[1] == 'W' && signature[2] == 'S';
+            if (!gfx && !swf) return false;
 
             // The stage RECT: 5 bits give the size of its 4 fields, then it pads to a byte.
             auto const rectBits = reader.U8() >> 3;
@@ -736,6 +741,20 @@ namespace PauseAnytime::GameFont
             for (std::size_t i = 0; i < 4; ++i) out[headOffset + 8 + i] = static_cast<unsigned char>(adjustment >> (24 - 8 * i) & 0xFF);
             return out;
         }
+
+        /// The top of the font's H above the baseline in EM, from its on-curve points (a curve's control point may stand
+        /// above the curve). 0 when the font has no H, or one that does not read or has no point above the baseline.
+        float CapsOf(FontTables const& font)
+        {
+            char32_t const h = U'H';
+            auto const chosen = Choose(font, std::span<char32_t const>(&h, 1));
+            Outline outline;
+            if (chosen.empty() || !ReadOutline(font.Shape(chosen[0].Index), outline)) return 0;
+            std::int32_t top = 0;
+            for (auto const point : outline.Points())
+                if (point.OnCurve) top = std::max<std::int32_t>(top, point.Y);
+            return static_cast<float>(top) / UnitsPerEm;
+        }
     }
 
     std::vector<unsigned char> Build(std::span<unsigned char const> movie, std::string_view fontName,
@@ -780,6 +799,7 @@ namespace PauseAnytime::GameFont
 
         Layout layout;
         layout.SizePerEm = static_cast<float>(font.Ascent + font.Descent) / SwfUnitsPerEm;
+        layout.CapsEm = CapsOf(font);
 
         ByteReader reader(font.Trailer);
         for (std::size_t i = 0; i < font.Count && !reader.Failed(); ++i)

@@ -350,9 +350,11 @@ since Exo 2 has no kana.
 
 The text is set in the game's two GUI fonts, a light one and a bold one. `GameFont.cpp` reads each from a GFx movie
 (its `DefineFont3` tag) and writes a TrueType file in memory, never on disk, with only the letters the screen needs. A
-mod can replace the movie, so every read is checked and every size capped. ImGui has no kerning, so each line is set
-letter by letter with the font's kerning pairs. Both fonts must load and draw the words, or Exo 2 stays for all of the
-text.
+mod can replace the movie, so every read is checked and every size capped. The movie may be Scaleform's GFX or a plain
+uncompressed SWF (`FWS`), as Myriad Pro Begone saves LE1's. Compressed movies are refused. ImGui has no kerning, so
+each line is set letter by letter with the font's kerning pairs. Each line's capitals are centred using the height of
+the font's own H, so a font mod that redraws the capitals stays centred. The look's fixed height is used only if the
+font has no H from 0.5 to 1 EM. Both fonts must load and draw the words, or Exo 2 stays for all of the text.
 
 The A and Y prompts use the view that the renderer holds of the game's own textures. The game thread follows
 `UTexture.Resource` to it (`Game::TextureView`). The render thread takes it only if its method table matches a view

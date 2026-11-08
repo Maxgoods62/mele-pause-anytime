@@ -276,7 +276,7 @@ namespace PauseAnytime::Overlay
             GameLine TitleLine;
             GameLine LabelLine;
             GameLine KeyLine;
-            /// The height of the fonts' H, in EM.
+            /// The height of the game's fonts' H, in EM: what CapsOf falls back on when a font gives none it can trust.
             float LightCaps;
             float BoldCaps;
             ButtonArt Button;
@@ -487,6 +487,15 @@ namespace PauseAnytime::Overlay
             return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(file.Ttf.data()), static_cast<int>(file.Ttf.size()), 32.f, &config);
         }
 
+        /// The height of the font's H in EM: its own, since a font mod may redraw the capitals (Myriad Pro Begone puts LE2's and
+        /// LE3's light font's H 0.13 EM higher), else the look's. Only a height from 0.5 to 1 EM is taken, so an H that is
+        /// missing or wild falls back to the look; a stray point inside that range still moves the line.
+        float CapsOf(GameFontFile const& file, float look)
+        {
+            auto const measured = file.Layout.CapsEm;
+            return measured >= 0.5f && measured <= 1.f ? measured : look;
+        }
+
         LineStyle GameStyle(ImFont* font, GameFontFile const& file, GameLine const& line, float caps)
         {
             auto const perEm = file.Layout.SizePerEm;
@@ -510,7 +519,8 @@ namespace PauseAnytime::Overlay
             }
             auto const& look = *R.Native;
             auto const style = [&](GameLine const& line) {
-                return line.Bold ? GameStyle(bold, game->Bold, line, look.BoldCaps) : GameStyle(light, game->Light, line, look.LightCaps);
+                return line.Bold ? GameStyle(bold, game->Bold, line, CapsOf(game->Bold, look.BoldCaps))
+                                 : GameStyle(light, game->Light, line, CapsOf(game->Light, look.LightCaps));
             };
             NativeStyles const styles{ style(look.TitleLine), style(look.LabelLine), style(look.KeyLine) };
             auto const& ours = LanguageTexts();
@@ -524,8 +534,9 @@ namespace PauseAnytime::Overlay
             // The game's words are judged again, by these fonts.
             R.Text = &ours;
             R.GameTextsSeen = false;
-            LEASI_INFO("overlay: the game's fonts: {} and {} bytes of TrueType, {} and {} kerning pairs: used", game->Light.Ttf.size(), game->Bold.Ttf.size(),
-                       game->Light.Layout.Kerning.size(), game->Bold.Layout.Kerning.size());
+            LEASI_INFO("overlay: the game's fonts: {} and {} bytes of TrueType, {} and {} kerning pairs, H measured {:.5f} and {:.5f} EM: used",
+                       game->Light.Ttf.size(), game->Bold.Ttf.size(), game->Light.Layout.Kerning.size(), game->Bold.Layout.Kerning.size(),
+                       game->Light.Layout.CapsEm, game->Bold.Layout.CapsEm);
         }
 
         // ! The game's icons

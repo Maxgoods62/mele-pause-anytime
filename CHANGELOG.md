@@ -4,6 +4,20 @@ The version is set in `src/SharedVersion.h`, one for every game. v1.0 is the fir
 it, v2 to v17, were test builds that were never published, and the dates on v2 to v5 are the days they were committed.
 The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## Unreleased
+
+Games: LE1, LE2, LE3
+
+- In LE1, the pause screen now uses the game's fonts when Myriad Pro Begone is installed. Before, the whole screen fell
+  back to Exo 2, and the log said "the game's fonts movies are not what we know". Myriad Pro Begone saves LE1's font
+  movie as a plain SWF instead of Scaleform's GFX, and Pause Anytime now reads both. A compressed movie is still
+  refused. With Myriad Pro Begone the title has no kerning, because the mod removes the kerning pairs of the letters
+  it redraws.
+- In LE2 and LE3, the key names (Space, F7) now sit centred on their keys when a font mod changes the game's light
+  font. Pause Anytime measures the capitals of the font it reads instead of assuming the game's Myriad. With Myriad Pro
+  Begone, they sat about 1 px too high at 1080p.
+- The log line for the game's fonts also gives the measured height of each font's H.
+
 ## v1.0 (2026-11-07)
 
 Games: LE1, LE2, LE3

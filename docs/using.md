@@ -136,6 +136,12 @@ The text uses the game's own menu fonts, read from the game's memory while it ru
 them and never writes them to disk. If it cannot read them, it uses its own font, Exo 2. Exo 2 has no Japanese
 letters, so the Japanese game then shows the labels in English.
 
+A mod that changes the game's fonts, such as Myriad Pro Begone, changes the pause screen too. Pause Anytime reads the
+fonts as the mod leaves them. Myriad Pro Begone swaps the game's Myriad for Domyouji. In LE2 and LE3 the pause screen
+uses Myriad only for the key names, so those change. In LE1 the title and key names were already in Domyouji. The mod
+redraws some of their letters and drops their kerning, so the title gets a little wider. The labels use Biomass in
+every game, and the mod leaves Biomass alone.
+
 The game's menu sound plays as the pause starts and as you resume with a key. In LE2 and LE3, it also plays when you
 open the Steam overlay during a pause, and when the game ends the pause itself, for example with a load.
 

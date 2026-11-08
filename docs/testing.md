@@ -174,6 +174,10 @@ game's texts" line reads `title "" kept ours`, since no game gives a title word,
 the photo mode word. "GUI sound InGameGuiEnter: played" follows "world paused". In LE3, the main menu adds "the
 game's fonts: loaded their package in ... ms: SFXGUI_Fonts.ObjectReferencer_448".
 
+With the font mod Myriad Pro Begone installed, the game's fonts are still "used" in every game. In LE2 and LE3 the
+first "H measured" value is about 0.80176 (Domyouji), not 0.67432 (Myriad), and the key names sit centred on their
+keys.
+
 ### S9, the Steam overlay
 
 In LE2 and LE3.

@@ -119,6 +119,10 @@ The look is `OverlayLook::LE1`, the `Le1Look` table in `src/Overlay.cpp`. Sizes 
   (`$AeroLight` at 12, spacing 0.5).
 - Both fonts are in one GFx movie, `GUI_SF_Fonts.Fonts`, in `Startup_<lang>.pcc`, which stays loaded (RootSet). The
   movie has no export names, and the order differs in Japanese, so the fonts are found by name.
+- Myriad Pro Begone (Nexus 1070) writes its own copy of that movie into every `Startup_<lang>.pcc`. Its header is a plain
+  SWF's (`FWS`), not `GFX`, and the fonts keep their names. It redraws the ASCII letters and punctuation of
+  `Tigensu_jpn` (not its digits or accented letters) and removes every kerning pair that touches them, so with it the
+  title has no kerning. `Biomass_jpn` stays the same.
 - The title "PAUSE" is Pause Anytime's own word. The game's paused box (170645) says "PAUSED".
 - The gamepad art is DXT5, in `Startup_<lang>.pcc`, the same in every language, and it stays loaded.
 - The sounds are the GuiSounds 2DA rows `InGameGuiEnter` and `InGameGuiExit`, both `snd_gui.c_snd_guiswish`. They go

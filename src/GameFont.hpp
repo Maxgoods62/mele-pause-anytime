@@ -27,6 +27,10 @@ namespace PauseAnytime::GameFont
         /// Ascent plus descent in EM, 0 if anything is wrong. ImGui's size is not an EM size: it scales by ascent plus descent,
         /// so text of s px per EM takes the ImGui size s * SizePerEm.
         float SizePerEm = 0;
+        /// The top of the font's own H in EM, read from the whole font whatever characters were asked for; 0 when it has no H
+        /// that reads, or one with no point above the baseline. A font mod may redraw the capitals: this lets the screen
+        /// centre them as the font now stands.
+        float CapsEm = 0;
         /// The pairs of which both characters were asked for. ImGui has no kerning: a title that should match the game draws
         /// its letters one by one with these. Empty when the font has none, or when its kerning table is damaged.
         std::vector<KerningPair> Kerning;
