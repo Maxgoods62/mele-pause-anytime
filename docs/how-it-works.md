@@ -13,7 +13,7 @@ Each game has its own ASI, `LE<n>PauseAnytime.asi`, loaded by [LEBinkProxy](http
 |---|---|
 | `src/Entry.cpp` | Loader entry: log, SDK, each part's hooks, the "ready" line |
 | `src/SharedVersion.h`, `PauseAnytime.rc`, `Resources.h` | Loader name and version, Windows version info, Exo 2 resources |
-| `src/CMakeLists.txt` | One target per game, Dear ImGui, the delay-loaded `d3dcompiler_47.dll` |
+| `src/CMakeLists.txt` | One target per game, Dear ImGui, the delay-loaded `d3dcompiler_47.dll`, the test program `PauseAnytimeTests` |
 | `src/Api.hpp` | What the parts ask of each other; no game class |
 | `src/Pause.hpp`, `Pause.cpp` | Game thread: the `ProcessEvent` hook, keys, world pause, skip guard, movie latch, what the pause screen shows, fallback banner |
 | `src/Engine.hpp`, `Engine.cpp` | Calls into the game (`CallGame`), object checks (`Alive`, `Kept`), the fault guard |
@@ -22,8 +22,10 @@ Each game has its own ASI, `LE<n>PauseAnytime.asi`, loaded by [LEBinkProxy](http
 | `src/Bink.cpp` | The movie pause, on the movie's thread |
 | `src/MovieSound.cpp` | LE2, LE3: a movie's Wwise event |
 | `src/MovieInput.cpp` | LE2, LE3: the engine's movie input |
-| `src/Overlay.cpp`, `Blur.hpp`, `Blur.cpp` | The pause screen and its blur, on the render thread |
+| `src/Overlay.cpp`, `Blur.hpp`, `Blur.cpp` | The pause screen and its blur, in the game's presents, one thread at a time |
 | `src/GameFont.hpp`, `GameFont.cpp` | A game font from a GFx movie to TrueType in memory; plain C++ |
+| `src/KeyRules.hpp`, `MovieRules.hpp`, `OverlayRules.hpp` | The rules the threads race for (whose key press it is, a movie's pause and its Wwise event, the overlay's gate and swap chain), as plain functions with no game or Windows type |
+| `src/tests/` | `PauseAnytimeTests`, the checks of those rules, run by each build ([testing.md](testing.md#the-automated-checks)) |
 | `src/game/Game.hpp`, `LE<n>.hpp` | Per game: modes, key events, RVAs, string ids, look, sounds, movie lists. `Game.hpp` picks one |
 | `src/game/KismetMovie.hpp` | LE2, LE3: reads a Kismet movie action |
 | `src/fonts/` | Exo 2 Regular and SemiBold, `OFL.txt` |
@@ -210,8 +212,15 @@ Bink (2022.05) hangs a player that pauses and then stops calling `BinkWait`, a b
 that has not called `BinkWait` lately is never paused. A resume is applied at its next Bink call of any kind, on the
 thread of its `BinkWait`. A movie that closes while `BinkPause` holds it is resumed right before `BinkClose`, in case
 the close is such a stop. That call comes from the thread that closes the movie, the one exception to the rule, and no
-other call on the movie can overlap its close. In LE2 and LE3 the movie's Wwise event is paused right after
-`BinkPause` and resumed with it.
+other call on the movie can overlap its close.
+
+In LE2 and LE3 the movie's Wwise event is paused first, and the picture only once Wwise has queued that pause: a pause
+Wwise refuses leaves both playing, and the next press tries again. A resume runs the other way, `BinkPause(movie, 0)`
+first, then the event. Wwise is taken to count pauses (`MovieSound.cpp` says why), so no pause of ours goes to an event
+that one of ours still holds, and no resume goes without one. A resume Wwise refuses leaves the event paused: it is sent
+again up to three times, 100 ms apart, while the picture plays. A movie that closes with its event still paused by us
+sends it a resume, once, since nothing else would. Each answer from Wwise other than `AK_Success` is a warning in the
+log.
 
 The movie pause ends:
 
@@ -322,14 +331,31 @@ Cinematic, and never over a movie.
 
 ### Drawing
 
-`Overlay::Install` reads the swap chain's methods from a throwaway device on a hidden window, and hooks
-`ResizeBuffers`, `ResizeBuffers1` (where DXGI has it), `Present` and `Present1`. It starts on the first swap chain that
-presents, with no `imgui.ini` or ImGui log, and compiles its shaders at the game's first frame. It moves to another
-swap chain (after a display mode change) only once ours has been silent for 500 ms, and only to one on the game's
-window while that window exists. While another swap chain presents and ours has been silent for 250 ms, the Canvas
-banner shows instead, until ours presents again or the other one is taken. A present that comes back
-`DXGI_ERROR_WAS_STILL_DRAWING` showed nothing, so the present that retries it is not drawn on again.
-`d3dcompiler_47.dll` is delay-loaded and bound to the copy in System32, never to one next to the game.
+`Overlay::Install` reads the swap chain's methods from a throwaway device on a hidden window, and hooks `ResizeBuffers`,
+`ResizeBuffers1` (where DXGI has it), `Present` and `Present1`. It starts on the first D3D11 swap chain that presents to
+the game's window: a window of the game's process made by its main thread (the thread made first), or by the game thread
+once `Pause.cpp` knows it. A window that another ASI or a tool makes on a thread of its own is left alone. If that rule
+refuses every swap chain for 5 s once the game thread is known, the next one that presents to the foreground window is
+taken anyway, with a warning. The overlay starts with no `imgui.ini` or ImGui log, and compiles its shaders at that
+first frame. It moves to another swap chain (after a display mode change) only once ours has been silent for 500 ms, and
+only to one on the window it draws on or on a window of the game's. An overlay taken anyway may also move, once its
+window is gone, to one on the foreground window, never to one in the background. While another swap chain presents and
+ours has been silent for 250 ms, the Canvas banner shows instead, until ours presents again or the other one is taken. A
+present that comes back `DXGI_ERROR_WAS_STILL_DRAWING` showed nothing, so the present that retries it is not drawn on
+again. `d3dcompiler_47.dll` is delay-loaded and bound to the copy in System32, never to one next to the game.
+
+The overlay's work runs on whichever thread calls it: the game's presents, the `BinkWait` hook's present for a paused
+movie ([below](#a-paused-movies-frame)), and a resize. Each call takes a gate first, so that one thread at a time uses
+the overlay's state, ImGui, the blur and the device's immediate context, and gives it back on every way out. A present
+never waits for the gate: one that finds it held goes out without the pause screen, and a present of another swap chain
+while ours presents goes out without taking it. A resize of the swap chain we draw on waits for the gate and keeps it
+until the original returns, since our views of its back buffer must be let go of first. The `BinkWait` hook takes no
+gate while a resize waits. The `BinkWait` hook's present and that resize keep the gate across their call to DXGI, a call
+we don't control, and mark it while they are in there. A holder marked for 250 ms is stuck there: a resize of the swap
+chain we draw on then takes the gate from it, with a warning, and a resize of any other swap chain goes on without it.
+The holder, back from DXGI, sees the gate gone and touches nothing more. A holder in the overlay's own work is waited
+for, since that work ends. Only after 2 s, when something we can't see holds it, does a resize take the gate from it all
+the same, with an error in the log, so that the game never hangs.
 
 Each game has its own look (`Game::Look`), with colours and sizes read from its menus. The layout is the same in all
 three, set for 1080 lines and scaled by the height. The frame is blurred, half as bright, 30 % desaturated and
@@ -366,8 +392,10 @@ those presents and held until the game presents with no such movie, since the pa
 movie then stops presenting. While the movie pause holds and the game has presented nothing for 100 ms, the `BinkWait`
 hook presents that copy with the pause screen over it, 60 times a second at most.
 
-This works only on the thread that presents the game's frames, which in LE1 is the movie's thread. Elsewhere the pause
-screen shows only as the movie pauses. After a resize the copy no longer fits, and nothing more is presented.
+This works only on the thread that presents the game's frames. In all three games that is the movie's thread, as their
+logs show, but nothing in the engine promises it: elsewhere the pause screen shows only as the movie pauses. The hook
+holds the gate from the copy to the end of its present, and skips its frame while a resize waits. After a resize the
+copy no longer fits, and nothing more is presented.
 
 ### Fallbacks
 
@@ -375,9 +403,10 @@ screen shows only as the movie pauses. After a resize the copy no longer fits, a
   font stands in for Exo 2.
 - Without the blur (a format it does not handle, a shader that fails), the backdrop is black at 60 %.
 - Without the overlay (a hook that fails, no `d3dcompiler_47.dll` in System32, 10 frames with no view on the back
-  buffer, a fault), or while a new swap chain waits to be taken, `Pause.cpp` draws an English banner on the HUD's
-  Canvas: `PAUSE`, then `Esc: resume` and, where photo mode opens, `F7: photo mode`. It names Start and Y instead when
-  Start paused or a gamepad is in use. It shows under our world pause outside photo mode, never over a movie.
+  buffer, a fault), before it has started on the game's swap chain, or while a new swap chain waits to be taken,
+  `Pause.cpp` draws an English banner on the HUD's Canvas: `PAUSE`, then `Esc: resume` and, where photo mode opens,
+  `F7: photo mode`. It names Start and Y instead when Start paused or a gamepad is in use. It shows under our world
+  pause outside photo mode, never over a movie.
 
 ## Crash guards
 

@@ -2,7 +2,9 @@
 
 `build.sh` builds `LE1PauseAnytime.asi`, `LE2PauseAnytime.asi` and `LE3PauseAnytime.asi`, one file per game from the
 same sources. It is a bash script for Windows: it runs in WSL or in Git Bash and calls the Windows build tools. It
-downloads LExASIs and Dear ImGui by itself, each at a pinned commit ([THIRD_PARTY.md](THIRD_PARTY.md)).
+downloads LExASIs and Dear ImGui by itself, each at a pinned commit ([THIRD_PARTY.md](THIRD_PARTY.md)). Each build also
+runs `PauseAnytimeTests.exe`, the checks of the rules the threads race for
+([testing.md](docs/testing.md#the-automated-checks)). A failed check stops the build, and nothing is staged.
 
 ## What you need
 
@@ -37,7 +39,8 @@ cd mele-pause-anytime
 ./build.sh
 ```
 
-For each game, the build puts `LE<n>PauseAnytime.asi` and its `.pdb` in `dist/` and prints `built <path>`.
+The build prints the checks' results, which end with `PauseAnytimeTests: N checks passed`. Then, for each game, it
+puts `LE<n>PauseAnytime.asi` and its `.pdb` in `dist/` and prints `built <path>`.
 
 | Command | What it does |
 |---|---|
@@ -132,7 +135,8 @@ deleted the files. Then `build.sh`:
    simdutf) are at their pinned commits, and checks them out again if not. This repairs an interrupted clone too.
 4. Fetches Dear ImGui into `third_party\imgui` when that folder is not at its pinned commit.
 5. Copies `src/` into the checkout as `LExASIs\PauseAnytime`. With `rsync`, it copies only the files whose content
-   changed. Then it adds these lines to the end of the tree's `CMakeLists.txt` if they are missing:
+   changed. Files in `src/` that git does not track are copied too, with a warning that names them: GitHub's build has
+   only what is committed. Then it adds these lines to the end of the tree's `CMakeLists.txt` if they are missing:
 
    ```cmake
    if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/PauseAnytime")
@@ -146,8 +150,13 @@ deleted the files. Then `build.sh`:
    `Build\LExASIs.slnx`.
 8. Builds each `PauseAnytime-LE<n>` target in `RELEASE`, one game after the other. On a failure it prints the
    compiler's error and warning lines and stops.
-9. Once every game has built, copies each `.asi` and `.pdb` from `Build\RELEASE` into `MELE_STAGE`. It does not empty
-   the stage first. `--install` then checks the games again and copies each `.asi` into its game.
+9. Builds the `PauseAnytimeTests` target the same way and runs it. It is a console program made of `src/tests` and the
+   rules in `src/KeyRules.hpp`, `MovieRules.hpp` and `OverlayRules.hpp`, with no SDK, game or third-party code. It
+   prints how many states the `MovieRules` model walked, then `PauseAnytimeTests: N checks passed`. Or it prints a
+   `FAILED <file> line <n>: ...` line for each failed check and `N of M checks FAILED`, and the build stops.
+10. Once every game has built and every check has passed, copies each `.asi` and `.pdb` from `Build\RELEASE` into
+    `MELE_STAGE`. It does not empty the stage first. `--install` then checks the games again and copies each `.asi`
+    into its game.
 
 Edit the sources in this repo's `src/`, never in `LExASIs\PauseAnytime`: each build replaces that folder. With the
 defaults, the build tree looks like this:
@@ -156,7 +165,7 @@ defaults, the build tree looks like this:
 %LOCALAPPDATA%\mele-asi-build\PauseAnytime\
   LExASIs\                ME3Tweaks/LExASIs at the pinned commit
     PauseAnytime\         the copy of src/
-    Build\RELEASE\        the built .asi and .pdb files
+    Build\RELEASE\        the built .asi and .pdb files, and PauseAnytimeTests.exe
   third_party\imgui\      Dear ImGui at the pinned commit
   .lexasis-build.lock     only where flock exists
 ```
@@ -181,6 +190,8 @@ ImGui builds as a static library of ours, `PauseAnytimeImGui`, with its own defa
 - `/PDBALTPATH`: the ASI names its `.pdb` by file name only.
 - `/d1trimfile`: file paths in the ASI (log macros, fatal errors) start below the build folder, so no user folder name
   gets in.
+
+`PauseAnytimeTests` gets the ASI targets' `/W4 /WX` and `/d1trimfile` too.
 
 ## Adding a game
 
@@ -225,10 +236,13 @@ the same errors, and its own start with `package.sh:`. Below, `<n>` is 1, 2 or 3
 | `cmake configure failed: run it by hand in ...` | Run the configure command below in that folder to see its output. |
 | `a LEASI_GAME*_WIN64 variable is set in the Windows environment` | Remove it in System Properties, Environment Variables. Then open a new terminal. |
 | `no PauseAnytime-LE<n> project` | That game is not on the `GAMES` line. Leave it out, or [add it](#adding-a-game). |
-| `PauseAnytime-LE<n> did not build` | The lines above it are the compiler's errors and warnings, each shown once. |
+| `PauseAnytime-LE<n> did not build` or `PauseAnytimeTests did not build` | The lines above it are the compiler's errors and warnings, each shown once. |
+| `no Build/RELEASE/PauseAnytimeTests.exe after its build` | Run the build step below with `--target PauseAnytimeTests` to see all of MSBuild's output. |
+| `the rules' checks failed (the lines above): nothing staged` | Each `FAILED <file> line <n>` line above names a check in `src/tests` and what it expects. A line `first after the steps ...` under one of the model's gives one of the shortest runs of steps that break it, by the letters listed in `src/tests/MovieRulesTest.cpp`. Fix the rule in `src/KeyRules.hpp`, `MovieRules.hpp` or `OverlayRules.hpp`, or the check if the rule changed on purpose. |
 
-Two lines are not errors: `another build of ... is running: waiting for it` (another run holds the lock on that tree),
-and `checking out LExASIs ... and its submodules in ...` (the first build, a new pin, or a repair).
+These lines are not errors: `another build of ... is running: waiting for it` (another run holds the lock on that
+tree), `checking out LExASIs ... and its submodules in ...` (the first build, a new pin, or a repair), and
+`warning: these files in src are not in git, and GitHub's build won't have them` (`git add` them before you commit).
 
 | `package.sh` says | What to do |
 |---|---|

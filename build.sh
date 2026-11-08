@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build LE<n>PauseAnytime.asi for each game picked with the Visual Studio Build Tools, inside this repo's own checkout
-# of ME3Tweaks/LExASIs on the Windows disk (it provides the SDK, the ASI loader interface and the CMake helpers), then
-# stage it in MELE_STAGE.
+# of ME3Tweaks/LExASIs on the Windows disk (it provides the SDK, the ASI loader interface and the CMake helpers), build
+# and run the checks of the rules the threads race for (src/tests), then stage it in MELE_STAGE.
 #   ./build.sh                  build and stage the games in MELE_GAMES, else the released ones (scripts/games.sh)
 #   ./build.sh --game LE2 ...   build and stage these games instead: LE1, LE2, LE3 or all (the ones src/CMakeLists.txt
 #                               lists in GAMES), one --game for each
@@ -215,6 +215,13 @@ fetch_pinned https://github.com/ocornut/imgui.git "$THIRD_PARTY/imgui" "$IMGUI_C
 # LExASIs/PauseAnytime is ever deleted; an unguarded line from an earlier build is replaced.
 # By content, not by time: a changed file gets the current time, so MSBuild never keeps an object compiled from another
 # checkout's newer copy. Git Bash has no rsync, and a GitHub runner has no older objects to keep.
+# The copy takes the working tree, files git doesn't track included, and GitHub's build has only what is committed: a
+# local build can pass on a file a commit left out. Said, not refused, since a file is new before it is added.
+untracked="$(git -C "$HERE" ls-files --others --exclude-standard -- src 2> /dev/null || true)"
+if [[ -n "$untracked" ]]; then
+    echo "build.sh: warning: these files in src are not in git, and GitHub's build won't have them (git add them before you commit):" >&2
+    sed 's/^/  /' <<< "$untracked" >&2
+fi
 mkdir -p "$LEXASIS/PauseAnytime"
 if command -v rsync > /dev/null; then
     rsync -rlc --delete "$HERE/src/" "$LEXASIS/PauseAnytime/"
@@ -254,15 +261,24 @@ for g in "${GAMES[@]}"; do
         die "no PauseAnytime-$g project: src/CMakeLists.txt does not build $g yet (asi_target's GAMES)"
     fi
 done
-for g in "${GAMES[@]}"; do
-    if ! "$CMAKE" --build Build --config RELEASE --target "PauseAnytime-$g" -- /m /v:minimal /nologo > "$log" 2>&1; then
+# build_target <target> builds it, or prints its errors and warnings and stops.
+build_target() {
+    if ! "$CMAKE" --build Build --config RELEASE --target "$1" -- /m /v:minimal /nologo > "$log" 2>&1; then
         # The project's path ends each line: it goes first, so the source path's prefix can be cut up to its LExASIs\.
         tr -d '\r' < "$log" | grep -E 'error|warning' | sed -E 's| \[[^]]*vcxproj\]||; s|^.*LExASIs\\||' | sort -u
         rm -f "$log"
-        die "PauseAnytime-$g did not build"
+        die "$1 did not build"
     fi
-done
+}
+for g in "${GAMES[@]}"; do build_target "PauseAnytime-$g"; done
+# The checks of the rules the threads race for (src/tests: the keys, a movie's pause and its Wwise event, the overlay's
+# gate and swap chain), on every build: a game run can't choose which thread gets there first. One failed check stops the
+# build before anything is staged, here and in GitHub's build (package.sh).
+build_target PauseAnytimeTests
 rm -f "$log"
+TESTS="Build/RELEASE/PauseAnytimeTests.exe"
+[[ -f "$TESTS" ]] || die "no $TESTS after its build"
+"./$TESTS" | tr -d '\r' || die "the rules' checks failed (the lines above): nothing staged"
 
 mkdir -p "$STAGE"
 for g in "${GAMES[@]}"; do

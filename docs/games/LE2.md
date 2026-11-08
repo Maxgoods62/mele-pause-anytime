@@ -39,7 +39,8 @@ A fullscreen movie takes the pause keys only when Pause Anytime knows its sound 
 
 1. The Kismet movie action latched last plays this movie, posts a Wwise event, and runs nothing beside it that may
    make a sound (`MovieActionOf` in `src/game/KismetMovie.hpp`). That event is paused with `ExecuteActionOnEvent`
-   right after `BinkPause`.
+   first, and the picture with `BinkPause` once Wwise has queued that pause
+   ([order](../how-it-works.md#movie-pause)).
 2. Or the movie's base name is on the Bink-audio list. The latch test runs first, so a listed movie whose action runs
    something beside it has no known sound.
 
@@ -157,6 +158,9 @@ Seen in the game:
 - The pauser is the player's `SFXPRI`. Keys reach `SFXGame.SFXConsole.InputKey`, and with the console open Esc
   reaches `SFXConsole.Open.InputKey`.
 - `BioHUD.PostRender` runs every frame in conversations and cutscenes, and stops over a fullscreen movie.
+- The thread that plays a fullscreen movie also presents the game's frames. In the 2026-11-08 log, `GLO_01_Relay`
+  paused in `BinkWait` on thread 29788, the overlay's present thread, and its last frame was presented from that
+  `BinkWait` with the pause screen.
 
 ## Open questions
 
@@ -167,5 +171,3 @@ Seen in the game:
    plays it.
 3. X under the movie pause: the hook keeps it from the movie input, but outside the guard window its `SkipMovie` bind
    passes and ends the movie pause. The test says only that X and Enter skip nothing there.
-4. Whether the movie's thread presents the game's frames in LE2 is not recorded. If not, the pause screen shows only
-   as the movie pauses.

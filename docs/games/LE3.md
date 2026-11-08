@@ -47,8 +47,9 @@ Nothing latches those, so the movie pause leaves Esc and Start to the game there
 
 A fullscreen Kismet movie takes the pause keys when its sound is known (`MoviePolicy::BinkAndEvent`). The action
 latched last must play this movie, name a Wwise event, and run nothing beside it that may make a sound (`MovieActionOf`
-in `src/game/KismetMovie.hpp`). The movie player posts that event as the movie starts, and Pause Anytime pauses it with
-`ExecuteActionOnEvent` right after `BinkPause`. The Bink-audio list is empty, because the game's own screens play over
+in `src/game/KismetMovie.hpp`). The movie player posts that event as the movie starts. Pause Anytime pauses it with
+`ExecuteActionOnEvent`, then the picture with `BinkPause` once Wwise has queued that pause
+([order](../how-it-works.md#movie-pause)). The Bink-audio list is empty, because the game's own screens play over
 `StartupLoop_a`.
 
 - `SFXSeqAct_PlatformMovieBink` counts as a `BioSeqAct_MovieBink`. Its `Prime` input and `Primed` output preload the
@@ -156,6 +157,9 @@ Sizes are at 1080 lines, and the title is 1.5 times the wheel's.
   +0x84. Only the logs use these reads, under an access-violation guard.
 - Seen in the game: `BioHUD.PostRender` runs every frame in conversations and cutscenes, and stops over a fullscreen
   movie.
+- Seen in the game: the thread that plays a fullscreen movie also presents the game's frames. In the 2026-11-08 log,
+  the relay jump paused in `BinkWait` on thread 19264, the overlay's present thread, and its last frame was presented
+  from that `BinkWait` with the pause screen.
 
 ## Open questions
 

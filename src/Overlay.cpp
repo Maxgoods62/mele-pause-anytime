@@ -1,10 +1,12 @@
 #include "PauseAnytime/Api.hpp"
 #include "PauseAnytime/Blur.hpp"
 #include "PauseAnytime/GameFont.hpp"
+#include "PauseAnytime/OverlayRules.hpp"
 #include "PauseAnytime/Resources.h"
 
 #include <d3d11.h>
 #include <dxgi1_4.h>
+#include <tlhelp32.h>
 
 #pragma warning(push, 0)
 #include "imgui.h"
@@ -15,23 +17,26 @@
 #include <algorithm>
 #include <atomic>
 #include <cfloat>
+#include <cstddef>
 #include <cwctype>
 #include <exception>
+#include <format>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-// The pause screen, drawn into the game's back buffer from a hooked IDXGISwapChain::Present on the render thread: over our
-// world pause and our movie pause the frame is blurred and darkened (Blur.cpp), in the game's menu colours (OverlayLook,
-// NativeLook): the title on a band at the centre, and at the bottom left each key left of its label (resume, and photo mode
-// where it opens), for the gamepad or the keyboard, whichever pressed our keys last. The game thread says what to show
-// (Publish, UsePadPrompts, UseGameTexts, UseGameIcons, UseGameFonts); nothing here touches a game object, only the D3D11 views
-// of two of its textures and, on the game thread, the bytes of its fonts' movies. The text is set in Exo 2 (SIL OFL 1.1,
-// fonts/OFL.txt), compiled into the ASI (PauseAnytime.rc), in the language the game's launcher passes, or in the game's own
-// words where it gives them, and in the game's own fonts, turned into TrueType in memory (GameFont.cpp) and never written
-// anywhere. Without the hook or after a fault the Canvas banner of Pause.cpp is drawn instead (Drawing).
+// The pause screen, drawn into the game's back buffer from a hooked IDXGISwapChain::Present, on the game's window only
+// (Start), by one thread at a time (The gate): over our world pause and our movie pause the frame is blurred and darkened
+// (Blur.cpp), in the game's menu colours (OverlayLook, NativeLook): the title on a band at the centre, and at the bottom left
+// each key left of its label (resume, and photo mode where it opens), for the gamepad or the keyboard, whichever pressed our
+// keys last. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons, UseGameFonts); nothing
+// here touches a game object, only the D3D11 views of two of its textures and, on the game thread, the bytes of its fonts'
+// movies. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (PauseAnytime.rc), in the language
+// the game's launcher passes, or in the game's own words where it gives them, and in the game's own fonts, turned into
+// TrueType in memory (GameFont.cpp) and never written anywhere. Without the hook, before the game's swap chain is taken, or
+// after a fault, the Canvas banner of Pause.cpp is drawn instead (Drawing).
 namespace PauseAnytime::Overlay
 {
     namespace
@@ -69,13 +74,14 @@ namespace PauseAnytime::Overlay
         constexpr unsigned HideNow = 4;
         std::atomic<unsigned> Published{ 0 };
         std::atomic<bool> Pad{ false };
-        /// The overlay started on the game's swap chain and hasn't failed since.
+        /// The overlay started on the game's swap chain and hasn't failed since: R's phase is Started, for the threads that
+        /// read it without the gate (SetPhase keeps the two in step).
         std::atomic<bool> Live{ false };
         /// Another swap chain presents while the one we draw on has been silent for BannerAfterMs: the game's new one, maybe,
         /// waiting to be taken (AdoptAfterMs). Nothing is drawn meanwhile, so Drawing is false and the banner shows. Cleared
         /// when ours presents again or the new one is taken. Not set by a mere hitch, after which ours presents first.
         std::atomic<bool> AdoptPending{ false };
-        constexpr ULONGLONG BannerAfterMs = 250;
+        using OverlayRules::BannerAfterMs;
         /// Install's, set before the hooks go live.
         std::atomic<OverlayLook> Look{ OverlayLook::LE1 };
 
@@ -198,9 +204,13 @@ namespace PauseAnytime::Overlay
         constexpr LONGLONG IdleRate = 60;
         /// MovieIdle presents only once the game has presented nothing for this long.
         constexpr LONGLONG IdleQuietMs = 100;
-        /// A Present from another swap chain on the game's window is the game's new one (a display mode change) once the one
-        /// we draw on has been silent this long; before, it is someone else's next to it, left alone.
-        constexpr ULONGLONG AdoptAfterMs = 500;
+        /// A present from another swap chain may be the game's new one (a display mode change) once the one we draw on has
+        /// been silent this long (OverlayRules::Readopt).
+        using OverlayRules::AdoptAfterMs;
+        /// How long a resize waits for a holder of the gate away in a call we don't control, and for one in our own work,
+        /// before it takes the gate from it (OverlayRules::EnterWaiting).
+        using OverlayRules::ResizeWaitMs;
+        using OverlayRules::ResizeWaitOwnMs;
 
         struct Fonts
         {
@@ -344,17 +354,27 @@ namespace PauseAnytime::Overlay
             return Le1Look;
         }
 
+        /// The overlay's life: no swap chain taken yet (each present is a candidate, Start), drawing on the game's, or off for
+        /// the session after a failure (the Canvas banner instead). Changed only by SetPhase.
+        enum class Phase : unsigned char { Waiting, Started, Off };
+
         struct RenderState
         {
-            bool Ready = false;
-            bool Failed = false;
+            Phase At = Phase::Waiting;
+            /// While Waiting: the presents Start refused, and GetTickCount64 at the first of them once the game thread was known,
+            /// from which StartAnywayMs counts (OverlayRules::Judge).
+            OverlayRules::StartClock Clock;
             ID3D11Device* Device = nullptr;
             ID3D11DeviceContext* Context = nullptr;
             /// Identity only: no reference is held through it.
             IDXGISwapChain* GameChain = nullptr;
             ULONGLONG GameChainSeen = 0;
-            /// The window the game's swap chain presents to: only a swap chain on it is taken for the game's new one (Adopt).
+            /// The window of the swap chain we draw on. A swap chain on it or on another window IsGameWindow takes may be the
+            /// game's new one, and for an overlay taken anyway one on the foreground window once this one is gone (Adopt).
             HWND GameWindow = nullptr;
+            /// How the overlay came to the swap chain it draws on, set by Start and Adopt: Game, by IsGameWindow, or Anyway
+            /// (OverlayRules::Judge, Readopt).
+            OverlayRules::Take Took = OverlayRules::Take::Game;
             bool ForeignLogged = false;
             ID3D11Texture2D* Back = nullptr;
             ID3D11RenderTargetView* Target = nullptr;
@@ -377,9 +397,8 @@ namespace PauseAnytime::Overlay
             /// whole movie (see Frame). Dropped with the copy, once the game presents with no such movie, or when another
             /// swap chain is taken: then the game may replace its swap chain freely.
             IDXGISwapChain* MovieChain = nullptr;
-            /// The game's last own present (not MovieIdle's), and the swap chain of the last present of all.
+            /// The game's last own present (not MovieIdle's).
             LARGE_INTEGER LastGamePresent{};
-            IDXGISwapChain* LastChain = nullptr;
             bool IdleLogged = false;
             bool CleanLogged = false;
             /// Set when the overlay starts, before any draw.
@@ -396,7 +415,8 @@ namespace PauseAnytime::Overlay
             Fonts Font;
             NativeStyles Style;
         };
-        /// Leaked on purpose: no D3D Release from DllMain at process exit, after d3d11.dll may have cleaned up.
+        /// Leaked on purpose: no D3D Release from DllMain at process exit, after d3d11.dll may have cleaned up. Used only by the
+        /// gate's holder (see The gate).
         RenderState& R = *new RenderState{};
         thread_local bool InPresent = false;
         /// MovieIdle's own present: the back buffer holds Clean already.
@@ -407,6 +427,148 @@ namespace PauseAnytime::Overlay
         thread_local IDXGISwapChain* NotShown = nullptr;
         /// The thread that presents the game's frames: the only one that may use the device's immediate context with us.
         std::atomic<DWORD> PresentThread{ 0 };
+        /// The swap chain of the latest present of all but MovieIdle's, whoever made it and whether or not it found the gate
+        /// free: PrepareIdle's "nothing presented elsewhere since". Identity only.
+        std::atomic<IDXGISwapChain*> LastChain{ nullptr };
+        /// The process's first thread (FindMainThread, at Install), 0 if it couldn't be read.
+        std::atomic<DWORD> MainThread{ 0 };
+        /// R.GameChain while the overlay is Started, null otherwise and while Adopt changes it, and R.GameChainSeen: for the
+        /// threads that ask without the gate whether a present has anything for us (PassesBy) or a resize must let go of our
+        /// views (EnterWaiting). Identity only. DrawnSeen's release store publishes the DrawnChain it was stored for.
+        std::atomic<IDXGISwapChain*> DrawnChain{ nullptr };
+        std::atomic<ULONGLONG> DrawnSeen{ 0 };
+        /// The resizes waiting for the gate (EnterWaiting): MovieIdle takes none meanwhile (OverlayRules::EnterIdle).
+        std::atomic<unsigned> ResizesWaiting{ 0 };
+
+        void SetPhase(Phase phase)
+        {
+            R.At = phase;
+            DrawnChain.store(phase == Phase::Started ? R.GameChain : nullptr, std::memory_order_relaxed);
+            Live.store(phase == Phase::Started, std::memory_order_release);
+        }
+
+        // ! The gate
+        // ========================================
+
+        // R, ImGui's context, the blur and our use of the device's immediate context belong to one thread at a time, the one
+        // GateOwner names (OverlayRules' gate, which its tests run on real threads). Our work runs on whichever thread calls
+        // us (the game's present thread, a movie's thread in MovieIdle, a thread that resizes, any other that presents), so
+        // each call takes the gate first. A present never waits for it: one that finds it held passes through untouched, a
+        // frame without the pause screen at worst. Only a resize waits, for the present in flight at most (EnterWaiting). A
+        // holder that keeps the gate across an original call (MovieIdle's present, a resize of the swap chain we draw on)
+        // marks itself away for that call (GoAway), and only from such a holder may a resize take the gate. Not a
+        // std::mutex: the frames that take the gate have __try blocks and hold no C++ object, so it is given back in their
+        // __finally blocks, which run on every way out, an exception unwinding through them included; a fault that Guarded
+        // takes returns through them as usual. Taken per call, never pinned to a thread: the engine may start its render
+        // thread again (MovieIdle).
+        std::atomic<OverlayRules::Word> GateOwner{ 0 };
+
+        using OverlayRules::Gate;
+
+        std::uint32_t Self() { return static_cast<std::uint32_t>(GetCurrentThreadId()); }
+
+        Gate Enter() { return OverlayRules::Enter(GateOwner, Self()); }
+
+        /// Enter for a resize of <paramref name="chain"/> (OverlayRules::EnterWaiting): MovieIdle takes no gate while it
+        /// waits, so the wait ends with the present in flight. A holder found away at every try for ResizeWaitMs is stuck in
+        /// a call we don't control (a full-screen present that waits on this thread's window, a driver), and the gate is
+        /// taken from it if this is the swap chain we draw on (see BeforeResize). One in our own work is waited for, up to
+        /// ResizeWaitOwnMs.
+        OverlayRules::Waited EnterWaiting(IDXGISwapChain* chain)
+        {
+            return OverlayRules::EnterWaiting(
+                GateOwner, ResizesWaiting, Self(), ResizeWaitMs, ResizeWaitOwnMs, [] { return GetTickCount64(); },
+                [](unsigned tries) { Sleep(tries < 64 ? 0 : 1); }, [chain] { return chain == DrawnChain.load(std::memory_order_acquire); });
+        }
+
+        /// Gives the gate back if this call took it and this thread still holds it: a second Leave, after an early one, does
+        /// nothing. A Reclaimed gate goes back to the away call further up this thread's stack.
+        void Leave(Gate gate) { OverlayRules::Leave(GateOwner, gate, Self()); }
+
+        /// Before an original call this frame makes with a gate it took or reclaimed, after which it does nothing more with
+        /// R (OverlayRules::GoAway). True if marked away: GoneBack is then due on every way out of the call.
+        bool GoAway(Gate gate) { return (gate == Gate::Taken || gate == Gate::Reclaimed) && OverlayRules::GoAway(GateOwner, Self()); }
+
+        /// Back from that call: false if a resize took the gate meanwhile, and R is that resize's.
+        bool GoneBack() { return OverlayRules::ComeBack(GateOwner, Self()); }
+
+        /// A fault in MovieIdle's present, made away (GuardedSelfPresent), turns the overlay off: at once if the gate is still
+        /// this thread's, else at the next call that takes it (Frame, PrepareIdle), since R is then a resize's.
+        std::atomic<bool> OffWanted{ false };
+
+        std::atomic<bool> BusyPresentLogged{ false };
+        std::atomic<bool> BusyIdleLogged{ false };
+
+        void LogBusy(std::atomic<bool>& logged, char const* what)
+        {
+            if (logged.exchange(true, std::memory_order_relaxed)) return;
+            auto const word = GateOwner.load(std::memory_order_relaxed);
+            LEASI_INFO("overlay: {} on thread {} found the gate held by thread {}{} (drawing, presenting a paused movie or resizing; 0: a resize waits for "
+                       "it): skipped (logged once)",
+                       what, GetCurrentThreadId(), OverlayRules::HolderOf(word), OverlayRules::IsAway(word) ? ", away in a present or resize" : "");
+        }
+
+        // ! The game's window
+        // ========================================
+
+        /// The process's main thread: of its threads, the one made first (the earliest creation time; a tie goes to the one
+        /// Toolhelp lists first). 0 if none could be read.
+        DWORD FindMainThread()
+        {
+            auto const snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            if (snapshot == INVALID_HANDLE_VALUE) return 0;
+            auto const process = GetCurrentProcessId();
+            DWORD found = 0;
+            ULONGLONG earliest = ~0ull;
+            THREADENTRY32 entry{};
+            entry.dwSize = sizeof entry;
+            for (auto more = Thread32First(snapshot, &entry); more; more = Thread32Next(snapshot, &entry))
+            {
+                auto const owned = entry.dwSize >= offsetof(THREADENTRY32, th32OwnerProcessID) + sizeof entry.th32OwnerProcessID;
+                auto const id = entry.th32ThreadID;
+                entry.dwSize = sizeof entry;
+                if (!owned || entry.th32OwnerProcessID != process) continue;
+                auto const thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, id);
+                if (thread == nullptr) continue;
+                FILETIME created{}, exited{}, kernel{}, user{};
+                if (GetThreadTimes(thread, &created, &exited, &kernel, &user))
+                {
+                    auto const at = (static_cast<ULONGLONG>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+                    if (at < earliest)
+                    {
+                        earliest = at;
+                        found = id;
+                    }
+                }
+                CloseHandle(thread);
+            }
+            CloseHandle(snapshot);
+            return found;
+        }
+
+        /// Who made the window: whether it is this process's (none is for a null window), and the thread that made it.
+        struct Maker
+        {
+            bool Ours = false;
+            DWORD Thread = 0;
+        };
+
+        Maker MakerOf(HWND window)
+        {
+            DWORD process = 0;
+            auto const thread = window != nullptr ? GetWindowThreadProcessId(window, &process) : 0;
+            return { process == GetCurrentProcessId(), thread };
+        }
+
+        /// The game's window, by OverlayRules::IsGameWindow: one made by the process's main thread, or by the game thread once
+        /// Pause.cpp knows it. The start line logs the window's maker beside both threads, so a run shows whether the rule
+        /// holds. It needs nothing of Start's, so a swap chain is judged before the overlay starts.
+        bool IsGameWindow(HWND window)
+        {
+            auto const maker = MakerOf(window);
+            return OverlayRules::IsGameWindow(maker.Ours, static_cast<std::uint32_t>(maker.Thread), static_cast<std::uint32_t>(MainThread.load(std::memory_order_relaxed)),
+                                              static_cast<std::uint32_t>(GameThread()));
+        }
 
         // ! Fonts
         // ========================================
@@ -925,11 +1087,71 @@ namespace PauseAnytime::Overlay
             return true;
         }
 
-        bool Start(IDXGISwapChain* chain)
+        enum class StartResult : unsigned char
         {
+            /// Drawn on from now.
+            Started,
+            /// Not the game's (another window's, or not D3D11): this present passes through as if we weren't there, and a
+            /// later one is tried. Nothing of the overlay was set up.
+            NotGame,
+            /// The game's, and the overlay could not start on it: off for the session.
+            Failed,
+        };
+
+        /// "thread 1234", or what stands for a thread not known.
+        std::string ThreadName(DWORD thread, char const* unknown) { return thread != 0 ? std::format("thread {}", thread) : std::string{ unknown }; }
+
+        /// "window 0x..., made by thread 1234", for the logs.
+        std::string WindowText(HWND window)
+        {
+            if (window == nullptr) return "no window";
+            auto const maker = MakerOf(window);
+            return std::format("window {}, made by {}", static_cast<void const*>(window), ThreadName(maker.Ours ? maker.Thread : 0, "another process"));
+        }
+
+        /// The threads IsGameWindow goes by, for the logs.
+        std::string RuleThreads()
+        {
+            auto const main = MainThread.load(std::memory_order_relaxed);
+            auto const game = GameThread();
+            return std::format("main thread {}, game thread {}", main != 0 ? std::to_string(main) : std::string{ "not read" },
+                               game != 0 ? std::to_string(game) : std::string{ "not known yet" });
+        }
+
+        StartResult Start(IDXGISwapChain* chain)
+        {
+            // Whose swap chain it is comes first, from its window alone, before anything is set up: the game's is taken at its
+            // first present, any other is left as it is.
             DXGI_SWAP_CHAIN_DESC desc{};
-            if (FAILED(chain->GetDesc(&desc))) return false;
-            if (FAILED(chain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&R.Device))) || R.Device == nullptr) return false;
+            ID3D11Device* device = nullptr;
+            auto const d3d11 = SUCCEEDED(chain->GetDesc(&desc)) && SUCCEEDED(chain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&device))) &&
+                               device != nullptr;
+            auto const window = d3d11 ? desc.OutputWindow : nullptr;
+            auto const game = d3d11 && IsGameWindow(window);
+            // Asked only of one the rule refuses: whether the player looks at its window, the only kind taken anyway.
+            auto const foreground = d3d11 && !game && window != nullptr ? GetForegroundWindow() : nullptr;
+            auto const front = foreground != nullptr && GetAncestor(window, GA_ROOT) == foreground;
+            // The game's, taken anyway after StartAnywayMs of the game's frames, or left alone (OverlayRules::Judge).
+            auto const take = OverlayRules::Judge(R.Clock, d3d11, game, front, GameThread() != 0, GetTickCount64());
+            if (take == OverlayRules::Take::Game)
+                LEASI_INFO("overlay: swap chain {} presents to {}: the game's ({}{})", static_cast<void const*>(chain), WindowText(window), RuleThreads(),
+                           R.Clock.Refused > 0 ? std::format(", {} presents refused before", R.Clock.Refused) : "");
+            else
+            {
+                if (R.Clock.Refused == 1)
+                    LEASI_INFO("overlay: swap chain {} {}: not the game's, left alone ({}; logged once)", static_cast<void const*>(chain),
+                               d3d11 ? std::format("presents to {}", WindowText(window)) : std::string{ "is no D3D11 swap chain" },
+                               RuleThreads());
+                if (take == OverlayRules::Take::Refuse)
+                {
+                    if (device != nullptr) device->Release();
+                    return StartResult::NotGame;
+                }
+                LEASI_WARN("overlay: {} presents refused, none to a window of the game's in {} s of its frames ({}): taken anyway, swap chain {} on {}, the "
+                           "foreground window",
+                           R.Clock.Refused, OverlayRules::StartAnywayMs / 1000, RuleThreads(), static_cast<void const*>(chain), WindowText(window));
+            }
+            R.Device = device;
             R.Device->GetImmediateContext(&R.Context);
 
             IMGUI_CHECKVERSION();
@@ -947,15 +1169,16 @@ namespace PauseAnytime::Overlay
             if (LoadLibraryExW(L"d3dcompiler_47.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32) == nullptr)
             {
                 LEASI_ERROR("overlay: no d3dcompiler_47.dll in System32 (error {})", GetLastError());
-                return false;
+                return StartResult::Failed;
             }
             // The shaders compile here, at the game's first frame, not in the first paused one: ImGui's NewFrame would build its
             // own there.
-            if (!ImGui_ImplDX11_Init(R.Device, R.Context) || !ImGui_ImplDX11_CreateDeviceObjects()) return false;
+            if (!ImGui_ImplDX11_Init(R.Device, R.Context) || !ImGui_ImplDX11_CreateDeviceObjects()) return StartResult::Failed;
             auto const blur = Blur::Init(R.Device);
 
             R.GameChain = chain;
             R.GameWindow = desc.OutputWindow;
+            R.Took = take;
             R.Native = &NativeLookOf(Look.load(std::memory_order_relaxed));
             R.Text = &LanguageTexts();
             QueryPerformanceCounter(&R.LastFrame);
@@ -963,23 +1186,31 @@ namespace PauseAnytime::Overlay
                        desc.BufferDesc.Height, static_cast<int>(desc.BufferDesc.Format), static_cast<int>(desc.SwapEffect), GetCurrentThreadId(),
                        R.Native->Name, R.Text->Language, R.Font.Embedded ? "Exo 2 embedded" : "default font", blur ? "blur ready" : "NO blur (plain darkening)");
             LEASI_FLUSH();
-            return true;
+            return StartResult::Started;
         }
 
         /// The game's new swap chain (a display mode change): drawn on from now, on its device.
         void Adopt(IDXGISwapChain* chain)
         {
-            // Only one on the game's window, while that window lives: a swap chain of someone else's in the process that went on
-            // presenting, once taken, would keep the game's from ever being taken back.
+            // One on the window we draw on, on a window of the game's (IsGameWindow), or, for an overlay taken anyway whose
+            // window is gone, on the foreground window (OverlayRules::Readopt): a swap chain of someone else's, once taken,
+            // would keep the game's from ever being taken back.
             DXGI_SWAP_CHAIN_DESC desc{};
             if (FAILED(chain->GetDesc(&desc))) return;
-            if (desc.OutputWindow != R.GameWindow && IsWindow(R.GameWindow))
+            auto const window = desc.OutputWindow;
+            auto const alive = IsWindow(R.GameWindow) != FALSE;
+            // As Start asks it: the player looks at that window, or at one it is inside.
+            auto const foreground = window != nullptr ? GetForegroundWindow() : nullptr;
+            auto const front = foreground != nullptr && GetAncestor(window, GA_ROOT) == foreground;
+            auto const took = OverlayRules::Readopt(R.Took, window == R.GameWindow, IsGameWindow(window), alive, front);
+            if (took == OverlayRules::Take::Refuse)
             {
                 if (!R.ForeignLogged)
                 {
                     R.ForeignLogged = true;
-                    LEASI_INFO("overlay: swap chain {} presents to window {}, not the game's {}: left alone", static_cast<void const*>(chain),
-                               static_cast<void const*>(desc.OutputWindow), static_cast<void const*>(R.GameWindow));
+                    LEASI_INFO("overlay: swap chain {} presents to {}, not a window of the game's ({}; we draw on {}, {}{}): left alone (logged once)",
+                               static_cast<void const*>(chain), WindowText(window), RuleThreads(), static_cast<void const*>(R.GameWindow),
+                               alive ? "still there" : "gone", R.Took == OverlayRules::Take::Anyway ? ", taken anyway" : "");
                 }
                 return;
             }
@@ -989,6 +1220,9 @@ namespace PauseAnytime::Overlay
             ReleaseTarget();
             Blur::Release();
             ReleaseMovie();
+            // Nothing of the old swap chain is held now, and nothing of the new one yet. A resize that finds the gate held
+            // through the shader builds below, our own work, waits for them and for the frame drawn after (EnterWaiting).
+            DrawnChain.store(nullptr, std::memory_order_relaxed);
             if (device != R.Device)
             {
                 ImGui_ImplDX11_Shutdown();
@@ -1001,8 +1235,7 @@ namespace PauseAnytime::Overlay
                 if (!ImGui_ImplDX11_Init(R.Device, R.Context) || !ImGui_ImplDX11_CreateDeviceObjects())
                 {
                     LEASI_ERROR("overlay: ImGui did not start on the new swap chain's device: overlay off");
-                    R.Failed = true;
-                    Live.store(false, std::memory_order_release);
+                    SetPhase(Phase::Off);
                     return;
                 }
                 // The blur's shaders too, now, not in the next paused frame; it lets go of the old device. It logs a failure.
@@ -1010,38 +1243,52 @@ namespace PauseAnytime::Overlay
             }
             else device->Release();
             R.GameChain = chain;
-            R.GameWindow = desc.OutputWindow;
-            LEASI_INFO("overlay: drawing on swap chain {} now (the one before went silent)", static_cast<void const*>(chain));
+            R.GameWindow = window;
+            R.Took = took;
+            DrawnChain.store(chain, std::memory_order_relaxed);
+            LEASI_INFO("overlay: drawing on swap chain {} now, on {} (the one before went silent){}", static_cast<void const*>(chain), WindowText(window),
+                       took == OverlayRules::Take::Anyway ? ", taken anyway: the foreground window" : "");
         }
 
+        /// A fault in MovieIdle's present turned the overlay off while a resize held the gate (OffWanted): done now, under the gate.
+        void TakeOffWanted()
+        {
+            if (OffWanted.load(std::memory_order_relaxed) && OffWanted.exchange(false, std::memory_order_acquire)) SetPhase(Phase::Off);
+        }
+
+        /// Under the gate.
         void Frame(IDXGISwapChain* chain)
         {
-            if (R.Failed)
+            TakeOffWanted();
+            if (R.At == Phase::Off)
             {
                 if (!SelfPresent && (R.Clean != nullptr || R.MovieChain != nullptr)) ReleaseMovie();
                 return;
             }
-            if (!SelfPresent) R.LastChain = chain;
-            if (!R.Ready)
+            if (R.At == Phase::Waiting)
             {
-                R.Ready = Start(chain);
-                if (!R.Ready)
+                auto const started = Start(chain);
+                if (started == StartResult::NotGame) return;
+                if (started == StartResult::Failed)
                 {
-                    R.Failed = true;
-                    LEASI_ERROR("overlay: could not start on this swap chain: the Canvas banner instead");
+                    SetPhase(Phase::Off);
+                    LEASI_ERROR("overlay: could not start on the game's swap chain: the Canvas banner instead");
                     return;
                 }
-                Live.store(true, std::memory_order_release);
+                SetPhase(Phase::Started);
             }
             auto const now = GetTickCount64();
             if (chain != R.GameChain)
             {
-                if (now - R.GameChainSeen > BannerAfterMs) AdoptPending.store(true, std::memory_order_relaxed);
-                if (now - R.GameChainSeen < AdoptAfterMs) return;
+                // BeforePresent passes by, without the gate, a present for which this does nothing (OverlayRules::PassBy).
+                auto const other = OverlayRules::OtherChain(OverlayRules::Since(now, R.GameChainSeen));
+                if (other.Pending) AdoptPending.store(true, std::memory_order_relaxed);
+                if (!other.Adopt) return;
                 Adopt(chain);
-                if (R.Failed || chain != R.GameChain) return;
+                if (R.At == Phase::Off || chain != R.GameChain) return;
             }
             R.GameChainSeen = now;
+            DrawnSeen.store(now, std::memory_order_release);
             AdoptPending.store(false, std::memory_order_relaxed);
             PresentThread.store(GetCurrentThreadId(), std::memory_order_relaxed);
 
@@ -1125,8 +1372,7 @@ namespace PauseAnytime::Overlay
                 if (++R.DrawFailures >= MaxDrawFailures)
                 {
                     LEASI_ERROR("overlay: {} frames in a row without a view on the back buffer: off, the Canvas banner instead", R.DrawFailures);
-                    R.Failed = true;
-                    Live.store(false, std::memory_order_release);
+                    SetPhase(Phase::Off);
                 }
                 return;
             }
@@ -1179,8 +1425,7 @@ namespace PauseAnytime::Overlay
             }
             catch (std::exception const& e)
             {
-                R.Failed = true;
-                Live.store(false, std::memory_order_release);
+                SetPhase(Phase::Off);
                 LEASI_ERROR("overlay: {}: off, the Canvas banner instead", e.what());
             }
         }
@@ -1194,17 +1439,51 @@ namespace PauseAnytime::Overlay
             }
             __except (Fault::Filter(GetExceptionInformation()))
             {
-                R.Failed = true;
-                Live.store(false, std::memory_order_release);
+                SetPhase(Phase::Off);
                 Fault::Log("overlay: off, the Canvas banner instead");
             }
+        }
+
+        /// Our work in a present, under the gate: a present that finds another thread at it passes through untouched, and
+        /// MovieIdle's own present finds it held by its own thread. Given back before the original present: a resize waits on
+        /// our work, never on a present (MovieIdle's excepted, see BeforeResize). No C++ object may live in this frame.
+        void GatedFrame(IDXGISwapChain* chain)
+        {
+            auto const gate = Enter();
+            if (gate == Gate::Busy)
+            {
+                LogBusy(BusyPresentLogged, "a present");
+                return;
+            }
+            __try
+            {
+                Guarded(chain);
+            }
+            __finally
+            {
+                Leave(gate);
+            }
+        }
+
+        /// A present of another swap chain while ours presents, for which Frame would do nothing (OverlayRules::PassBy). Asked
+        /// without the gate, so that such a present never holds the gate when the game's comes, which would then go out
+        /// without the pause screen. The tick is read after DrawnSeen, so it is no older.
+        bool PassesBy(IDXGISwapChain* chain)
+        {
+            if (!Live.load(std::memory_order_acquire)) return false;
+            auto const seen = DrawnSeen.load(std::memory_order_acquire);
+            auto const drawn = DrawnChain.load(std::memory_order_relaxed);
+            return OverlayRules::PassBy(true, chain == drawn, OverlayRules::Since(GetTickCount64(), seen));
         }
 
         /// Before the original present: the pause screen, once a frame. DXGI_PRESENT_TEST only asks whether presenting would
         /// work: nothing is shown.
         void BeforePresent(IDXGISwapChain* chain, UINT flags)
         {
-            if (!(flags & DXGI_PRESENT_TEST) && chain != NotShown) Guarded(chain);
+            if (flags & DXGI_PRESENT_TEST) return;
+            if (!SelfPresent) LastChain.store(chain, std::memory_order_relaxed);
+            if (chain == NotShown || PassesBy(chain)) return;
+            GatedFrame(chain);
         }
 
         void AfterPresent(IDXGISwapChain* chain, UINT flags, HRESULT hr)
@@ -1214,23 +1493,33 @@ namespace PauseAnytime::Overlay
             else if (chain == NotShown) NotShown = nullptr;
         }
 
+        /// MovieIdle's present, before its original: GatedIdle holds the gate across it, and does nothing more with R after
+        /// it, so the holder is marked away (OverlayRules::GoAway) and a resize stuck behind it may take the gate. Any other
+        /// present gave the gate back before its original (GatedFrame). True if marked: GoneBack is then due.
+        bool GoAwayToPresent() { return SelfPresent && OverlayRules::GoAway(GateOwner, Self()); }
+
         // The guard spans the original call too: an overlay or runtime between us and DXGI may present one way through the
-        // other (Present1 into Present, or back), and the frame must be drawn once. InPresent is cleared even when an
-        // exception raised below the original goes up through here to a handler above us: left set, no later present on this
-        // thread would be drawn on. No C++ object may live in these frames.
+        // other (Present1 into Present, or back), and the frame must be drawn once. InPresent is cleared, and an away gate
+        // brought back, even when an exception raised below the original goes up through here to a handler above us: left
+        // set, no later present on this thread would be drawn on. No C++ object may live in these frames.
         HRESULT STDMETHODCALLTYPE Present_hook(IDXGISwapChain* chain, UINT sync, UINT flags)
         {
             auto const orig = Wait(Present_orig);
             if (InPresent) return orig(chain, sync, flags);
             InPresent = true;
             HRESULT hr = E_FAIL;
+            auto away = false;
             __try
             {
                 BeforePresent(chain, flags);
+                away = GoAwayToPresent();
                 hr = orig(chain, sync, flags);
             }
             __finally
             {
+                // Its answer is not needed: nothing of R is touched here after the original, and GuardedSelfPresent asks the
+                // gate itself.
+                if (away) GoneBack();
                 InPresent = false;
             }
             AfterPresent(chain, flags, hr);
@@ -1243,13 +1532,18 @@ namespace PauseAnytime::Overlay
             if (InPresent) return orig(chain, sync, flags, parameters);
             InPresent = true;
             HRESULT hr = E_FAIL;
+            auto away = false;
             __try
             {
                 BeforePresent(chain, flags);
+                away = GoAwayToPresent();
                 hr = orig(chain, sync, flags, parameters);
             }
             __finally
             {
+                // Its answer is not needed: nothing of R is touched here after the original, and GuardedSelfPresent asks the
+                // gate itself.
+                if (away) GoneBack();
                 InPresent = false;
             }
             AfterPresent(chain, flags, hr);
@@ -1258,17 +1552,18 @@ namespace PauseAnytime::Overlay
 
         /// A paused movie's present, before it is made: its last frame back into the back buffer. False when there is none to
         /// make: not yet (60 a second at most, counting the game's; the game silent for a moment first, so none slips between
-        /// its own frames), or no frame of this back buffer's size kept.
+        /// its own frames), or no frame of this back buffer's size kept. Under the gate.
         bool PrepareIdle()
         {
-            if (R.Failed || R.Clean == nullptr || R.MovieChain == nullptr) return false;
+            TakeOffWanted();
+            if (R.At != Phase::Started || R.Clean == nullptr || R.MovieChain == nullptr) return false;
             LARGE_INTEGER time, frequency;
             QueryPerformanceCounter(&time);
             QueryPerformanceFrequency(&frequency);
             if (time.QuadPart - R.LastFrame.QuadPart < frequency.QuadPart / IdleRate) return false;
             if (time.QuadPart - R.LastGamePresent.QuadPart < frequency.QuadPart * IdleQuietMs / 1000) return false;
             // The movie presented to the swap chain we draw on (Frame referenced it there), and nothing presented elsewhere since.
-            if (R.MovieChain != R.GameChain || R.LastChain != R.MovieChain) return false;
+            if (R.MovieChain != R.GameChain || LastChain.load(std::memory_order_relaxed) != R.MovieChain) return false;
             ID3D11Texture2D* back = nullptr;
             if (FAILED(R.MovieChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back))) || back == nullptr) return false;
             D3D11_TEXTURE2D_DESC desc{}, kept{};
@@ -1296,8 +1591,7 @@ namespace PauseAnytime::Overlay
             }
             __except (Fault::Filter(GetExceptionInformation()))
             {
-                R.Failed = true;
-                Live.store(false, std::memory_order_release);
+                SetPhase(Phase::Off);
                 Fault::Log("overlay, a paused movie's frame: off, the Canvas banner instead");
                 return false;
             }
@@ -1313,59 +1607,175 @@ namespace PauseAnytime::Overlay
         {
             __try
             {
-                SelfPresent = true;
-                chain->Present(1, 0);
-                SelfPresent = false;
+                __try
+                {
+                    SelfPresent = true;
+                    chain->Present(1, 0);
+                }
+                __finally
+                {
+                    // Also for an exception that is no fault, going up past us: left set, every later present on this thread
+                    // would count as ours.
+                    SelfPresent = false;
+                }
             }
             __except (Fault::Filter(GetExceptionInformation()))
             {
-                SelfPresent = false;
-                R.Failed = true;
-                Live.store(false, std::memory_order_release);
+                // The original ran away (GoAwayToPresent), and a resize may have taken the gate meanwhile: R is then that
+                // resize's, and the next call to take the gate turns the overlay off.
+                if (OverlayRules::Holds(GateOwner, Self())) SetPhase(Phase::Off);
+                else OffWanted.store(true, std::memory_order_release);
                 Fault::Log("overlay, a paused movie's present: off, the Canvas banner instead");
             }
         }
 
-        /// ResizeBuffers and ResizeBuffers1, before the original: our view and the blur's copies hold the old back buffer, which
-        /// must be released before it can be resized. The movie's kept frame no longer fits it.
-        void BeforeResize(IDXGISwapChain* chain, char const* what, UINT width, UINT height)
+        /// MovieIdle's frame, under the gate from the copy of the movie's frame through its present, the original included: no
+        /// resize lets go of the back buffer, or another present draws on it, in between. Not taken while a resize waits for
+        /// the gate (OverlayRules::EnterIdle): at some 250 BinkWaits a second, each present held across a vsync, the resize
+        /// would otherwise find it held at most of its tries. No C++ object may live in this frame.
+        void GatedIdle()
+        {
+            auto const gate = OverlayRules::EnterIdle(GateOwner, ResizesWaiting, Self());
+            if (gate == Gate::Busy)
+            {
+                // The next BinkWait tries again.
+                LogBusy(BusyIdleLogged, "a paused movie's frame");
+                return;
+            }
+            __try
+            {
+                if (!GuardedPrepareIdle()) __leave;
+                // Through our Present hook, which draws the pause screen as the gate's holder; Frame holds the swap chain too, our
+                // reference only for the call, dropped also when an exception goes up through here.
+                auto const chain = R.MovieChain;
+                chain->AddRef();
+                __try
+                {
+                    GuardedSelfPresent(chain);
+                }
+                __finally
+                {
+                    chain->Release();
+                }
+            }
+            __finally
+            {
+                Leave(gate);
+            }
+        }
+
+        /// ResizeBuffers and ResizeBuffers1, before the original, with the gate (EnterWaiting): our view and the blur's copies
+        /// hold the back buffer of the swap chain we draw on, which must be released before it can be resized, and the movie's
+        /// kept frame no longer fits it. For that swap chain the hook keeps the gate until the original returns, away for the
+        /// original (GoAway), so that no present takes the back buffer again in between (one then passes through untouched,
+        /// and MovieIdle skips its frame); for any other swap chain it is given back here.
+        ///
+        /// No deadlock: only a resize waits for the gate, MovieIdle takes none meanwhile, and the wait ends. A holder in our
+        /// own work is waited for: that work waits on no other thread (D3D11's and DXGI's own locks for the length of one
+        /// call and the log's for one line, none of them held by a thread waiting here, before its original), and ends. Start
+        /// and Adopt build shaders under it, and draw on the swap chain right after: a resize of it waits for both. A holder
+        /// away in an original (MovieIdle's present, another resize) may wait on others (DXGI's notes on threads say a
+        /// full-screen swap chain may send its window a message, and the resizing thread may be that window's): past
+        /// ResizeWaitMs the resize of the swap chain we draw on takes the gate from it, and lets go of the back buffer that
+        /// present may still be showing (logged). That holder, back from its original, finds the gate taken (GoneBack) and
+        /// does nothing more with R, and its Leave gives nothing back. A resize of any other swap chain goes on without the
+        /// gate then (got.Got is Busy), and touches nothing of R. Past ResizeWaitOwnMs, the last resort, the same is done to
+        /// a holder in our own work, so that the resize neither hangs nor fails for a back buffer we hold: that holder may
+        /// still be at work on R (logged as an error), and a fault it then takes turns the overlay off (Guarded).
+        void BeforeResize(IDXGISwapChain* chain, OverlayRules::Waited got, char const* what, UINT width, UINT height)
         {
             // Once, flushed ahead of the resize: which thread resizes, beside the one that presents, for a crash in there.
             static std::atomic<bool> logged{ false };
             if (!logged.exchange(true))
             {
                 LEASI_INFO("overlay: the first {}, to {}x{}, runs on thread {}; frames are presented on {}; {}", what, width, height, GetCurrentThreadId(),
-                           PresentThread.load(std::memory_order_relaxed), chain == R.GameChain ? "the swap chain we draw on" : "another swap chain");
+                           PresentThread.load(std::memory_order_relaxed),
+                           chain == DrawnChain.load(std::memory_order_acquire) ? "the swap chain we draw on" : "another swap chain");
                 LEASI_FLUSH();
             }
-            if (chain == R.GameChain)
+            if (got.Got == Gate::Busy) return;
+            if (chain != R.GameChain)
             {
-                ReleaseTarget();
-                Blur::Release();
-                if (R.Clean != nullptr) R.Clean->Release();
-                R.Clean = nullptr;
+                // A gate taken from a holder that may still be in its call is kept to the end of the resize: given back now,
+                // a third thread could take it while that holder is still at it.
+                if (got.TakenFrom == 0) Leave(got.Got);
+                return;
             }
+            // Here, after the check of the swap chain: once only, so it is kept for the case it is for.
+            static std::atomic<bool> warned{ false };
+            static std::atomic<bool> warnedOwn{ false };
+            if (got.TakenFrom != 0 && got.FromAway && !warned.exchange(true))
+            {
+                LEASI_WARN("overlay: {} on thread {} waited {} ms for the gate, held by thread {} in a present or resize that did not come back: taken "
+                           "from it, the back buffer let go of while that thread may still present it (logged once)",
+                           what, GetCurrentThreadId(), ResizeWaitMs, got.TakenFrom);
+                LEASI_FLUSH();
+            }
+            if (got.TakenFrom != 0 && !got.FromAway && !warnedOwn.exchange(true))
+            {
+                LEASI_ERROR("overlay: {} on thread {} waited {} ms for the gate, held by thread {} in the overlay's own work: taken from it all the "
+                            "same so that the resize goes on, while that thread may still use the overlay's state (logged once)",
+                            what, GetCurrentThreadId(), ResizeWaitOwnMs, got.TakenFrom);
+                LEASI_FLUSH();
+            }
+            ReleaseTarget();
+            Blur::Release();
+            if (R.Clean != nullptr) R.Clean->Release();
+            R.Clean = nullptr;
         }
 
+        // The gate is taken before the original and given back after it, at the latest (BeforeResize gives it back at once for
+        // a swap chain we don't draw on), also when an exception goes up through here, and is away for the original. No C++
+        // object may live in these frames.
         HRESULT STDMETHODCALLTYPE ResizeBuffers_hook(IDXGISwapChain* chain, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags)
         {
             auto const orig = Wait(ResizeBuffers_orig);
-            BeforeResize(chain, "ResizeBuffers", width, height);
-            return orig(chain, count, width, height, format, flags);
+            auto const got = EnterWaiting(chain);
+            HRESULT hr = E_FAIL;
+            auto away = false;
+            __try
+            {
+                BeforeResize(chain, got, "ResizeBuffers", width, height);
+                away = GoAway(got.Got);
+                hr = orig(chain, count, width, height, format, flags);
+            }
+            __finally
+            {
+                // Nothing of R is touched after the original: a gate taken meanwhile is left to its new holder.
+                if (away) GoneBack();
+                Leave(got.Got);
+            }
+            return hr;
         }
 
         HRESULT STDMETHODCALLTYPE ResizeBuffers1_hook(IDXGISwapChain3* chain, UINT count, UINT width, UINT height, DXGI_FORMAT format, UINT flags,
                                                       UINT const* nodeMasks, IUnknown* const* queues)
         {
             auto const orig = Wait(ResizeBuffers1_orig);
-            BeforeResize(chain, "ResizeBuffers1", width, height);
-            return orig(chain, count, width, height, format, flags, nodeMasks, queues);
+            auto const got = EnterWaiting(chain);
+            HRESULT hr = E_FAIL;
+            auto away = false;
+            __try
+            {
+                BeforeResize(chain, got, "ResizeBuffers1", width, height);
+                away = GoAway(got.Got);
+                hr = orig(chain, count, width, height, format, flags, nodeMasks, queues);
+            }
+            __finally
+            {
+                // Nothing of R is touched after the original: a gate taken meanwhile is left to its new holder.
+                if (away) GoneBack();
+                Leave(got.Got);
+            }
+            return hr;
         }
     }
 
     void Install(::LESDK::Initializer& Init, OverlayLook look)
     {
         Look.store(look, std::memory_order_relaxed);
+        // Before the hooks: IsGameWindow judges the first present by it.
+        MainThread.store(FindMainThread(), std::memory_order_relaxed);
         // The swap chain methods' addresses, from a throwaway device on a hidden window: every swap chain shares them.
         WNDCLASSEXW windowClass{};
         windowClass.cbSize = sizeof windowClass;
@@ -1486,7 +1896,8 @@ namespace PauseAnytime::Overlay
     void MovieIdle()
     {
         if (!Live.load(std::memory_order_acquire) || InPresent) return;
-        // The movie's thread is the one that presents in LE1; on any other, the device's context isn't ours to use.
+        // The movie's thread is the one that presents: in LE1, and in the 2026-11-08 logs in LE2 (thread 29788) and LE3 (19264)
+        // too. Seen in the logs, not a rule of the engine's. On any other, the device's context isn't ours to use.
         auto const presenter = PresentThread.load(std::memory_order_relaxed);
         if (GetCurrentThreadId() != presenter)
         {
@@ -1499,12 +1910,7 @@ namespace PauseAnytime::Overlay
                            GetCurrentThreadId(), presenter);
             return;
         }
-        if (!GuardedPrepareIdle()) return;
-        // Through our Present hook, which draws the pause screen; Frame holds the swap chain too, our reference only for the call.
-        auto const chain = R.MovieChain;
-        chain->AddRef();
-        GuardedSelfPresent(chain);
-        chain->Release();
+        GatedIdle();
     }
 
     bool Drawing() { return Live.load(std::memory_order_acquire) && !AdoptPending.load(std::memory_order_relaxed); }

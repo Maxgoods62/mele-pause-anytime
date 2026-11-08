@@ -1,5 +1,6 @@
 #include <LESDK/Headers.hpp>
 #include "PauseAnytime/Api.hpp"
+#include "PauseAnytime/KeyRules.hpp"
 
 #include <atomic>
 #include <cstring>
@@ -21,7 +22,8 @@
 //   this one a frame later, so here the pause can already be over (seen in LE2: 4 ms, and CitHub_Arrival closed).
 // - Space and X, the movie playing: given to it as the game's skipKeyAs (LE2: Enter), so they skip what Esc skipped, and
 //   only that; as they are where they are its keys already (LE3).
-// Any other event goes to it as it came. Game thread only; it reads no game object.
+// Any other event goes to it as it came. KeyRules::MovieInputPress makes that choice, and its tests run it with the
+// presses in either thread's order; the hook reads the key and logs. Game thread only; it reads no game object.
 namespace PauseAnytime::MovieInput
 {
     namespace
@@ -66,42 +68,47 @@ namespace PauseAnytime::MovieInput
             static SFXName const Start{ L"XboxTypeS_Start", 0 };
             static SFXName const Space{ L"SpaceBar", 0 };
             static SFXName const PadX{ L"XboxTypeS_X", 0 };
-            auto const pauseKey = key == Escape || key == Start;
-            auto const skipKey = key == Space || key == PadX;
-            if (!pauseKey && !skipKey && !Bink::PauseWanted()) return orig(self, viewport, controllerId, key, event, amount, gamepad);
+            using KeyRules::MovieKey;
+            using KeyRules::MovieKeyGoes;
+            auto const which = key == Escape || key == Start ? MovieKey::Pause : key == Space ? MovieKey::Space : key == PadX ? MovieKey::X : MovieKey::Other;
+            // Bink.cpp's queries as the rule asks for them: OwnsKeys takes its lock and drops a stale pause.
+            auto const goes = KeyRules::MovieInputPress(
+                which, SkipKeyAs != nullptr, [] { return Bink::PauseWanted(); }, [] { return Bink::OwnsKeys(); },
+                [] { return TakenLately(Bink::SpaceSeenDown(), GetTickCount64()); }, [] { return Bink::OpenMovies(); });
 
             auto const name = key == Escape ? "Esc" : key == Start ? "Start" : key == Space ? "Space" : key == PadX ? "X" : "a key";
-            if (Bink::PauseWanted() && Bink::OwnsKeys())
+            switch (goes)
             {
+            case MovieKeyGoes::KeptPaused:
                 LEASI_INFO("{} pressed under our movie pause: kept from the engine's movie input, which would skip the movie", name);
                 return 0;
-            }
-            if (key == Space && TakenLately(Bink::SpaceSeenDown(), GetTickCount64()))
-            {
+            case MovieKeyGoes::KeptResumed:
                 LEASI_INFO("Space pressed as the movie's thread resumed on it: kept from the engine's movie input, which would skip the movie");
                 return 0;
-            }
-            if (pauseKey)
-            {
-                if (!Bink::OwnsKeys()) return orig(self, viewport, controllerId, key, event, amount, gamepad);
+            case MovieKeyGoes::KeptPauseKey:
                 LEASI_INFO("{} pressed during a fullscreen movie: kept from the engine's movie input, which would skip it; Console.InputKey gets it",
                            name);
                 return 0;
-            }
-            // With no movie open there is nothing to skip, and nothing to log.
-            if (!skipKey || Bink::OpenMovies() == 0) return orig(self, viewport, controllerId, key, event, amount, gamepad);
-            if (SkipKeyAs == nullptr)
+            case MovieKeyGoes::Skip:
             {
                 auto const handled = orig(self, viewport, controllerId, key, event, amount, gamepad);
                 LEASI_INFO("{} pressed during a movie: given to the engine's movie input: {}", name,
                            handled != 0 ? "taken, the movie stops if the game lets it skip" : "not taken");
                 return handled;
             }
-            static SFXName const As{ SkipKeyAs, 0 };
-            auto const handled = orig(self, viewport, controllerId, As, event, amount, gamepad);
-            LEASI_INFO("{} pressed during a movie: given to the engine's movie input as {}: {}", name, KeyText(SkipKeyAs),
-                       handled != 0 ? "taken, the movie stops if the game lets it skip" : "not taken");
-            return handled;
+            case MovieKeyGoes::SkipAs:
+            {
+                static SFXName const As{ SkipKeyAs, 0 };
+                auto const handled = orig(self, viewport, controllerId, As, event, amount, gamepad);
+                LEASI_INFO("{} pressed during a movie: given to the engine's movie input as {}: {}", name, KeyText(SkipKeyAs),
+                           handled != 0 ? "taken, the movie stops if the game lets it skip" : "not taken");
+                return handled;
+            }
+            case MovieKeyGoes::AsItCame:
+                break;
+            }
+            // Not our key, or nothing to keep it from or to skip: nothing to log.
+            return orig(self, viewport, controllerId, key, event, amount, gamepad);
         }
     }
 

@@ -200,7 +200,7 @@ namespace PauseAnytime
         unsigned MovieSerial();
 
         /// Esc or Start asked for the movie pause and nothing ended it since (a pause key again, close, SkipMovie, the HUD drawing again, its
-        /// movie gone silent). Whether the movie's thread has applied it yet is in the log.
+        /// movie gone silent, Wwise refusing to pause its sound). Whether the movie's thread has applied it yet is in the log.
         bool PauseWanted();
 
         /// The pause keys (Esc, a gamepad's Start) belong to the movies now: a fullscreen movie plays (opened from a file,

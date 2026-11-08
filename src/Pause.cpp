@@ -1,11 +1,11 @@
 #include "PauseAnytime/Pause.hpp"
 #include "PauseAnytime/Engine.hpp"
+#include "PauseAnytime/KeyRules.hpp"
 #include "PauseAnytime/Photo.hpp"
 #include "PauseAnytime/game/Game.hpp"
 #include "PauseAnytime/SharedVersion.h"
 #include "Common/Objects.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -40,14 +40,12 @@ namespace PauseAnytime
         constexpr unsigned char IE_Pressed = 0;
         constexpr unsigned char IE_Released = 1;
 
-        /// A held gamepad button repeats after 0.2 s, then every 0.1 s: a press of Start with no event for this long is over,
-        /// its release lost (focus change)...
-        constexpr ULONGLONG StartStaleMs = 500;
-        /// ...counted from the end of a game-thread stall (no ProcessEvent for this long) when one ended after its last
-        /// event: the pad is read once a frame, so a stall holds the repeats back too.
-        constexpr ULONGLONG GameStallMs = 250;
-        /// The first repeat of a held gamepad button comes this long after its press.
+        /// The first repeat of a held gamepad button comes this long after its press (InitialButtonRepeatDelay, see
+        /// KeyRules::StartStaleMs).
         constexpr ULONGLONG StartRepeatMs = 200;
+
+        // KeyRules.hpp keeps its own copy of the skip guard's times, so that its tests build without Api.hpp's Windows types.
+        static_assert(KeyRules::GuardMs == GuardMs && KeyRules::ReleaseGraceMs == ReleaseGraceMs, "KeyRules.hpp and Api.hpp disagree");
 
         /// A movie pause is lifted once the HUD has drawn this long without a gap: no fullscreen movie covers the screen.
         constexpr ULONGLONG HudBackMs = 1000;
@@ -62,19 +60,9 @@ namespace PauseAnytime
         // ! State
         // ========================================
 
-        /// A pause key's press as Console.InputKey sees it.
-        struct KeyState
-        {
-            /// A press we acted on is down: its repeats and its release are ours too.
-            bool Held = false;
-            /// Start only: a press seen here and left to the game is down. Its repeats and release stay the game's, also
-            /// once a fullscreen movie has started under it.
-            bool Vanilla = false;
-            ULONGLONG PressedAt = 0;
-            ULONGLONG ReleasedAt = 0;
-            /// Start only: its latest event, of any kind.
-            ULONGLONG LastEventAt = 0;
-        };
+        /// A pause key's press as Console.InputKey sees it: whose it is (KeyRules::Hold, changed by SetHold only), and when.
+        using KeyRules::Hold;
+        using KeyRules::KeyState;
 
         struct State
         {
@@ -94,7 +82,7 @@ namespace PauseAnytime
             /// Tries of that end that did not play.
             unsigned AudioTries = 0;
 
-            /// The first game-thread ProcessEvent after a gap of more than GameStallMs, and the last one before it.
+            /// The first game-thread ProcessEvent after a gap of more than KeyRules::GameStallMs, and the last one before it.
             ULONGLONG StallEndedAt = 0;
             ULONGLONG StallStartedAt = 0;
             /// A fault while reading the Steam overlay's and the console's state for the movie's thread: not read again.
@@ -511,14 +499,14 @@ namespace PauseAnytime
                 // event, its press seen here or not: the movie's thread reads the key itself and toggles the pause there, and
                 // the travel movie's press never comes here (its release did, alone). Not in an open console: it closes on
                 // Esc's release, and the engine's movie input takes the press.
-                if (!k.Held)
+                if (k.Held != Hold::Ours)
                 {
                     if (ConsoleOpen(function) || !Bink::OwnsKeys()) return false;
                     if (p->Event == IE_Released) LEASI_INFO("Esc released during a fullscreen movie, its press unseen here: taken, the movie's thread acts on Esc");
                 }
                 if (p->Event == IE_Released)
                 {
-                    k.Held = false;
+                    SetHold(k, Hold::None, now);
                     k.ReleasedAt = now;
                 }
                 p->ReturnValue = 1;
@@ -530,7 +518,7 @@ namespace PauseAnytime
             // guards stay (Start's press does the same), since their binds' late OnRelease may still come: a vanilla press
             // within 250 ms of another key's taken release, or of an Esc or Space the movie's thread acted on, loses its
             // GuiKey Escape or Start events. Clearing them all here would let that late OnRelease skip.
-            k.Held = false;
+            SetHold(k, Hold::None, now);
             k.ReleasedAt = 0;
             if (ConsoleOpen(function))
             {
@@ -544,14 +532,12 @@ namespace PauseAnytime
             {
                 LEASI_INFO("Esc pressed: taken, the movie's thread acted on this press and its movie is gone (thread {})", GetCurrentThreadId());
                 LEASI_FLUSH();
-                k.Held = true;
-                k.PressedAt = now;
+                SetHold(k, Hold::Ours, now);
                 p->ReturnValue = 1;
                 return true;
             }
             if (Press(console, function, Key::Esc) == nullptr) return false;
-            k.Held = true;
-            k.PressedAt = now;
+            SetHold(k, Hold::Ours, now);
             p->ReturnValue = 1;
             return true;
         }
@@ -562,36 +548,30 @@ namespace PauseAnytime
         bool TakeStart(UConsole* console, UFunction* function, UConsole_execInputKey_Parms* p, ULONGLONG now)
         {
             auto& k = G.Start;
-            if ((k.Held || k.Vanilla) && now - (std::max)(k.LastEventAt, G.StallEndedAt) > StartStaleMs)
-            {
-                k.Held = false;
-                k.Vanilla = false;
-            }
+            if (KeyRules::StartStale(k, now, G.StallEndedAt)) SetHold(k, Hold::None, now);
             k.LastEventAt = now;
 
             if (p->Event == IE_Pressed)
             {
-                k.Held = false;
-                k.Vanilla = false;
+                SetHold(k, Hold::None, now);
                 k.ReleasedAt = 0;
                 if (ConsoleOpen(function) || Press(console, function, Key::Start) == nullptr)
                 {
-                    k.Vanilla = true;
+                    SetHold(k, Hold::Vanilla, now);
                     return false;
                 }
-                k.Held = true;
-                k.PressedAt = now;
+                SetHold(k, Hold::Ours, now);
                 p->ReturnValue = 1;
                 return true;
             }
 
             auto const released = p->Event == IE_Released;
-            if (k.Vanilla)
+            if (k.Held == Hold::Vanilla)
             {
-                if (released) k.Vanilla = false;
+                if (released) SetHold(k, Hold::None, now);
                 return false;
             }
-            if (!k.Held)
+            if (k.Held != Hold::Ours)
             {
                 // A press never seen here: the engine's movie input took it. Not a press held into the movie (Vanilla).
                 if (ConsoleOpen(function) || !Bink::OwnsKeys()) return false;
@@ -602,15 +582,11 @@ namespace PauseAnytime
                 Bink::Toggle(released ? "Start released during a fullscreen movie, its press unseen here"
                                       : "Start held during a fullscreen movie, its press unseen here",
                              now - StartRepeatMs);
-                if (!released)
-                {
-                    k.Held = true;
-                    k.PressedAt = now;
-                }
+                if (!released) SetHold(k, Hold::Ours, now);
             }
             if (released)
             {
-                k.Held = false;
+                SetHold(k, Hold::None, now);
                 k.ReleasedAt = now;
             }
             p->ReturnValue = 1;
@@ -673,20 +649,19 @@ namespace PauseAnytime
         {
             if (p->Event != IE_Pressed)
             {
-                if (!k.Held) return false;
+                if (k.Held != Hold::Ours) return false;
                 if (p->Event == IE_Released)
                 {
-                    k.Held = false;
+                    SetHold(k, Hold::None, now);
                     k.ReleasedAt = now;
                 }
                 p->ReturnValue = 1;
                 return true;
             }
-            k.Held = false;
+            SetHold(k, Hold::None, now);
             k.ReleasedAt = 0;
             if (ConsoleOpen(function) || PressPhoto(console, function, key) == nullptr) return false;
-            k.Held = true;
-            k.PressedAt = now;
+            SetHold(k, Hold::Ours, now);
             p->ReturnValue = 1;
             return true;
         }
@@ -702,14 +677,14 @@ namespace PauseAnytime
             auto const released = p->Event == IE_Released;
             if (pressed)
             {
-                k.Held = false;
+                SetHold(k, Hold::None, now);
                 k.ReleasedAt = 0;
             }
-            else if (k.Held)
+            else if (k.Held == Hold::Ours)
             {
                 if (released)
                 {
-                    k.Held = false;
+                    SetHold(k, Hold::None, now);
                     k.ReleasedAt = now;
                 }
                 p->ReturnValue = 1;
@@ -718,15 +693,17 @@ namespace PauseAnytime
             if (ConsoleOpen(function)) return false;
 
             char const* action = nullptr;
-            if (Bink::PauseWanted() && Bink::OwnsKeys())
+            auto const space = key == Key::Space;
+            // The pause first, then Space's tick (KeyRules::MeetMoviePause says why).
+            auto const movie = KeyRules::MeetMoviePause(
+                space, [] { return Bink::PauseWanted(); }, [] { return Bink::OwnsKeys(); }, [now] { return TakenLately(Bink::SpaceSeenDown(), now); });
+            if (movie == KeyRules::MoviePress::Paused)
             {
-                auto const space = key == Key::Space;
                 Bink::RequestResume(pressed ? (space ? "Space pressed" : "A pressed")
                                             : (space ? "Space during a fullscreen movie, its press unseen here" : "A during a fullscreen movie, its press unseen here"));
                 action = "resumed the movie";
             }
-            // After the test above: the movie's thread stores this tick before it ends the pause.
-            else if (key == Key::Space && TakenLately(Bink::SpaceSeenDown(), now))
+            else if (movie == KeyRules::MoviePress::Resumed)
                 action = "taken: the movie's thread resumed the movie on it";
             else if (pressed && G.WorldPaused && !PhotoMode::On())
             {
@@ -744,11 +721,7 @@ namespace PauseAnytime
             LEASI_INFO("{} {}: {} (function {}, thread {})", KeyName(key), pressed ? "pressed" : released ? "released" : "repeated", action, PathOf(function),
                        GetCurrentThreadId());
             LEASI_FLUSH();
-            if (!released)
-            {
-                k.Held = true;
-                k.PressedAt = now;
-            }
+            if (!released) SetHold(k, Hold::Ours, now);
             else
                 k.ReleasedAt = now;
             p->ReturnValue = 1;
@@ -781,13 +754,6 @@ namespace PauseAnytime
             return false;
         }
 
-        /// A press of that key we acted on is down (2 s at most), or was released a moment ago.
-        bool Guarding(KeyState const& k, ULONGLONG now)
-        {
-            if (k.Held) return now - k.PressedAt < GuardMs;
-            return k.ReleasedAt != 0 && now - k.ReleasedAt < ReleaseGraceMs;
-        }
-
         /// Which of our keys is down (or was a moment ago), or null: whether or not Console.InputKey's TRUE kept it from
         /// PlayerInput. A press of Esc the movie's thread acted on counts too, seen here or not: Bink.cpp keeps its tick fresh
         /// while it is down.
@@ -795,10 +761,10 @@ namespace PauseAnytime
         {
             if (TakenLately(Bink::EscSeenDown(), now)) return "Esc";
             if (TakenLately(Bink::SpaceSeenDown(), now)) return "Space";
-            if (Guarding(G.Esc, now)) return "Esc";
-            if (Guarding(G.Start, now)) return "Start";
-            if (Guarding(G.Space, now)) return "Space";
-            if (Guarding(G.A, now)) return "A";
+            if (KeyRules::Guarding(G.Esc, now)) return "Esc";
+            if (KeyRules::Guarding(G.Start, now)) return "Start";
+            if (KeyRules::Guarding(G.Space, now)) return "Space";
+            if (KeyRules::Guarding(G.A, now)) return "A";
             return nullptr;
         }
 
@@ -1309,7 +1275,7 @@ namespace PauseAnytime
                 auto const last = GameThreadTick.load(std::memory_order_relaxed);
                 if (last != now)
                 {
-                    if (last != 0 && now - last > GameStallMs)
+                    if (last != 0 && now - last > KeyRules::GameStallMs)
                     {
                         G.StallStartedAt = last;
                         G.StallEndedAt = now;
@@ -1367,12 +1333,7 @@ namespace PauseAnytime
                         if (call.Taken)
                         {
                             call.Parms->ReturnValue = 1;
-                            if (call.Watched != nullptr)
-                            {
-                                call.Watched->Held = true;
-                                call.Watched->Vanilla = false;
-                                call.Watched->PressedAt = GetTickCount64();
-                            }
+                            if (call.Watched != nullptr) SetHold(*call.Watched, Hold::Ours, GetTickCount64());
                         }
                         PhotoMode::Drop("fault while reading a key", false);
                     }
@@ -1476,29 +1437,22 @@ namespace PauseAnytime
         // nothing else could resume the movie. Keys typed into the overlay then reach the movie, as without this check.
         auto const now = GetTickCount64();
         auto const beat = GameThreadTick.load(std::memory_order_relaxed);
-        return beat != 0 && (now > beat ? now - beat : 0) <= GameStallMs;
+        return beat != 0 && (now > beat ? now - beat : 0) <= KeyRules::GameStallMs;
     }
 
     bool TakenLately(ULONGLONG tick, ULONGLONG now)
     {
-        if (tick == 0) return false;
-        if (tick >= now || now - tick < ReleaseGraceMs) return true;
-        // The game thread read no input from before that press until now (a load): the key's queued events reach it only
-        // now, and they are still the press the movie's thread acted on. The gap may still be on, since a native (the movie
-        // input) runs before the first ProcessEvent after it; else it ended a moment ago. The start is this thread's last
-        // ProcessEvent before the gap.
-        auto const beat = GameThreadTick.load(std::memory_order_relaxed);
-        auto const ongoing = beat != 0 && now > beat && now - beat > GameStallMs;
-        auto const ended = G.StallEndedAt != 0 && G.StallEndedAt <= now && now - G.StallEndedAt < ReleaseGraceMs;
-        auto const start = ongoing ? beat : ended ? G.StallStartedAt : 0;
-        if (start == 0 || tick < start) return false;
+        // The heartbeat and the stall are written on this thread only (ProcessEvent_hook), so reading them ahead of the
+        // tests that may not need them reads the same values.
+        auto const lately = KeyRules::TakenLately(tick, now, GameThreadTick.load(std::memory_order_relaxed), { G.StallStartedAt, G.StallEndedAt });
+        if (!lately.Taken || lately.StallStart == 0) return lately.Taken;
         // Once a stall: each skip the guard drops after it asks again.
         static ULONGLONG logged = 0;
-        if (logged != start)
+        if (logged != lately.StallStart)
         {
-            logged = start;
+            logged = lately.StallStart;
             LEASI_INFO("a press the movie's thread acted on {} ms ago reaches the game thread after its stall of {} ms: still ours", now - tick,
-                       (ongoing ? now : G.StallEndedAt) - start);
+                       lately.StallLength);
         }
         return true;
     }
