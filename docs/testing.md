@@ -12,8 +12,9 @@ Close the game, then build and install one game's file:
 ```
 
 [BUILDING.md](../BUILDING.md) explains the build and its checks. `--install` needs the ASI loader in that game:
-`bink2w64_original.dll` and an `ASI` folder in `Game\ME<n>\Binaries\Win64`. ME3Tweaks Mod Manager installs the loader
-with any mod. After the install, that `ASI` folder holds `LE<n>PauseAnytime.asi`.
+`bink2w64_original.dll` and an `ASI` folder in `Game\ME<n>\Binaries\Win64`. ME3Tweaks Mod Manager installs it: Mod
+Management > ASI Mod Manager, select the game, Install Loader. After the install, that `ASI` folder holds
+`LE<n>PauseAnytime.asi`.
 
 For the release gate, test the zip instead, and copy its files as [install.md](install.md) says.
 
