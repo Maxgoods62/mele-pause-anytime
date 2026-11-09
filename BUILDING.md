@@ -4,7 +4,8 @@
 same sources. It is a bash script for Windows: it runs in WSL or in Git Bash and calls the Windows build tools. It
 downloads LExASIs and Dear ImGui by itself, each at a pinned commit ([THIRD_PARTY.md](THIRD_PARTY.md)). Each build also
 runs `PauseAnytimeTests.exe`, the checks of the rules the threads race for
-([testing.md](docs/testing.md#the-automated-checks)). A failed check stops the build, and nothing is staged.
+([testing.md](docs/testing.md#the-automated-checks)), and checks that [docs/strings.tsv](docs/strings.tsv), the
+string ids for translators, matches the code. A failed check stops the build, and nothing is staged.
 
 ## What you need
 

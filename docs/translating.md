@@ -19,7 +19,9 @@ started without the launcher gets English.
 
 ## The string ids
 
-The ids are the same in LE1, LE2 and LE3.
+The ids are the same in LE1, LE2 and LE3. [strings.tsv](strings.tsv) lists them with their English text,
+one per line (the id, a tab, the text), so you can start your talk files from it. The build checks that the file
+matches the code.
 
 | Id | Word | Shown on | English text | The game's own string |
 |---|---|---|---|---|
@@ -57,8 +59,8 @@ Put Pause Anytime's ids only in the files of the languages you translate. Do not
 files: an id there would replace Pause Anytime's own French, German or other words. Ship a file for every language
 code all the same, as Galaxy Map Normandy does (below).
 
-When two installed mods define the same id, the one with the higher mount wins in LE1. LE2 and LE3 should do the
-same, but that is not tested yet.
+When two installed mods define the same id, nobody has tested which one the game shows, in any of the three games.
+Install one translation of Pause Anytime at a time.
 
 ### LE1
 
@@ -153,3 +155,11 @@ logs `texts: asked again at the first pause: no new answer`. Other lines can fol
   instead`: see the banner's font above.
 
 The words are read once, so a change to your mod shows after the game restarts.
+
+## What has been tested
+
+On 2026-11-09, in LE1, LE2 and LE3: a DLC mod's talk files defined all seven ids with test words, Russian letters
+included. The title, Resume, Photo mode and Space showed on the pause screen in its words, in the game's fonts, and
+the `texts:` line gave all seven as `ours`, already at the main menu. In LE1 the talk files were a GlobalTlk package of another of our mods, in
+LE2 and LE3 its `.tlk` files. Still untested: a translation mod made only from this page, two mods that define the
+same id, and the banner with a translation.

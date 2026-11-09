@@ -21,6 +21,8 @@ Games: LE1, LE2, LE3
   them in its own talk files and change the words with no new ASI. [docs/translating.md](docs/translating.md) lists
   the ids and the files such a mod holds in LE1, LE2 and LE3. Without one, the words are as before: the game's for
   Resume and Photo mode, Pause Anytime's own for the rest.
+- [docs/strings.tsv](docs/strings.tsv) lists every string id with its English text, for translators to start from.
+  The build stops when it no longer matches the code.
 - The Japanese game gets Pause Anytime's own Japanese title and Space key, "ポーズ" and "スペース", in the game's fonts.
   Before, they were in English.
 - The plain-text banner, shown when the pause screen can't be drawn, now uses the same words as the pause screen,
