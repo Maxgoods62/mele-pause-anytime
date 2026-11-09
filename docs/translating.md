@@ -47,82 +47,21 @@ You can define only some of the ids. A word you leave out comes from the next so
 
 The banner's font has only the 256 characters of Latin-1, which covers Western European languages. A banner word
 with any other letter (Russian, Japanese, and Polish letters such as `ł` or `ą`) is replaced there by Pause Anytime's
-own word in the game's language, or by the English word when that one does not fit either. The pause screen itself
-draws every language.
+own word in the game's language, or by the English word when that one does not fit either. The pause screen draws
+in the game's fonts, which showed Russian letters in LE1, LE2 and LE3, and Japanese in LE1.
 
 ## What a translation mod holds
 
-A translation mod is a DLC mod for ME3Tweaks Mod Manager (M3). M3's Starter Kit can make the folder to start from, and
-Legendary Explorer edits talk files. `<Name>` below is your mod's name, without spaces.
+[Translating my mods](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/docs/translating.md) says how to
+build a translation mod in LE1, LE2 and LE3. Pause Anytime is an ASI mod: your mod defines Pause Anytime's ids in
+talk files of its own, at a mount no other mod uses.
 
 Put Pause Anytime's ids only in the files of the languages you translate. Do not copy English text into the other
-files: an id there would replace Pause Anytime's own French, German or other words. Ship a file for every language
-code all the same, as Galaxy Map Normandy does (below).
+files: an id there would replace Pause Anytime's own French, German or other words. In LE1 that includes your English
+package, unless you translate English ([why](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/docs/translating.md#the-talk-files)).
 
 When two installed mods define the same id, nobody has tested which one the game shows, in any of the three games.
 Install one translation of Pause Anytime at a time.
-
-### LE1
-
-A folder `DLC_MOD_<Name>` with:
-
-- `AutoLoad.ini`:
-
-  ```ini
-  [Packages]
-  GlobalTalkTable1=DLC_MOD_<Name>_GlobalTlk.GlobalTlk_tlk
-
-  [ME1DLCMOUNT]
-  ModName=<Name>
-  ModMount=<mount>
-  ```
-
-  `<mount>` is a number no other mod uses.
-- In `CookedPCConsole`, one package of talk files per language code: `DLC_MOD_<Name>_GlobalTlk.pcc` for English, and
-  `DLC_MOD_<Name>_GlobalTlk_<code>.pcc` for the others.
-
-| Language | Codes |
-|---|---|
-| French | `FR`, `FE` |
-| German | `DE`, `GE` |
-| Italian | `IT`, `IE` |
-| Spanish | `ES` |
-| Polish | `PL`, `PLPC` |
-| Russian | `RU`, `RA` |
-| Japanese | `JA` |
-
-The two codes of a language show the same text: one plays the game in that language's voices, the other over English
-voices. Ship both, with the same text.
-
-Each package holds two talk files, `GlobalTlk_tlk` and `GlobalTlk_tlk_M`. The game reads one for a female Shepard
-and the other for a male one, so put every id in both.
-
-LE1 loads a DLC mod through an ASI that M3 installs with it.
-
-[Galaxy Map Normandy](https://github.com/Maxgoods62/mele-galaxy-map-normandy) is an LE1 mod built this way. Its
-`mod/DLC_MOD_GalaxyMapNormandy/AutoLoad.ini` names its talk files. Its `build.sh` writes a package per language code
-from a tab-separated text file per language, with `lectool tlkpackage` from
-[mele-maxgoods-toolkit](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/tools/lectool/README.md#strings),
-which fills both talk files.
-
-### LE2 and LE3
-
-Start from a DLC folder made by M3's Starter Kit, or by the toolkit's `dlc_new`
-([the toolkit's game page](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/docs/games.md)). Either
-makes every file the game needs to mount the DLC, such as `Mount.dlc`, LE2's `BIOEngine.ini` and LE3's
-`Default_DLC_MOD_<Name>.bin`, and a talk file per language. Then add Pause Anytime's ids to the talk files, in
-`DLC_MOD_<Name>\CookedPCConsole`:
-
-- LE2: `DLC_<module>_<code>.tlk`, where `<module>` is the number that `BIOEngine.ini` gives the DLC under
-  `[Engine.DLCModules]`;
-- LE3: `DLC_MOD_<Name>_<code>.tlk`.
-
-The codes are `INT` (English), `DEU`, `ESN`, `FRA`, `ITA`, `JPN`, `POL` and `RUS`. Neither game ships `FRE`, `DEE`,
-`ITE` or `POE` talk files, so a game in French, German, Italian or Polish (LE2) over English voices reads the `FRA`,
-`DEU`, `ITA` or `POL` file.
-
-A `.tlk` file has a main table, and a second table for lines that change with a female Shepard. Pause Anytime's words
-go in the main table. The toolkit's `tlk_set` writes `.tlk` files.
 
 ## Check it in the game
 
@@ -140,17 +79,18 @@ space "Spacja" built-in Polish; esc "Esc" built-in Polish; start "Start" built-i
 
 The log writes it on one line. `ours <id>` is a word from a talk file, `game <id>` the game's own string, and
 `built-in <language>` Pause Anytime's own text. If your word shows as `built-in` or `game`, the game did not find
-your id: check the file names, the language codes, the mount and, in LE2, the module number.
+your id: check the file names, the language codes, the mount, in LE1 the `[Packages]` line of `AutoLoad.ini`, and in LE2 the
+module number.
 
-Then pause a conversation and look at the screen. At this first pause Pause Anytime asks for its ids once more, and
-logs `texts: asked again at the first pause: no new answer`. Other lines can follow:
+Then pause a conversation and look at the screen. At this first pause Pause Anytime asks for its ids once more, only
+to check them, and logs `texts: asked again at the first pause: no new answer`. Other lines can follow:
 
 - `texts: prompt 74300007 "..." skipped: a pattern holds %1 and %2 once each`: your pattern lacks `%1` or `%2`.
 - `texts: asked again at the first pause, our ids answer otherwise: ...`: your talk file loaded after the main menu's
   first frame, so the words of the `texts:` line stay until the game restarts. Please report it, with the log.
 - `overlay: <word> "<text>" (<source>) has letters the <font> font lacks: ... instead`: the pause screen's font cannot
-  draw a letter of that word, so another text stands in. The game's own fonts draw every language of the game. Pause
-  Anytime's fallback font, Exo 2, used only when it cannot read the game's fonts, has no Japanese letters.
+  draw a letter of that word, so another text stands in. Pause Anytime falls back to its own font, Exo 2, only when
+  it cannot read the game's fonts, and Exo 2 has no Japanese letters.
 - `banner: <word> "<text>" (<source>) is not Latin-1, the Canvas font's range: built-in <language> "<text>"
   instead`: see the banner's font above.
 
@@ -158,8 +98,17 @@ The words are read once, so a change to your mod shows after the game restarts.
 
 ## What has been tested
 
-On 2026-11-09, in LE1, LE2 and LE3: a DLC mod's talk files defined all seven ids with test words, Russian letters
-included. The title, Resume, Photo mode and Space showed on the pause screen in its words, in the game's fonts, and
-the `texts:` line gave all seven as `ours`, already at the main menu. In LE1 the talk files were a GlobalTlk package of another of our mods, in
-LE2 and LE3 its `.tlk` files. Still untested: a translation mod made only from this page, two mods that define the
-same id, and the banner with a translation.
+On 2026-11-09, in LE1, LE2 and LE3: talk files defined all seven ids with test words, Russian letters included. The
+title, Resume, Photo mode and Space showed on the pause screen in the test words, in the game's fonts, and the
+`texts:` line gave all seven as `ours`, already at the main menu. At the first pause the log said `no new answer`. In
+LE1 the talk files were a copy of another of my mods' GlobalTlk package, in LE2 and LE3 copies of a third mod's `.tlk`
+files, in English games.
+
+The same day, in LE1, a translation mod built by the steps now on the toolkit page (then on this page), with its own
+mount and its own GlobalTlk packages, showed its words on the pause screen. With all seven ids in its English package
+only, a French game showed them too. With only the translation mod's own name (id 74810000) in its English package and
+the seven ids in `FR` and `FE`, a French game showed the translation's words and an English game Pause Anytime's own.
+A Japanese game showed Pause Anytime's own ポーズ and スペース in the game's fonts.
+
+Still untested: a translation mod built from these pages in LE2 or LE3, two mods that define the same id, the banner
+with a translation, and Japanese on the pause screen in LE2 and LE3.

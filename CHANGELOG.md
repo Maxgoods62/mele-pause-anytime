@@ -19,7 +19,7 @@ Games: LE1, LE2, LE3
 - The log line for the game's fonts also gives the measured height of each font's H.
 - Every word that Pause Anytime shows now has a string id, from 74300001 to 74300007. A translation mod can define
   them in its own talk files and change the words with no new ASI. [docs/translating.md](docs/translating.md) lists
-  the ids and the files such a mod holds in LE1, LE2 and LE3. Without one, the words are as before: the game's for
+  the ids, and the toolkit's [Translating my mods](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/docs/translating.md) says what such a mod holds in LE1, LE2 and LE3. Without one, the words are as before: the game's for
   Resume and Photo mode, Pause Anytime's own for the rest.
 - [docs/strings.tsv](docs/strings.tsv) lists every string id with its English text, for translators to start from.
   The build stops when it no longer matches the code.

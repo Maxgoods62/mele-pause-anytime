@@ -247,9 +247,12 @@ In LE2 and LE3.
 
 ### S10, the words
 
-The translation test needs a small test mod for that game, made only from what [translating.md](translating.md) says.
+The translation test needs a small test mod for that game, made only from what [translating.md](translating.md) and
+the toolkit page it links say.
 It defines 74300001 to 74300007 in one language, French say, with a marker in each text: `T-PAUSE`, `T-Resume`,
-`T-Photo`, `T-Space`, `T-Esc`, `T-Start` and `%1 = %2`. Install it with M3, game closed. Delete it when you are done.
+`T-Photo`, `T-Space`, `T-Esc`, `T-Start` and `%1 = %2`. In LE1 it also has an English package that holds one string of
+its own and none of the ids, since its `AutoLoad.ini` names that package. Install it with M3, game closed. Delete it
+when you are done.
 
 1. Start the game in French. At the main menu, the log's `texts:` line gives every word `ours 743000<n>`. This is
    the proof that the game has loaded a DLC mod's talk files by the main menu's first frame: the live call of
@@ -379,7 +382,16 @@ code, numbered 8". The v8 results name the per-game zips of that time. A release
 This build gives each word of the pause screen and the banner a string id (74300001 to 74300007) that a translation
 mod can define, Japanese its own built-in words, and the banner the same words as the pause screen. The words are read
 once, at the main menu's first HUD, and our ids are asked once more at the first pause to log a talk file that loaded
-later. Its automated checks pass. Nothing of S10 has run in the game yet.
+later. Its automated checks pass.
+
+S10 on 2026-11-09: steps 1 and 2 passed in LE1, LE2 and LE3. In LE1 the test mod was a translation mod at mount 7481
+with its own GlobalTlk packages; in LE2 and LE3 it was copies of Sound Settings' `.tlk` files holding the ids, in an
+English game. Step 3 passed in LE1, with the ids in the test mod's `FR` and `FE` packages and only its own name in its
+English package. With the ids in its English package only, a French game showed them too: LE1 read the mod's English
+package for French, which it had no package for. Step 4's result showed in LE1, in French with no French package
+defining the ids: `game` and `built-in French`. Step 5 in part: LE1 in Japanese showed ポーズ and
+スペース; the log was not checked for a `has letters the ... font lacks` line. Steps 6 and 7, and steps 3 to 5 in LE2
+and LE3, have not run.
 
 What it relies on was checked first, on 2026-11-09, at the main menu of each game, with a live call of
 `GetSimpleString` on the game's `GameInfo`: it returned a DLC mod's string (LE1: 74220000 from a GlobalTlk package;
