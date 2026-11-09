@@ -14,9 +14,9 @@
 // were numbered 2 to 18. The log and the loader print the strings, and package.sh checks that both are
 // ASI_VERSION_MAJOR.ASI_VERSION_MINOR.
 #define ASI_VERSION_MAJOR 1
-#define ASI_VERSION_MINOR 0
-#define VERSION_STRING_A "1.0"
-#define VERSION_STRING_W L"1.0"
+#define ASI_VERSION_MINOR 1
+#define VERSION_STRING_A "1.1"
+#define VERSION_STRING_W L"1.1"
 
 // The game this build is for: its file name prefix, and the game and group ids of ME3Tweaks' tooling. Group 0 until
 // ME3Tweaks assigns one.

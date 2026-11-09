@@ -4,7 +4,7 @@ The version is set in `src/SharedVersion.h`, one for every game. v1.0 is the fir
 it, v2 to v17, were test builds that were never published, and the dates on v2 to v5 are the days they were committed.
 The first line of each entry names the games it covers. Every version needs an ASI loader.
 
-## Unreleased
+## v1.1 (2026-11-09)
 
 Games: LE1, LE2, LE3
 
@@ -32,6 +32,28 @@ Games: LE1, LE2, LE3
   text. It replaces the lines "the game's string table" and "overlay: the game's texts". A word that the font can't
   draw is logged once, with the text shown in its place. At the first pause the ids are asked once more, and a
   translation that loaded after the main menu is logged.
+- In LE2 and LE3, a paused movie's sound now stops before its picture, and Pause Anytime checks the sound engine's
+  answer. If the sound refuses to pause, nothing pauses, so picture and sound stay together, and the next press tries
+  again. A refused resume is sent again, up to three times, and once more when the movie closes.
+- With ReShade 6.8, the pause screen shows the game's own A and Y buttons again. ReShade puts its own graphics device
+  between the game and the screen, so Pause Anytime refused the game's pictures and drew its own discs. Tested in LE2.
+- Each press of Esc, Start, Y or F7 acts once. A press that ends photo mode or resumes the game no longer reaches the
+  game as well.
+- When the game stalls during a press on a paused movie, Space no longer skips the movie it resumed, and Esc no longer
+  opens the game's menu once the movie has closed.
+- Esc and Space typed into the Steam overlay or the console no longer pause or resume a movie behind them, except
+  during a load.
+- In LE2 and LE3, when the resume sound can't play, as after a load, Pause Anytime tries again on the next frames, so
+  the game's audio is not left paused.
+- Photo mode gives back everything it changed when it fails on entry.
+- The pause screen draws only on the game's own window, one thread at a time.
+- A second copy of Pause Anytime under another file name now stays off before it writes to the log, and the first copy
+  warns about it in the log.
+
+### For builders
+
+- `build.sh` builds and runs a test program that walks every state of the key, movie and pause-screen rules, and
+  stops when a check fails.
 
 ## v1.0 (2026-11-07)
 
