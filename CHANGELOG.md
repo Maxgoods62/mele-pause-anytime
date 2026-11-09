@@ -17,6 +17,19 @@ Games: LE1, LE2, LE3
   font. Pause Anytime measures the capitals of the font it reads instead of assuming the game's Myriad. With Myriad Pro
   Begone, they sat about 1 px too high at 1080p.
 - The log line for the game's fonts also gives the measured height of each font's H.
+- Every word that Pause Anytime shows now has a string id, from 74300001 to 74300007. A translation mod can define
+  them in its own talk files and change the words with no new ASI. [docs/translating.md](docs/translating.md) lists
+  the ids and the files such a mod holds in LE1, LE2 and LE3. Without one, the words are as before: the game's for
+  Resume and Photo mode, Pause Anytime's own for the rest.
+- The Japanese game gets Pause Anytime's own Japanese title and Space key, "ポーズ" and "スペース", in the game's fonts.
+  Before, they were in English.
+- The plain-text banner, shown when the pause screen can't be drawn, now uses the same words as the pause screen,
+  in the game's language. Before, it was always in English. Its font has Western European letters only. A word with
+  other letters shows Pause Anytime's own word of the language there, or the English one in Russian and Japanese.
+- One log line, `texts:`, now gives each word with its source: a translation mod, the game, or Pause Anytime's own
+  text. It replaces the lines "the game's string table" and "overlay: the game's texts". A word that the font can't
+  draw is logged once, with the text shown in its place. At the first pause the ids are asked once more, and a
+  translation that loaded after the main menu is logged.
 
 ## v1.0 (2026-11-07)
 

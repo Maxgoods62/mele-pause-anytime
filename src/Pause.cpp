@@ -6,6 +6,7 @@
 #include "PauseAnytime/SharedVersion.h"
 #include "Common/Objects.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -113,8 +114,17 @@ namespace PauseAnytime
             unsigned InputMovieSerial = 0;
             unsigned HudMovieSerial = 0;
 
-            /// Frames on which ReadGameTexts tried (MaxGameTextTries once it is done).
-            unsigned GameTextTries = 0;
+            /// The read of the pause screen's words (TextRules::TextRead), changed by SetTextRead only, and its tries while
+            /// Waiting.
+            TextRules::TextRead TextRead = TextRules::TextRead::Waiting;
+            unsigned TextTries = 0;
+            /// The launch language, and the words picked: its built-in text until the read is done (InstallHooks). The
+            /// banner draws them, and the game's fonts are cut to their letters.
+            TextRules::Language Language = TextRules::Language::English;
+            TextRules::Picks Texts;
+            /// The banner's words shown in a built-in text in their place (not Latin-1) and logged so: one bit per
+            /// TextRules::Word.
+            unsigned BannerStandInLogged = 0;
             /// Frames on which ReadGameIcons tried (MaxGameIconTries once it is done).
             unsigned GameIconTries = 0;
             /// Frames on which ReadGameFonts tried (MaxGameFontTries once it is done).
@@ -889,9 +899,28 @@ namespace PauseAnytime
             }
         }
 
-        /// "PAUSE" near the top centre, and the keys under it: Start and Y when Start paused or the player uses a gamepad
-        /// (PlayerInput's bUsingGamepad, which the game's own button prompts follow), else Esc and F7, the photo mode key only
-        /// where photo mode opens. The HUD's own font, position and colour are put back.
+        /// The banner's words (TextRules::BannerWords): a picked word that is not all Latin-1 is shown in the built-in text of
+        /// the language, else of English, logged once per word, since the Canvas font has those 256 characters only.
+        TextRules::BannerRow BannerWords(bool pad, bool photo)
+        {
+            using TextRules::Word;
+            auto const row = TextRules::BannerWords(G.Texts, G.Language);
+            for (auto const word : { Word::Title, Word::Resume, Word::Photo, pad ? Word::Start : Word::Esc, Word::Prompt })
+            {
+                if (word == Word::Photo && !photo) continue;
+                auto const i = TextRules::IndexOf(word);
+                auto const bit = 1u << i;
+                if (row[i] == G.Texts[i].Text || (G.BannerStandInLogged & bit) != 0) continue;
+                G.BannerStandInLogged |= bit;
+                LEASI_WARN("banner: {} \"{}\" ({}) is not Latin-1, the Canvas font's range: built-in {} \"{}\" instead", TextRules::NameOf(word),
+                           G.Texts[i].Text, TextRules::Describe(G.Texts[i]), TextRules::NameOf(TextRules::BannerStandIn(G.Language, word)), row[i]);
+            }
+            return row;
+        }
+
+        /// The title near the top centre, and the keys under it with their words: Start and Y when Start paused or the player
+        /// uses a gamepad (PlayerInput's bUsingGamepad, which the game's own button prompts follow), else Esc and F7, the photo
+        /// mode key only where photo mode opens. The HUD's own font, position and colour are put back.
         void DrawBanner(ABioHUD* hud)
         {
             // With the per-frame checks off our state isn't kept up: as the pause screen then, only while the world we
@@ -927,14 +956,15 @@ namespace PauseAnytime
             // Sized for 1080 lines, like the HUD.
             auto const height = static_cast<float>(canvas->SizeY);
             auto const scale = height / 1080.0f;
-            DrawCentered(canvas, L"PAUSE", height * 0.08f, 2.5f * scale, Color(255, 255, 255, 235));
             auto const input = hud->PlayerOwner != nullptr ? hud->PlayerOwner->PlayerInput : nullptr;
             auto const gamepad = G.PausedByStart || (input != nullptr && input->bUsingGamepad != 0);
             // Photo mode's key only where it opens: its hooks are in, and the per-frame checks that watch it are on.
             auto const photo = PhotoMode::Answers() && G.FrameFaults < MaxFrameFaults;
-            auto const keys = gamepad ? (photo ? L"Start: resume     Y: photo mode" : L"Start: resume")
-                                      : (photo ? L"Esc: resume     F7: photo mode" : L"Esc: resume");
-            DrawCentered(canvas, keys, height * 0.08f + 48.0f * scale, 1.1f * scale, Color(200, 200, 200, 220));
+            auto const words = BannerWords(gamepad, photo);
+            auto const title = ToWide(words[TextRules::IndexOf(TextRules::Word::Title)]);
+            auto const keys = ToWide(TextRules::BannerKeys(words, gamepad, photo));
+            DrawCentered(canvas, title.c_str(), height * 0.08f, 2.5f * scale, Color(255, 255, 255, 235));
+            DrawCentered(canvas, keys.c_str(), height * 0.08f + 48.0f * scale, 1.1f * scale, Color(200, 200, 200, 220));
 
             canvas->Font = savedFont;
             canvas->DrawColor = savedColor;
@@ -975,46 +1005,109 @@ namespace PauseAnytime
             Overlay::Publish(G.WorldPaused && !hidden, G.WorldPaused && !hidden && photo, hidden);
         }
 
-        /// Frames on which ReadGameTexts may try, each with a game object: the strings are there from the first.
-        constexpr unsigned MaxGameTextTries = 3;
+        /// The one change of State::TextRead.
+        void SetTextRead(TextRules::TextRead read) { G.TextRead = read; }
 
-        /// One string of the game's string table, in its language: GetSimpleString, a native that any game object of that class
-        /// runs. The FString it returns is the game's allocation, left to it: a few bytes, once a session. Empty for id 0.
-        std::string GameString(StringGame* game, int id)
+        /// What GetSimpleString answered: Called is false when the call did not run (the class has no such function).
+        struct Answer
         {
-            if (id == 0) return {};
+            bool Called = false;
+            std::string Text;
+        };
+
+        /// One string of the string table, in the game's language: GetSimpleString, a native that any game object of that
+        /// class runs. It answers from the talk files of DLC mods first (a translation mod's), then the game's. An id no talk
+        /// file defines gives "". The FString it returns is the game's allocation, left to it: a few bytes, once a session.
+        Answer GameString(StringGame* game, int id)
+        {
             static CachedFunction cache;
             GetSimpleStringParms parms;
             parms.StrRef = id;
             parms.bParse = 0;
             if (!Call(game, L"GetSimpleString", cache, parms)) return {};
-            return ToUtf8(std::wstring_view(parms.ReturnValue.Chars(), parms.ReturnValue.Length()));
+            return { true, ToUtf8(std::wstring_view(parms.ReturnValue.Chars(), parms.ReturnValue.Length())) };
         }
 
-        /// Once the world has a game object: the pause screen's words from the game's string table (game/LE<n>.hpp's PauseTexts),
-        /// for Overlay.cpp. Tried again on the next frames while none comes back.
-        void ReadGameTexts(ABioPlayerController* pc)
+        /// Once the world has a game object (the main menu's first HUD): the pause screen's words, each from our id, the game's
+        /// string (game/LE<n>.hpp's GameWords) or the built-in text (TextRules::Resolve), for the banner and Overlay.cpp.
+        /// Tried again on the next frames while GetSimpleString does not run, MaxTextTries times at most. CheckTexts logs a
+        /// talk file that loads after this.
+        void ReadTexts(ABioPlayerController* pc)
         {
+            using namespace TextRules;
             auto const world = pc != nullptr ? pc->WorldInfo : nullptr;
             auto const game = world != nullptr ? world->Game : nullptr;
             if (game == nullptr || !game->IsA(StringGame::StaticClass())) return;
             // Counted first: a fault in the calls costs a try, not a frame's checks each frame.
-            G.GameTextTries++;
+            G.TextTries++;
             auto const sp = static_cast<StringGame*>(game);
-            auto title = GameString(sp, PauseTexts.Title);
-            auto resume = GameString(sp, PauseTexts.Resume);
-            auto photo = GameString(sp, PauseTexts.Photo);
-            if (title.empty() && resume.empty() && photo.empty())
+            std::array<Answer, WordCount> ours;
+            std::array<Answer, WordCount> theirs;
+            auto called = true;
+            for (auto const word : Words)
             {
-                if (G.GameTextTries >= MaxGameTextTries) LEASI_WARN("the game's string table gave none of the pause screen's texts: ours stay");
+                auto const i = IndexOf(word);
+                ours[i] = GameString(sp, IdOf(word));
+                theirs[i] = GameWords[i] != 0 ? GameString(sp, GameWords[i]) : Answer{ true, {} };
+                called = ours[i].Called && theirs[i].Called;
+                if (!called) break;
+            }
+            SetTextRead(AfterTry(called, G.TextTries));
+            if (G.TextRead == TextRead::Waiting) return;
+            if (G.TextRead == TextRead::Off)
+            {
+                LEASI_WARN("texts: GetSimpleString did not run in {} tries: the built-in {} text for the session", MaxTextTries, NameOf(G.Language));
                 return;
             }
-            G.GameTextTries = MaxGameTextTries;
-            LEASI_INFO("the game's string table: title \"{}\", resume \"{}\", photo mode \"{}\"", title, resume, photo);
-            Overlay::UseGameTexts(std::move(title), std::move(resume), std::move(photo));
+            std::string line;
+            for (auto const word : Words)
+            {
+                auto const i = IndexOf(word);
+                G.Texts[i] = Resolve(word, ours[i].Text, theirs[i].Text, GameWords[i], G.Language);
+                if (!ours[i].Text.empty() && G.Texts[i].From != Source::Ours)
+                    LEASI_WARN("texts: {} {} \"{}\" skipped: a pattern holds %1 and %2 once each", NameOf(word), IdOf(word), ours[i].Text);
+                line += std::format("{}{} \"{}\" {}", line.empty() ? "" : "; ", NameOf(word), G.Texts[i].Text, Describe(G.Texts[i]));
+            }
+            LEASI_INFO("texts: {}", line);
+            Overlay::UseTexts(G.Texts);
         }
 
-        void ReadGameTextsEntry(void* context) { ReadGameTexts(static_cast<ABioPlayerController*>(context)); }
+        void ReadTextsEntry(void* context) { ReadTexts(static_cast<ABioPlayerController*>(context)); }
+
+        /// At the first pause after the read, once a session: our ids asked again. One that answers now with a text the read
+        /// did not take means a talk file loaded after the read, so a warning names it. The words stay as read, and the
+        /// fonts stay cut to them, for the session. Checked first, so a fault ends it.
+        void CheckTexts(ABioPlayerController* pc)
+        {
+            using namespace TextRules;
+            SetTextRead(TextRead::Checked);
+            auto const world = pc != nullptr ? pc->WorldInfo : nullptr;
+            auto const game = world != nullptr ? world->Game : nullptr;
+            if (game == nullptr || !game->IsA(StringGame::StaticClass())) return;
+            auto const sp = static_cast<StringGame*>(game);
+            std::string late;
+            for (auto const word : Words)
+            {
+                auto const i = IndexOf(word);
+                auto const now = GameString(sp, IdOf(word));
+                if (!now.Called)
+                {
+                    LEASI_WARN("texts: GetSimpleString did not run at the first pause: not asked again");
+                    return;
+                }
+                if (!AnswersLate(word, G.Texts[i], now.Text)) continue;
+                late += std::format("{}{} {} \"{}\" (the read took {} \"{}\")", late.empty() ? "" : "; ", NameOf(word), IdOf(word), now.Text,
+                                    Describe(G.Texts[i]), G.Texts[i].Text);
+            }
+            if (late.empty())
+                LEASI_INFO("texts: asked again at the first pause: no new answer");
+            else
+                LEASI_WARN("texts: asked again at the first pause, our ids answer otherwise: {}. A talk file loaded after the read: the words stay as read "
+                           "until the game restarts",
+                           late);
+        }
+
+        void CheckTextsEntry(void* context) { CheckTexts(static_cast<ABioPlayerController*>(context)); }
 
         /// The object of that class and name right under that package, from the object list, or null. Names are compared first:
         /// the list holds nearly 200,000 objects.
@@ -1119,7 +1212,9 @@ namespace PauseAnytime
                 return;
             }
             G.GameFontTries = MaxGameFontTries;
-            Overlay::UseGameFonts({ light, PauseFonts.LightFont }, { bold, PauseFonts.BoldFont });
+            // Cut to the words picked, and to the built-in text the screen falls back to.
+            auto const letters = TextRules::ScreenLetters(G.Texts, G.Language);
+            Overlay::UseGameFonts({ light, PauseFonts.LightFont }, { bold, PauseFonts.BoldFont }, letters);
         }
 
         void ReadGameFontsEntry(void* context) { ReadGameFonts(static_cast<ABioPlayerController*>(context)); }
@@ -1157,18 +1252,24 @@ namespace PauseAnytime
             PublishOverlay(pc);
 
             // Under its own guard: a fault there ends the reading, not the checks above.
-            if (G.GameTextTries < MaxGameTextTries && !Guarded(ReadGameTextsEntry, pc))
+            if (G.TextRead == TextRules::TextRead::Waiting && !Guarded(ReadTextsEntry, pc))
             {
-                G.GameTextTries = MaxGameTextTries;
-                LEASI_ERROR("access violation while reading the game's string table: the pause screen keeps its own texts");
+                SetTextRead(TextRules::TextRead::Off);
+                LEASI_ERROR("access violation while reading the string table: the built-in {} text for the session", TextRules::NameOf(G.Language));
             }
             if (G.GameIconTries < MaxGameIconTries && !Guarded(ReadGameIconsEntry, nullptr))
             {
                 G.GameIconTries = MaxGameIconTries;
                 LEASI_ERROR("access violation while reading the game's gamepad icons: the pause screen draws its own");
             }
-            // After the texts: the fonts are cut to their letters.
-            if (G.GameTextTries >= MaxGameTextTries && G.GameFontTries < MaxGameFontTries && !Guarded(ReadGameFontsEntry, pc))
+            // At the first pause after the read: a talk file that loaded after it is logged (CheckTexts).
+            if (G.TextRead == TextRules::TextRead::Done && G.WorldPaused && !Guarded(CheckTextsEntry, pc))
+            {
+                SetTextRead(TextRules::TextRead::Checked);
+                LEASI_ERROR("access violation while asking the string table again: the words stay as read");
+            }
+            // After the words: the fonts are cut to their letters.
+            if (G.TextRead != TextRules::TextRead::Waiting && G.GameFontTries < MaxGameFontTries && !Guarded(ReadGameFontsEntry, pc))
             {
                 G.GameFontTries = MaxGameFontTries;
                 LEASI_ERROR("access violation while reading the game's fonts: the pause screen keeps Exo 2");
@@ -1404,6 +1505,9 @@ namespace PauseAnytime
 
     bool InstallHooks(::LESDK::Initializer& Init)
     {
+        // Before the hook: the banner may draw before the string table is read.
+        G.Language = TextRules::LanguageOfCode(LaunchLanguageCode());
+        G.Texts = TextRules::BuiltInPicks(G.Language);
         auto const target = Init.ResolveTyped<t_UObject_ProcessEvent>(BUILTIN_PROCESSEVENT_RVA);
         CHECK_RESOLVED(target);
         auto const orig = static_cast<t_UObject_ProcessEvent*>(Init.InstallHook("UObject::ProcessEvent", target, ProcessEvent_hook));

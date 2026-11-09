@@ -53,6 +53,7 @@ asi_target (PauseAnytime
     "game/LE3.hpp"
     "Resources.h"
     "SharedVersion.h"
+    "TextRules.hpp"
   LINKS
     "PauseAnytimeImGui"
     "d3d11"
@@ -87,18 +88,20 @@ foreach (game IN ITEMS LE1 LE2 LE3)
   endif ()
 endforeach ()
 
-# The checks of the rules the threads race for, in KeyRules.hpp, MovieRules.hpp and OverlayRules.hpp (tests/), which
-# ../build.sh builds and runs after the ASIs: a console program built against those headers alone, with no SDK, game or
-# third-party code, and the ASI targets' warnings.
+# The checks of the rules the threads race for, in KeyRules.hpp, MovieRules.hpp and OverlayRules.hpp, and of the pause
+# screen's words in TextRules.hpp (tests/), which ../build.sh builds and runs after the ASIs: a console program built against
+# those headers alone, with no SDK, game or third-party code, and the ASI targets' warnings.
 add_executable (PauseAnytimeTests
   "tests/Main.cpp"
   "tests/Check.hpp"
   "tests/KeyRulesTest.cpp"
   "tests/MovieRulesTest.cpp"
   "tests/OverlayRulesTest.cpp"
+  "tests/TextRulesTest.cpp"
   "KeyRules.hpp"
   "MovieRules.hpp"
   "OverlayRules.hpp"
+  "TextRules.hpp"
   )
 target_include_directories (PauseAnytimeTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_compile_options (PauseAnytimeTests PRIVATE ${LEASI_COMPILE_OPTIONS} "${MELE_TRIM_PATHS}")

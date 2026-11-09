@@ -3,6 +3,7 @@
 #include "PauseAnytime/GameFont.hpp"
 #include "PauseAnytime/OverlayRules.hpp"
 #include "PauseAnytime/Resources.h"
+#include "PauseAnytime/TextRules.hpp"
 
 #include <d3d11.h>
 #include <dxgi1_4.h>
@@ -15,12 +16,13 @@
 #pragma warning(pop)
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cfloat>
 #include <cstddef>
-#include <cwctype>
 #include <exception>
 #include <format>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -31,12 +33,12 @@
 // (Start), by one thread at a time (The gate): over our world pause and our movie pause the frame is blurred and darkened
 // (Blur.cpp), in the game's menu colours (OverlayLook, NativeLook): the title on a band at the centre, and at the bottom left
 // each key left of its label (resume, and photo mode where it opens), for the gamepad or the keyboard, whichever pressed our
-// keys last. The game thread says what to show (Publish, UsePadPrompts, UseGameTexts, UseGameIcons, UseGameFonts); nothing
+// keys last. The game thread says what to show (Publish, UsePadPrompts, UseTexts, UseGameIcons, UseGameFonts); nothing
 // here touches a game object, only the D3D11 views of two of its textures and, on the game thread, the bytes of its fonts'
-// movies. The text is set in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (PauseAnytime.rc), in the language
-// the game's launcher passes, or in the game's own words where it gives them, and in the game's own fonts, turned into
-// TrueType in memory (GameFont.cpp) and never written anywhere. Without the hook, before the game's swap chain is taken, or
-// after a fault, the Canvas banner of Pause.cpp is drawn instead (Drawing).
+// movies. The words are the ones Pause.cpp picked (a translation mod's, the game's or the built-in text of the launcher's
+// language, TextRules.hpp), set in the game's own fonts, turned into TrueType in memory (GameFont.cpp) and never written
+// anywhere, or in Exo 2 (SIL OFL 1.1, fonts/OFL.txt), compiled into the ASI (PauseAnytime.rc). Without the hook, before the
+// game's swap chain is taken, or after a fault, the Canvas banner of Pause.cpp is drawn instead (Drawing).
 namespace PauseAnytime::Overlay
 {
     namespace
@@ -85,16 +87,10 @@ namespace PauseAnytime::Overlay
         /// Install's, set before the hooks go live.
         std::atomic<OverlayLook> Look{ OverlayLook::LE1 };
 
-        /// UseGameTexts', UTF-8. Never freed: the render thread draws from it.
-        struct GameTexts
-        {
-            std::string Title;
-            std::string Resume;
-            std::string Photo;
-        };
-        std::atomic<GameTexts const*> GameText{ nullptr };
+        /// UseTexts', UTF-8. Never freed: the render thread draws from it.
+        std::atomic<TextRules::Picks const*> PickedTexts{ nullptr };
 
-        /// UseGameIcons', not checked yet. Never freed, like GameTexts.
+        /// UseGameIcons', not checked yet. Never freed, like PickedTexts.
         struct GameIcons
         {
             void* PadA;
@@ -116,76 +112,6 @@ namespace PauseAnytime::Overlay
             GameFontFile Bold;
         };
         std::atomic<GameFonts const*> GameFontFiles{ nullptr };
-
-        // ! Text
-        // ========================================
-
-        struct Texts
-        {
-            char const* Title;
-            char const* Resume;
-            char const* Photo;
-            /// The space bar's keycap.
-            char const* Space;
-            char const* Language;
-        };
-
-        constexpr Texts English{ "PAUSE", "Resume", "Photo mode", "Space", "English" };
-        constexpr Texts French{ "PAUSE", "Reprendre", "Mode photo", "Espace", "French" };
-        constexpr Texts German{ "PAUSE", "Fortsetzen", "Fotomodus", "Leertaste", "German" };
-        constexpr Texts Italian{ "PAUSA", "Riprendi", "Modalità foto", "Spazio", "Italian" };
-        constexpr Texts Spanish{ "PAUSA", "Reanudar", "Modo foto", "Espacio", "Spanish" };
-        constexpr Texts Polish{ "PAUZA", "Wznów", "Tryb fotograficzny", "Spacja", "Polish" };
-        constexpr Texts Russian{ "ПАУЗА", "Продолжить", "Фоторежим", "Пробел", "Russian" };
-
-        /// The text language the LE launcher gives the game: -OVERRIDELANGUAGE=<code> to LE1 and LE2, -language=<code> to LE3.
-        /// LE1's codes: FR, DE, IT, RA and PLPC with their voices, FE, GE, IE, RU and PL over English voices, ES and JA. LE2's
-        /// and LE3's: FRA, DEU, ITA and POL with their voices, FRE, DEE, ITE and POE (LE2) over English voices, ESN, RUS and
-        /// JPN. English for INT, without a switch (a start past the launcher), and for Japanese: Exo 2 has no kana.
-        Texts const& LanguageTexts()
-        {
-            std::wstring_view const line = GetCommandLineW();
-            std::wstring code;
-            for (std::wstring_view const option : { std::wstring_view{ L"-OVERRIDELANGUAGE=" }, std::wstring_view{ L"-LANGUAGE=" } })
-            {
-                auto const at = std::search(line.begin(), line.end(), option.begin(), option.end(),
-                                            [](wchar_t a, wchar_t b) { return std::towupper(a) == std::towupper(b); });
-                if (at == line.end()) continue;
-                for (auto c = at + option.size(); c != line.end() && *c != L' ' && *c != L'\t' && *c != L'"'; ++c)
-                    code += static_cast<wchar_t>(std::towupper(*c));
-                break;
-            }
-            if (code == L"FR" || code == L"FE" || code == L"FRA" || code == L"FRE") return French;
-            if (code == L"DE" || code == L"GE" || code == L"DEU" || code == L"DEE") return German;
-            if (code == L"IT" || code == L"IE" || code == L"ITA" || code == L"ITE") return Italian;
-            if (code == L"ES" || code == L"ESN") return Spanish;
-            if (code == L"PL" || code == L"PLPC" || code == L"POL" || code == L"POE") return Polish;
-            if (code == L"RU" || code == L"RA" || code == L"RUS") return Russian;
-            return English;
-        }
-
-        /// Every letter the pause screen may set, ours and the game's, and ImGui's two fallbacks: the game's fonts are cut to these.
-        std::vector<char32_t> ScreenLetters()
-        {
-            std::vector<char32_t> letters{ U' ', U'?' };
-            auto const add = [&letters](std::string_view text) {
-                for (auto p = text.data(), end = text.data() + text.size(); p < end;)
-                {
-                    unsigned c = 0;
-                    p += ImTextCharFromUtf8(&c, p, end);
-                    letters.push_back(static_cast<char32_t>(c));
-                }
-            };
-            auto const& ours = LanguageTexts();
-            for (auto const text : { ours.Title, ours.Resume, ours.Photo, ours.Space, "F7" }) add(text);
-            if (auto const game = GameText.load(std::memory_order_acquire); game != nullptr)
-            {
-                add(game->Title);
-                add(game->Resume);
-                add(game->Photo);
-            }
-            return letters;
-        }
 
         GameFontFile ReadGameFont(std::span<unsigned char const> movie, std::string_view name, std::span<char32_t const> letters)
         {
@@ -235,6 +161,8 @@ namespace PauseAnytime::Overlay
             /// ImGui has no kerning: the font's pairs, in EM, and ImGui's size for one EM.
             std::span<GameFont::KerningPair const> Kerning;
             float SizePerEm = 1;
+            /// The font's name in the log.
+            char const* Name = "Exo 2";
         };
 
         /// The lines of a game's screen: in Exo 2 until the game's fonts come (TakeGameFonts).
@@ -358,6 +286,17 @@ namespace PauseAnytime::Overlay
         /// the session after a failure (the Canvas banner instead). Changed only by SetPhase.
         enum class Phase : unsigned char { Waiting, Started, Off };
 
+        /// What the words drawn are judged from: the words picked (UseTexts), each style's font, and the language.
+        struct WordsKey
+        {
+            TextRules::Picks const* Picked = nullptr;
+            ImFont const* Title = nullptr;
+            ImFont const* Label = nullptr;
+            ImFont const* Key = nullptr;
+            TextRules::Language Language = TextRules::Language::English;
+            bool operator==(WordsKey const&) const = default;
+        };
+
         struct RenderState
         {
             Phase At = Phase::Waiting;
@@ -403,10 +342,15 @@ namespace PauseAnytime::Overlay
             bool CleanLogged = false;
             /// Set when the overlay starts, before any draw.
             NativeLook const* Native = nullptr;
-            Texts const* Text = &English;
-            /// The language's texts with the game's words in place of ours (Text points here once they came).
-            Texts Mixed = English;
-            bool GameTextsSeen = false;
+            /// The launcher's language, set when the overlay starts.
+            TextRules::Language Language = TextRules::Language::English;
+            /// The words drawn (TakeTexts): of TextRules::ScreenWords, each the first its font draws of the word picked, the
+            /// language's built-in text and the English one. Judged again whenever what they were judged from changes
+            /// (WordsKey); none before the first judging.
+            std::array<std::string, TextRules::WordCount> Words;
+            std::optional<WordsKey> WordsFrom;
+            /// Per word, the fallback last logged, so that each is logged once.
+            std::array<std::string, TextRules::WordCount> WordsLogged;
             /// The game's gamepad buttons, referenced from when they passed TakeView: both or neither.
             ID3D11ShaderResourceView* IconA = nullptr;
             ID3D11ShaderResourceView* IconY = nullptr;
@@ -604,10 +548,12 @@ namespace PauseAnytime::Overlay
                 R.Font = { fallback, fallback, false };
             }
             R.Style = { { R.Font.Regular, 58, 18 }, { R.Font.Regular, 28, 0 }, { R.Font.SemiBold, 19.55f, 0 } };
+            if (!R.Font.Embedded)
+                for (auto* style : { &R.Style.Title, &R.Style.Label, &R.Style.Key }) style->Name = "ImGui default";
         }
 
         /// The font has every letter of a text that has some.
-        bool Drawable(ImFont* font, std::string const& text)
+        bool Drawable(ImFont* font, std::string_view text)
         {
             if (text.empty()) return false;
             for (auto p = text.data(), end = text.data() + text.size(); p < end;)
@@ -619,25 +565,48 @@ namespace PauseAnytime::Overlay
             return true;
         }
 
-        /// Once UseGameTexts gave them: the game's words in place of ours, each one its font can draw.
-        void TakeGameTexts()
+        /// The style a word of the screen is set in: the title's, the labels' (resume, photo mode) or the keys' (space).
+        LineStyle const& StyleOf(NativeStyles const& styles, TextRules::Word word)
         {
-            if (R.GameTextsSeen) return;
-            auto const game = GameText.load(std::memory_order_acquire);
-            if (game == nullptr) return;
-            R.GameTextsSeen = true;
-            R.Mixed = *R.Text;
-            auto const take = [](ImFont* font, std::string const& text, char const*& slot) {
-                if (!Drawable(font, text)) return "kept ours";
-                slot = text.c_str();
-                return "used";
-            };
-            auto const title = take(R.Style.Title.Font, game->Title, R.Mixed.Title);
-            auto const resume = take(R.Style.Label.Font, game->Resume, R.Mixed.Resume);
-            auto const photo = take(R.Style.Label.Font, game->Photo, R.Mixed.Photo);
-            R.Text = &R.Mixed;
-            LEASI_INFO("overlay: the game's texts: title \"{}\" {}, resume \"{}\" {}, photo mode \"{}\" {}", game->Title, title, game->Resume, resume,
-                       game->Photo, photo);
+            if (word == TextRules::Word::Title) return styles.Title;
+            return word == TextRules::Word::Space ? styles.Key : styles.Label;
+        }
+
+        /// Between ImGui's frames, after TakeGameFonts: each word of the screen in the first text its font draws, of the word
+        /// UseTexts gave (before it, the built-in text of the language), the language's built-in text and the English one.
+        /// A fallback is logged once per word.
+        void TakeTexts()
+        {
+            using namespace TextRules;
+            auto const picked = PickedTexts.load(std::memory_order_acquire);
+            WordsKey const key{ picked, R.Style.Title.Font, R.Style.Label.Font, R.Style.Key.Font, R.Language };
+            if (R.WordsFrom == key) return;
+            R.WordsFrom = key;
+            for (auto const word : ScreenWords)
+            {
+                auto const i = IndexOf(word);
+                auto const& style = StyleOf(R.Style, word);
+                Pick const candidates[] = { picked != nullptr ? (*picked)[i] : BuiltInPick(R.Language, word), BuiltInPick(R.Language, word),
+                                            BuiltInPick(Language::English, word) };
+                auto chosen = &candidates[2];
+                for (auto const& candidate : candidates)
+                {
+                    if (!Drawable(style.Font, candidate.Text)) continue;
+                    chosen = &candidate;
+                    break;
+                }
+                R.Words[i] = chosen->Text;
+                if (chosen == &candidates[0])
+                {
+                    R.WordsLogged[i].clear();
+                    continue;
+                }
+                auto const fallback = std::format("{} \"{}\"", Describe(*chosen), chosen->Text);
+                if (fallback == R.WordsLogged[i]) continue;
+                R.WordsLogged[i] = fallback;
+                LEASI_WARN("overlay: {} \"{}\" ({}) has letters the {} font lacks: {} instead", NameOf(word), candidates[0].Text, Describe(candidates[0]),
+                           style.Name, fallback);
+            }
         }
 
         /// Null if ImGui can't read it.
@@ -661,11 +630,28 @@ namespace PauseAnytime::Overlay
         LineStyle GameStyle(ImFont* font, GameFontFile const& file, GameLine const& line, float caps)
         {
             auto const perEm = file.Layout.SizePerEm;
-            return { font, line.Em * perEm, line.Spacing, caps / perEm, file.Layout.Kerning, perEm };
+            return { font, line.Em * perEm, line.Spacing, caps / perEm, file.Layout.Kerning, perEm, line.Bold ? "game's bold" : "game's light" };
         }
 
-        /// Once UseGameFonts gave them: the game's fonts in place of Exo 2, both or neither. They must draw our words too, since
-        /// those stand in for any word of the game's they can't. Between ImGui's frames, and ahead of TakeGameTexts.
+        /// The screen's words a set of styles draws in the language: the word picked (UseTexts; before it, the language's
+        /// built-in text) or the language's built-in text, not the English stand-in.
+        unsigned WordsInLanguage(NativeStyles const& styles, TextRules::Picks const* picked)
+        {
+            unsigned count = 0;
+            for (auto const word : TextRules::ScreenWords)
+            {
+                auto const font = StyleOf(styles, word).Font;
+                if ((picked != nullptr && Drawable(font, (*picked)[TextRules::IndexOf(word)].Text)) || Drawable(font, TextRules::BuiltInText(R.Language, word)))
+                    count++;
+            }
+            return count;
+        }
+
+        /// Once UseGameFonts gave them: the game's fonts in place of Exo 2, both or neither. They must draw "F7" and the
+        /// English built-in text, the last stand-in for a word (TakeTexts), and at least as many of the screen's words in the
+        /// language as Exo 2 does. So they are taken even where they lack a letter of a Japanese word, as Exo 2 has no
+        /// Japanese: that word alone falls back. UseTexts came first, on the game thread. Between ImGui's frames, and ahead of
+        /// TakeTexts.
         void TakeGameFonts()
         {
             if (R.GameFontsSeen) return;
@@ -685,17 +671,25 @@ namespace PauseAnytime::Overlay
                                  : GameStyle(light, game->Light, line, CapsOf(game->Light, look.LightCaps));
             };
             NativeStyles const styles{ style(look.TitleLine), style(look.LabelLine), style(look.KeyLine) };
-            auto const& ours = LanguageTexts();
-            if (!Drawable(styles.Title.Font, ours.Title) || !Drawable(styles.Label.Font, ours.Resume) || !Drawable(styles.Label.Font, ours.Photo) ||
-                !Drawable(styles.Key.Font, ours.Space) || !Drawable(styles.Key.Font, "F7"))
+            auto english = Drawable(styles.Key.Font, "F7");
+            for (auto const word : TextRules::ScreenWords)
+                english = english && Drawable(StyleOf(styles, word).Font, TextRules::BuiltInText(TextRules::Language::English, word));
+            if (!english)
             {
-                LEASI_WARN("overlay: the game's fonts lack letters of the pause screen: Exo 2 stays");
+                LEASI_WARN("overlay: the game's fonts lack letters of the pause screen's English built-in text or F7: Exo 2 stays");
                 return;
             }
+            auto const picked = PickedTexts.load(std::memory_order_acquire);
+            auto const theirs = WordsInLanguage(styles, picked);
+            auto const exo = WordsInLanguage(R.Style, picked);
+            if (theirs < exo)
+            {
+                LEASI_WARN("overlay: the game's fonts draw {} of the pause screen's {} words in {}, and {} draws {}: {} stays", theirs,
+                           TextRules::ScreenWords.size(), TextRules::NameOf(R.Language), R.Style.Title.Name, exo, R.Style.Title.Name);
+                return;
+            }
+            // The words are judged again, by these fonts (TakeTexts' WordsKey).
             R.Style = styles;
-            // The game's words are judged again, by these fonts.
-            R.Text = &ours;
-            R.GameTextsSeen = false;
             LEASI_INFO("overlay: the game's fonts: {} and {} bytes of TrueType, {} and {} kerning pairs, H measured {:.5f} and {:.5f} EM: used",
                        game->Light.Ttf.size(), game->Bold.Ttf.size(), game->Light.Layout.Kerning.size(), game->Bold.Layout.Kerning.size(),
                        game->Light.Layout.CapsEm, game->Bold.Layout.CapsEm);
@@ -914,7 +908,7 @@ namespace PauseAnytime::Overlay
 
         bool IsPad(Icon icon) { return icon == Icon::PadA || icon == Icon::PadY; }
 
-        char const* KeyLabel(Icon icon) { return icon == Icon::KeySpace ? R.Text->Space : "F7"; }
+        std::string_view KeyLabel(Icon icon) { return icon == Icon::KeySpace ? std::string_view{ R.Words[TextRules::IndexOf(TextRules::Word::Space)] } : "F7"; }
 
         float IconWidth(Icon icon, float radius, float k)
         {
@@ -927,7 +921,7 @@ namespace PauseAnytime::Overlay
         struct Prompt
         {
             Icon What;
-            char const* Label;
+            std::string_view Label;
         };
 
         // ! A game's look
@@ -968,7 +962,7 @@ namespace PauseAnytime::Overlay
         {
             auto const& look = *R.Native;
             auto const& style = R.Style.Title;
-            auto const text = R.Text->Title;
+            std::string_view const text = R.Words[TextRules::IndexOf(TextRules::Word::Title)];
             auto const textWidth = SpacedWidth(style, k, text);
             ImVec2 const centre{ width * 0.5f, height * 0.47f };
 
@@ -1037,7 +1031,8 @@ namespace PauseAnytime::Overlay
         void DrawGamePrompts(ImDrawList* list, float height, float alpha, float k, bool pad)
         {
             // Resume names A and the space bar; Start and Esc, which paused, resume too.
-            Prompt const prompts[] = { { pad ? Icon::PadA : Icon::KeySpace, R.Text->Resume }, { pad ? Icon::PadY : Icon::KeyF7, R.Text->Photo } };
+            Prompt const prompts[] = { { pad ? Icon::PadA : Icon::KeySpace, R.Words[TextRules::IndexOf(TextRules::Word::Resume)] },
+                                       { pad ? Icon::PadY : Icon::KeyF7, R.Words[TextRules::IndexOf(TextRules::Word::Photo)] } };
             auto const count = R.Photo ? 2 : 1;
             auto const radius = 23 * k;
             auto const& style = R.Style.Label;
@@ -1240,11 +1235,11 @@ namespace PauseAnytime::Overlay
             R.GameWindow = desc.OutputWindow;
             R.Took = take;
             R.Native = &NativeLookOf(Look.load(std::memory_order_relaxed));
-            R.Text = &LanguageTexts();
+            R.Language = TextRules::LanguageOfCode(LaunchLanguageCode());
             QueryPerformanceCounter(&R.LastFrame);
             LEASI_INFO("overlay ready: back buffer {}x{} format {}, swap effect {}, present thread {}, {} look, text in {}, {}, {}", desc.BufferDesc.Width,
                        desc.BufferDesc.Height, static_cast<int>(desc.BufferDesc.Format), static_cast<int>(desc.SwapEffect), GetCurrentThreadId(),
-                       R.Native->Name, R.Text->Language, R.Font.Embedded ? "Exo 2 embedded" : "default font", blur ? "blur ready" : "NO blur (plain darkening)");
+                       R.Native->Name, TextRules::NameOf(R.Language), R.Font.Embedded ? "Exo 2 embedded" : "default font", blur ? "blur ready" : "NO blur (plain darkening)");
             LEASI_FLUSH();
             return StartResult::Started;
         }
@@ -1449,6 +1444,7 @@ namespace PauseAnytime::Overlay
             }
 
             TakeGameFonts();
+            TakeTexts();
             auto& io = ImGui::GetIO();
             io.DisplaySize = { width, height };
             io.DeltaTime = std::max(seconds, 1e-4f);
@@ -1456,7 +1452,6 @@ namespace PauseAnytime::Overlay
             ImGui::NewFrame();
             auto const list = ImGui::GetForegroundDrawList();
             if (!blurred) list->AddRectFilled({ 0, 0 }, { width, height }, Colour(0, 0, 0, 0.6f * alpha));
-            TakeGameTexts();
             // Laid out for 1080 lines, like the game's HUD.
             auto const k = height / 1080.f;
             auto const pad = Pad.load(std::memory_order_relaxed);
@@ -1924,11 +1919,11 @@ namespace PauseAnytime::Overlay
 
     void UsePadPrompts(bool pad) { Pad.store(pad, std::memory_order_relaxed); }
 
-    void UseGameTexts(std::string title, std::string resume, std::string photo)
+    void UseTexts(TextRules::Picks words)
     {
-        auto const texts = new GameTexts{ std::move(title), std::move(resume), std::move(photo) };
-        GameTexts const* none = nullptr;
-        if (!GameText.compare_exchange_strong(none, texts, std::memory_order_acq_rel)) delete texts;
+        auto const texts = new TextRules::Picks{ std::move(words) };
+        TextRules::Picks const* none = nullptr;
+        if (!PickedTexts.compare_exchange_strong(none, texts, std::memory_order_acq_rel)) delete texts;
     }
 
     void UseGameIcons(void* padA, void* padY)
@@ -1938,9 +1933,8 @@ namespace PauseAnytime::Overlay
         if (!GameIcon.compare_exchange_strong(none, icons, std::memory_order_acq_rel)) delete icons;
     }
 
-    void UseGameFonts(GameFontSource light, GameFontSource bold)
+    void UseGameFonts(GameFontSource light, GameFontSource bold, std::span<char32_t const> letters)
     {
-        auto const letters = ScreenLetters();
         auto const fonts = new GameFonts{ ReadGameFont(light.Movie, light.Name, letters), ReadGameFont(bold.Movie, bold.Name, letters) };
         if (fonts->Light.Ttf.empty() || fonts->Bold.Ttf.empty())
         {

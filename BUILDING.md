@@ -151,9 +151,10 @@ deleted the files. Then `build.sh`:
 8. Builds each `PauseAnytime-LE<n>` target in `RELEASE`, one game after the other. On a failure it prints the
    compiler's error and warning lines and stops.
 9. Builds the `PauseAnytimeTests` target the same way and runs it. It is a console program made of `src/tests` and the
-   rules in `src/KeyRules.hpp`, `MovieRules.hpp` and `OverlayRules.hpp`, with no SDK, game or third-party code. It
-   prints how many states the `MovieRules` model walked, then `PauseAnytimeTests: N checks passed`. Or it prints a
-   `FAILED <file> line <n>: ...` line for each failed check and `N of M checks FAILED`, and the build stops.
+   rules in `src/KeyRules.hpp`, `MovieRules.hpp`, `OverlayRules.hpp` and `TextRules.hpp`, with no SDK, game or
+   third-party code. It prints how many states the `MovieRules` model walked, then `PauseAnytimeTests: N checks
+   passed`. Or it prints a `FAILED <file> line <n>: ...` line for each failed check and `N of M checks FAILED`, and
+   the build stops.
 10. Once every game has built and every check has passed, copies each `.asi` and `.pdb` from `Build\RELEASE` into
     `MELE_STAGE`. It does not empty the stage first. `--install` then checks the games again and copies each `.asi`
     into its game.
@@ -238,7 +239,7 @@ the same errors, and its own start with `package.sh:`. Below, `<n>` is 1, 2 or 3
 | `no PauseAnytime-LE<n> project` | That game is not on the `GAMES` line. Leave it out, or [add it](#adding-a-game). |
 | `PauseAnytime-LE<n> did not build` or `PauseAnytimeTests did not build` | The lines above it are the compiler's errors and warnings, each shown once. |
 | `no Build/RELEASE/PauseAnytimeTests.exe after its build` | Run the build step below with `--target PauseAnytimeTests` to see all of MSBuild's output. |
-| `the rules' checks failed (the lines above): nothing staged` | Each `FAILED <file> line <n>` line above names a check in `src/tests` and what it expects. A line `first after the steps ...` under one of the model's gives one of the shortest runs of steps that break it, by the letters listed in `src/tests/MovieRulesTest.cpp`. Fix the rule in `src/KeyRules.hpp`, `MovieRules.hpp` or `OverlayRules.hpp`, or the check if the rule changed on purpose. |
+| `the rules' checks failed (the lines above): nothing staged` | Each `FAILED <file> line <n>` line above names a check in `src/tests` and what it expects. A line `first after the steps ...` under one of the model's gives one of the shortest runs of steps that break it, by the letters listed in `src/tests/MovieRulesTest.cpp`. Fix the rule in `src/KeyRules.hpp`, `MovieRules.hpp`, `OverlayRules.hpp` or `TextRules.hpp`, or the check if the rule changed on purpose. |
 
 These lines are not errors: `another build of ... is running: waiting for it` (another run holds the lock on that
 tree), `checking out LExASIs ... and its submodules in ...` (the first build, a new pin, or a repair), and

@@ -1,7 +1,9 @@
 #include "PauseAnytime/Engine.hpp"
 #include "Common/Objects.hpp"
 
+#include <algorithm>
 #include <cstdint>
+#include <cwctype>
 
 namespace PauseAnytime
 {
@@ -71,6 +73,31 @@ namespace PauseAnytime
         std::string out(static_cast<size_t>(size), '\0');
         WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), size, nullptr, nullptr);
         return out;
+    }
+
+    std::wstring ToWide(std::string_view text)
+    {
+        if (text.empty()) return {};
+        auto const size = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+        std::wstring out(static_cast<size_t>(size), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), size);
+        return out;
+    }
+
+    std::wstring LaunchLanguageCode()
+    {
+        std::wstring_view const line = GetCommandLineW();
+        for (std::wstring_view const option : { std::wstring_view{ L"-OVERRIDELANGUAGE=" }, std::wstring_view{ L"-LANGUAGE=" } })
+        {
+            auto const at = std::search(line.begin(), line.end(), option.begin(), option.end(),
+                                        [](wchar_t a, wchar_t b) { return std::towupper(a) == std::towupper(b); });
+            if (at == line.end()) continue;
+            std::wstring code;
+            for (auto c = at + option.size(); c != line.end() && *c != L' ' && *c != L'\t' && *c != L'"'; ++c)
+                code += static_cast<wchar_t>(std::towupper(*c));
+            return code;
+        }
+        return {};
     }
 
     std::string PathOf(UObject const* object)

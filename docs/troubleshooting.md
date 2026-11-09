@@ -30,7 +30,8 @@ the log can be missing.
 | The game closes at start, and the log ends with `failed to resolve` and `Fatal assertion` lines | Pause Anytime could not start in this build of the game | Report it with the log. |
 | The scene stays paused after a resume | Another pause holds the game, or Pause Anytime met an error | See [The scene stays paused](#the-scene-stays-paused). |
 | LE2 or LE3 stays silent after a pause, and the log warns `game audio still held` | The game's resume sound could not play, so the game's audio stays held | Open and close the game's pause menu: its closing sound should give the audio back. |
-| A plain "PAUSE" text shows instead of the pause screen | The pause screen cannot be drawn | The pause still works. See [Plain PAUSE text](#plain-pause-text). |
+| Plain text shows near the top instead of the pause screen | The pause screen cannot be drawn | The pause still works. See [Plain text banner](#plain-text-banner). |
+| The pause screen is not in your language, or a translation mod's words do not show | The game was started without the launcher, or the translation mod is not found | The log's `texts:` line names each word's source. See [translating.md](translating.md#check-it-in-the-game). |
 | The picture is only darker, not blurred | The blur could not start on this screen | The pause still works. The log says why, in lines that start with `pause blur:`. |
 | No photo mode key on the pause screen, or the photo camera does not move | A part of photo mode turned itself off | See [After a game update](#after-a-game-update). |
 | The gamepad buttons on the pause screen are drawn circles | The game's own button pictures could not be used | The pause still works. The log says why. |
@@ -42,10 +43,13 @@ The log says why. `the world stays paused by` means that the game no longer has 
 the scene still does not go on, and you have turned on the game's console, its `pause` command resumes the game.
 Please report it, with the log.
 
-### Plain PAUSE text
+### Plain text banner
 
-When Pause Anytime cannot draw its pause screen, it shows a plain "PAUSE" text with the keys under it. This text is
-always in English, and it names the photo mode key only where photo mode can open. One cause is a Windows install
+When Pause Anytime cannot draw its pause screen, it shows the title in plain text near the top, with the keys under
+it. It names the photo mode key only where photo mode can open. It uses the same words as the pause screen, but its
+font has Western European letters only. A word with other letters is replaced there by Pause Anytime's own word in
+that language, or by the English one when that does not fit either, as in Russian and Japanese. The log has a
+`banner: ... is not Latin-1` line for it. One cause is a Windows install
 with no `d3dcompiler_47.dll` in `System32`. Pause Anytime also shows this text when its pause screen fails to start,
 or fails while the game runs. The log then has a line with `the Canvas banner instead`. The text can also show for a
 moment when the game changes its display mode during a pause.

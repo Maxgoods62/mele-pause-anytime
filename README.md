@@ -75,6 +75,7 @@ rewrites that log each time the game starts, so copy it before you start the gam
 - For modders: [building from source](BUILDING.md), [how it works](docs/how-it-works.md), the pages on
   [LE1](docs/games/LE1.md), [LE2](docs/games/LE2.md) and [LE3](docs/games/LE3.md), and the
   [third-party code](THIRD_PARTY.md).
+- For translators: [translating the pause screen](docs/translating.md).
 - For the maintainer: [testing a build](docs/testing.md).
 - How releases are built on GitHub and how to check them: the toolkit's
   [releasing page](https://github.com/Maxgoods62/mele-maxgoods-toolkit/blob/main/docs/releasing.md).

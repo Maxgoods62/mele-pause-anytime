@@ -116,8 +116,14 @@ keyboard keys.
 - Gamepad buttons are the game's own pictures of A and Y, as on an Xbox pad. If the game cannot give them, Pause
   Anytime draws green and yellow circles instead.
 
-The words follow the text language that you pick in the game's launcher. The two labels are the game's own words,
-such as "Resume" and "Photo Mode" in English. The title and the Space key are Pause Anytime's own words:
+The words follow the text language that you pick in the game's launcher. Each word comes from the first of these
+that has it:
+
+1. A translation mod. Pause Anytime reads its words at the main menu.
+   [translating.md](translating.md) says how to make one.
+2. The game's own word, for the two labels: "Resume" and "Photo Mode" in English, "Reprendre" and "Mode photo" in
+   French LE2.
+3. Pause Anytime's own word, in English, French, German, Italian, Spanish, Polish, Russian or Japanese:
 
 | Language | Title | Space key |
 |---|---|---|
@@ -128,13 +134,14 @@ such as "Resume" and "Photo Mode" in English. The title and the Space key are Pa
 | Spanish | PAUSA | Espacio |
 | Polish | PAUZA | Spacja |
 | Russian | ПАУЗА | Пробел |
+| Japanese | ポーズ | スペース |
 
-The Japanese game shows the title and the Space key in English, and so does a game started without the launcher. "F7"
-is never translated. If the font cannot draw a label, Pause Anytime shows its own word for it.
+A game started without the launcher shows English. "F7" is never translated.
 
-The text uses the game's own menu fonts, read from the game's memory while it runs. Pause Anytime holds no copy of
-them and never writes them to disk. If it cannot read them, it uses its own font, Exo 2. Exo 2 has no Japanese
-letters, so the Japanese game then shows the labels in English.
+The text uses the game's own menu fonts, read from the game's memory while it runs. They draw every language of the
+game, Japanese included. Pause Anytime holds no copy of them and never writes them to disk. If it cannot read them, it
+uses its own font, Exo 2. Exo 2 has no Japanese letters, so the Japanese game then shows the words in English, and the
+log says so for each word.
 
 A mod that changes the game's fonts, such as Myriad Pro Begone, changes the pause screen too. Pause Anytime reads the
 fonts as the mod leaves them. Myriad Pro Begone swaps the game's Myriad for Domyouji. In LE2 and LE3 the pause screen
@@ -145,9 +152,11 @@ every game, and the mod leaves Biomass alone.
 The game's menu sound plays as the pause starts and as you resume with a key. In LE2 and LE3, it also plays when you
 open the Steam overlay during a pause, and when the game ends the pause itself, for example with a load.
 
-The pause screen hides while the console is open. If the pause screen cannot be drawn, a plain white "PAUSE" shows
-near the top instead, with the keys under it, in English. If the blur does not work with the game's screen format,
-the picture is only darkened. [troubleshooting.md](troubleshooting.md) lists the causes.
+The pause screen hides while the console is open. If the pause screen cannot be drawn, the title shows near the top
+in plain white text instead, with the keys under it, in the same words. Its font has Western European letters only.
+A word with other letters is replaced there by Pause Anytime's own word, or in Russian and Japanese by the English
+one. If the blur does not work with the game's screen format, the picture is only darkened.
+[troubleshooting.md](troubleshooting.md) lists the causes.
 
 ## Gamepads
 

@@ -34,6 +34,9 @@ namespace PauseAnytime
 
     std::string ToUtf8(std::wstring_view text);
 
+    /// UTF-8 to UTF-16, for an FString. Any thread.
+    std::wstring ToWide(std::string_view text);
+
     std::string PathOf(UObject const* object);
 
     /// Still the object the index pointed at, of the class it had: not destroyed, not replaced by a map change. An object

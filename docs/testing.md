@@ -57,6 +57,12 @@ at once; a resize's wait for the gate, its take from a holder stuck in a call to
 overlay's own work, on two threads too; a resize while a paused movie presents; the rule that picks the game's swap
 chain; and the rules for another swap chain once the overlay draws.
 
+And they check `src/TextRules.hpp`, the pause screen's words: the string ids, the launcher's language codes (Japanese
+included), the built-in text of each language, the order a word is looked up in (a translation mod's id, the game's
+string, the built-in text), the patterns a translator may give (`%10` is not `%1`), the banner's line and its
+stand-ins for words past Latin-1 (the language's built-in word, else the English one), the letters the fonts are cut
+to, the end of the read after three tries, and what counts as a late answer at the first pause.
+
 They can't show how the threads are timed in the game, which thread makes the game's window, what the engine and the
 game do with a key, or how Bink and Wwise answer our calls: the model takes Wwise to count pauses, as
 `src/MovieSound.cpp` assumes. S3, S5 and the [checks of the build after v1.0](#the-build-after-v10) look at those in the
@@ -76,12 +82,16 @@ zip from the latest page, as step 3 of
 on the toolkit's releasing page says. While the repo is private, `main` publishes no latest page: take the same zip
 from the `dist` artifact of the workflow run on `main`. The same page says how that zip is built and checked.
 
-- Full sheet: S1 to S8 in every game, and S9 in LE2 and LE3. It is due in each game that the version adds or
+- Full sheet: S1 to S8 and S10 in every game, and S9 in LE2 and LE3. It is due in each game that the version adds or
   reworks: a new feature, moved code or a new file name.
 - Smoke sheet: S1, S3 and S6 in every other game that the version covers. The code is shared, so a change made for one
   game can break another.
+- Words: search the sources for quoted text that reaches the screen. Every shown word must be one of the ids in
+  `src/TextRules.hpp`, or a key name that is a letter or an F-key (`F7`, `A`, `Y`). Then run S10 step 1 in a second
+  language with a test text in one id, and delete that test mod before you tag.
 
-S8, the look, is in the full sheet because one change can alter the look in every game. S9 is for LE2 and LE3, where the
+S8, the look, is in the full sheet because one change can alter the look in every game. S10, the words, is too,
+because each game finds a translation mod's talk files its own way. S9 is for LE2 and LE3, where the
 pause sound holds the game's audio; LE1's does not. L0 is a one-time check outside the gate.
 
 ## The sheet
@@ -101,9 +111,10 @@ that Pause Anytime uses (`WorldInfo.Pauser`).
 
 1. During a spoken line, press Esc. Picture, voice, music and lips stop, and the game's menu sound plays.
 2. The picture blurs and darkens. The title stands at the centre, on a band in the game's menu colours.
-3. The keys stand left of their labels at the bottom left. The labels are in the game's language: "Resume" and "Photo
-   Mode" in English. In French they are "Mode photo", with "Continuer" in LE1 and "Reprendre" in LE2 and LE3.
-4. The title is Pause Anytime's own word in every game: "PAUSE" in English and in French.
+3. The keys stand left of their labels at the bottom left. With no translation mod, the labels are the game's words:
+   "Resume" and "Photo Mode" in English. In French they are "Mode photo", with "Continuer" in LE1 and "Reprendre" in
+   LE2 and LE3.
+4. With no translation mod, the title is Pause Anytime's own word in every game: "PAUSE" in English and in French.
 5. Wait a few seconds, then press Esc. The line resumes at the same word, in sync. The picture is sharp again, and the
    menu sound plays again.
 6. Do the same with Start on a gamepad. The pause screen shows the A button, and the Y button where photo mode opens.
@@ -211,9 +222,10 @@ that Pause Anytime uses (`WorldInfo.Pauser`).
 | LE2 | gold, BioMass | brown, an orange rule along each edge | orange, BioMass | tinted warm |
 | LE3 | white, BioMass | blue, a bright blue rule along each edge | pale cyan, BioMass | tinted blue |
 
-In the log, the "overlay ready" line says "LE<n> look", and the game's icons and fonts are "used". The "overlay: the
-game's texts" line reads `title "" kept ours`, since no game gives a title word, then "used" after the resume word and
-the photo mode word. "GUI sound InGameGuiEnter: played" follows "world paused". In LE3, the main menu adds "the
+In the log, the "overlay ready" line says "LE<n> look", and the game's icons and fonts are "used". With no translation
+mod, the `texts:` line gives the title `built-in <language>`, since no game has a title word, and the resume and photo
+mode words `game <id>`. No `overlay: ... has letters the ... font lacks` line follows. "GUI sound InGameGuiEnter:
+played" follows "world paused". In LE3, the main menu adds "the
 game's fonts: loaded their package in ... ms: SFXGUI_Fonts.ObjectReferencer_448".
 
 With the font mod Myriad Pro Begone installed, the game's fonts are still "used" in every game. In LE2 and LE3 the
@@ -232,6 +244,30 @@ In LE2 and LE3.
    InGameGuiExit: played". Then it has "world pause ended", and no second `InGameGuiExit`.
 5. Pause again, open the overlay, and press Esc while it is open. The log has "still paused by ...", and still no
    second `InGameGuiExit`.
+
+### S10, the words
+
+The translation test needs a small test mod for that game, made only from what [translating.md](translating.md) says.
+It defines 74300001 to 74300007 in one language, French say, with a marker in each text: `T-PAUSE`, `T-Resume`,
+`T-Photo`, `T-Space`, `T-Esc`, `T-Start` and `%1 = %2`. Install it with M3, game closed. Delete it when you are done.
+
+1. Start the game in French. At the main menu, the log's `texts:` line gives every word `ours 743000<n>`. This is
+   the proof that the game has loaded a DLC mod's talk files by the main menu's first frame: the live call of
+   2026-11-09 came seconds later.
+2. Pause a conversation. The title, both labels and the Space keycap show the markers, in the game's fonts. The log
+   has `texts: asked again at the first pause: no new answer`, not `our ids answer otherwise`.
+3. Start the game in English. The words are back to `game` and `built-in English`: the test mod's French file does not
+   reach English.
+4. Delete the test mod, start in French again. The `texts:` line gives `game` and `built-in French` again.
+5. Start in Japanese (the launcher, or `LauncherConfig.cfg`). The title is "ポーズ" and the Space keycap "スペース", in
+   the game's fonts, and the log has no `has letters the ... font lacks` line.
+6. Banner, with a test build that skips the pause screen: in French it reads `T-PAUSE`, then `T-Esc = T-Resume` and
+   `F7 = T-Photo`. In Russian or Japanese, without the test mod, it reads in English, with one `banner: ... is not
+   Latin-1` line per word. Check that `É` (in `Échap`) and `ó` (in Polish `Wznów`) draw on the banner. In Polish,
+   with `PAUZĄ` as the test mod's title, the banner reads `PAUZA`, and the log says `built-in Polish "PAUZA"
+   instead`.
+7. Exo 2, with a test build that skips the game's fonts: Japanese words show in English, with one `has letters the
+   Exo 2 font lacks` line per word.
 
 ## What the log should show
 
@@ -261,8 +297,9 @@ In this order:
 - `overlay ready: back buffer ..., LE<n> look, text in <language>, Exo 2 embedded, blur ready`;
 - `first BioHUD.PostRender on thread ...: HUD owner ..., GEngine's local player controller ... (same)`. "DIFFERENT" in
   place of "same" means Esc would read the wrong controller;
-- `the game's string table: title "", resume "...", photo mode "..."`, with the two words in the game's language. The
-  title is empty in all three games;
+- `texts: title "..." built-in <language>; resume "..." game 157151; photo mode "..." game <id>; space ...; esc ...;
+  start ...; prompt ...`, one line. Without a translation mod the resume and photo mode words are the game's, in its
+  language, and the other words `built-in <language>`. A word from a translation mod says `ours <id>`;
 - `overlay: the game's gamepad icons: A fine, Y fine: used`. A view that failed its checks gives "refused", the reason
   in brackets, and "ours drawn instead". Textures that gave no view give a warning that starts "no view of the game's
   gamepad icons". With ReShade, a line before it says `our views report device ..., the swap chain gave device ...`;
@@ -280,8 +317,9 @@ In this order:
 - `world paused in mode ...`, then `GUI sound InGameGuiEnter: played`;
 - `overlay shown: world pause` (or `movie pause`), with `gamepad` or `keyboard` prompts and, where photo mode opens,
   `photo mode offered`. Later `overlay hidden`, or `overlay hidden at once (photo mode or the console)`;
-- at the first pause only: `overlay: the game's fonts: ... used` (or a warning that Exo 2 stays), then `overlay: the
-  game's texts: ...` as in S8. Japanese without the game's fonts gives "kept ours" for the labels too;
+- at the first pause only: `texts: asked again at the first pause: no new answer`, and `overlay: the game's fonts:
+  ... used` (or a warning that Exo 2 stays). Japanese without the game's fonts then gives one `overlay: ... has
+  letters the Exo 2 font lacks: built-in English "..." instead` line per word;
 - after a key's `world resumed (...)`, `GUI sound InGameGuiExit: played`;
 - LE2 and LE3, with the Steam overlay opened during a pause: `game audio released: the Steam overlay is open, the
   world still held`, then that sound, and `world pause ended ...` once the overlay closes.
@@ -335,6 +373,19 @@ logged.
 
 Results per game, oldest first. Some test builds carried the next version's code under the old number, such as "v9's
 code, numbered 8". The v8 results name the per-game zips of that time. A release now has one zip.
+
+### Translatable words
+
+This build gives each word of the pause screen and the banner a string id (74300001 to 74300007) that a translation
+mod can define, Japanese its own built-in words, and the banner the same words as the pause screen. The words are read
+once, at the main menu's first HUD, and our ids are asked once more at the first pause to log a talk file that loaded
+later. Its automated checks pass. Nothing of S10 has run in the game yet.
+
+What it relies on was checked first, on 2026-11-09, at the main menu of each game, with a live call of
+`GetSimpleString` on the game's `GameInfo`: it returned a DLC mod's string (LE1: 74220000 from a GlobalTlk package;
+LE2 and LE3: 74230003 from a DLC `.tlk` file), and an empty string for an id no talk file defines (74249999). So the
+main menu has loaded the DLC talk files some seconds in, and an empty answer means "not defined". Whether they are
+loaded at its first frame, when Pause Anytime reads, is S10 step 1.
 
 ### The build after v1.0
 

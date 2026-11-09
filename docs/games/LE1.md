@@ -109,7 +109,7 @@ The look is `OverlayLook::LE1`, the `Le1Look` table in `src/Overlay.cpp`. Sizes 
 | Blur tint | 0.88, 0.97, 1.06 (blue) |
 | Light font | `Tigensu_jpn` (`$AeroLight`) |
 | Bold font | `Biomass_jpn` (`$BioMass`) |
-| Words | Resume 157151, photo mode 184397 |
+| Words | Ours 74300001 to 74300007 ([translating.md](../translating.md)); the game's: resume 157151, photo mode 184397 |
 | String table | `ABioSPGame.GetSimpleString` |
 | Gamepad A, Y | `GUI_SF_SharedAssets.XBox_ControllerIcons_I4`, `_I9` |
 | Button art | 128 texels, disc at (64, 64), 95 across |
@@ -124,7 +124,9 @@ The look is `OverlayLook::LE1`, the `Le1Look` table in `src/Overlay.cpp`. Sizes 
   SWF's (`FWS`), not `GFX`, and the fonts keep their names. It redraws the ASCII letters and punctuation of
   `Tigensu_jpn` (not its digits or accented letters) and removes every kerning pair that touches them, so with it the
   title has no kerning. `Biomass_jpn` stays the same.
-- The title "PAUSE" is Pause Anytime's own word. The game's paused box (170645) says "PAUSED".
+- The title has no string of the game's: its paused box (170645) says "PAUSED". So the title is a translation mod's
+  word (74300001) or Pause Anytime's own, "PAUSE" in English. The Space key keeps Pause Anytime's word too: the game's
+  key name (174820) is "Spacebar".
 - The gamepad art is DXT5, in `Startup_<lang>.pcc`, the same in every language, and it stays loaded.
 - The sounds are the GuiSounds 2DA rows `InGameGuiEnter` and `InGameGuiExit`, both `snd_gui.c_snd_guiswish`. They go
   through the GUI manager's `PlayGuiSound` with the component marked `bNonRealtime`, so they need the GUI sound hooks.
