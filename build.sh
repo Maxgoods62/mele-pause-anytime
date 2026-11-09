@@ -279,6 +279,14 @@ rm -f "$log"
 TESTS="Build/RELEASE/PauseAnytimeTests.exe"
 [[ -f "$TESTS" ]] || die "no $TESTS after its build"
 "./$TESTS" | tr -d '\r' || die "the rules' checks failed (the lines above): nothing staged"
+# docs/strings.tsv lists every string id the ASI asks for, with its English text, for translation mods
+# (docs/translating.md). It must say what the code says: the test program prints the code's list.
+ids_code="$("./$TESTS" --strings | tr -d '\r')" || die "$TESTS --strings failed"
+ids_doc="$(tr -d '\r' < "$HERE/docs/strings.tsv" | grep -v -e '^#' -e '^$')" || die "docs/strings.tsv lists no string"
+if [[ "$ids_code" != "$ids_doc" ]]; then
+    diff <(echo "$ids_doc") <(echo "$ids_code") | sed 's/^/  /'
+    die "docs/strings.tsv differs from the code (< the file, > the code): fix it, nothing staged"
+fi
 
 mkdir -p "$STAGE"
 for g in "${GAMES[@]}"; do

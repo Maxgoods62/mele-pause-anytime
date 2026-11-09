@@ -117,10 +117,11 @@ namespace PauseAnytime::Game
     using StringGame = ASFXGame;
     using GetSimpleStringParms = ASFXGame_execGetSimpleString_Parms;
 
-    /// The pause screen's words in the game's string table, in every language it ships: resume (157151, "Resume") and photo
-    /// mode (392221, "Photo Mode"). The title stays ours: the string of the paused box in WindowPop (170645) is not in LE2's
-    /// table, and "Pause" (174771) stays English in Russian, Polish and Japanese.
-    inline constexpr PauseTextIds PauseTexts{ 0, 157151, 392221 };
+    /// The game's own string for each TextRules::Word, asked when no translation mod defines ours (0: none, so the built-in
+    /// text), in every language the game ships: resume (157151, "Resume") and photo mode (392221, "Photo Mode"). The title
+    /// has none: the string of the paused box in WindowPop (170645) is not in LE2's table, and "Pause" (174771) stays English
+    /// in Russian, Polish and Japanese. Space keeps the built-in word too: the game's key name (174820) is "Spacebar".
+    inline constexpr std::array<int, TextRules::WordCount> GameWords{ 0, 157151, 392221, 0, 0, 0, 0 };
 
     /// The gamepad's A and Y: in Startup_<lang>.pcc, its own art, ARGB where LE1's is DXT5.
     inline constexpr PauseIconNames PauseIcons{ L"GUI_SF_Xbox_ControllerIcons", L"Xbox_ControllerIcons_IA", L"Xbox_ControllerIcons_I1" };

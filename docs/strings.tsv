@@ -1,0 +1,20 @@
+# Pause Anytime's string ids, for translation mods (docs/translating.md). One line per string: the id, a tab, the
+# English text (UTF-8). The ids are the same in LE1, LE2 and LE3. A translation mod defines them in its own talk files.
+#
+# 74300001 the title of the pause screen and of the banner
+# 74300002 Resume, on the pause screen and the banner (without a translation: the game's string 157151)
+# 74300003 Photo mode, on the pause screen and the banner (without a translation: the game's own string)
+# 74300004 the Space key, on the pause screen
+# 74300005 the Esc key, on the banner
+# 74300006 the Start button, on the banner
+# 74300007 a key and what it does, on the banner: %1 is the key, %2 what it does, each once, with no digit after it
+#
+# 74300000 is kept for the mod's name, which nothing shows yet; 74300008 to 74300099 are kept for later words.
+# build.sh checks that the lines below match the code (TextRules.hpp) and stops when they differ.
+74300001	PAUSE
+74300002	Resume
+74300003	Photo mode
+74300004	Space
+74300005	Esc
+74300006	Start
+74300007	%1: %2

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Common/Base.hpp"
+#include "PauseAnytime/TextRules.hpp"
 
 #include <atomic>
 #include <span>
@@ -19,14 +20,6 @@ namespace PauseAnytime
     /// How a game's pause screen looks (game/LE<n>.hpp's Game::Look): the colours of that game's menus, the title on a band,
     /// blue or brown, each key left of its label as the game draws its buttons, the blur a little cooler or warmer.
     enum class OverlayLook : unsigned char { LE1, LE2, LE3 };
-
-    /// The pause screen's words in a game's string table (game/LE<n>.hpp's PauseTexts). 0: that word stays ours.
-    struct PauseTextIds
-    {
-        int Title;
-        int Resume;
-        int Photo;
-    };
 
     /// The textures of a gamepad's A and Y, right under a package (game/LE<n>.hpp's PauseIcons).
     struct PauseIconNames
@@ -132,6 +125,13 @@ namespace PauseAnytime
         void Log(char const* what);
     }
 
+    // ! Engine.cpp: language
+    // ========================================
+
+    /// The code of the text language the LE launcher gave the game (-OVERRIDELANGUAGE= in LE1 and LE2, -language= in LE3),
+    /// upper case, or empty without one (a start past the launcher): TextRules::LanguageOfCode reads it. Any thread.
+    std::wstring LaunchLanguageCode();
+
     // ! Overlay.cpp
     // ========================================
 
@@ -141,10 +141,11 @@ namespace PauseAnytime
         /// buffer, in <paramref name="look"/>. Without them (logged) Pause.cpp draws its Canvas banner.
         void Install(::LESDK::Initializer& Init, OverlayLook look);
 
-        /// The title and the two labels in the game's own words, read from its string table (UTF-8). Each one replaces ours
-        /// only if the font it is set in has every letter of it (Exo 2 has no Japanese); an empty one keeps ours. The first
-        /// call counts, later ones are ignored. Any thread.
-        void UseGameTexts(std::string title, std::string resume, std::string photo);
+        /// The words Pause.cpp picked (TextRules::Resolve): a translation mod's, the game's or the built-in text, UTF-8.
+        /// Each word the screen draws is set in the first of these that its font draws every letter of: the picked text, the
+        /// built-in text of the launch language, the English one (logged once per word). Until this call, the built-in text
+        /// of the launch language. The first call counts, later ones are ignored. Any thread.
+        void UseTexts(TextRules::Picks words);
 
         /// The game's own gamepad buttons, as the views its renderer holds of their textures (ID3D11ShaderResourceView):
         /// pointers read raw from the game, which the render thread checks before it calls them. Both show or neither, and
@@ -152,10 +153,12 @@ namespace PauseAnytime
         void UseGameIcons(void* padA, void* padY);
 
         /// A game's look: its own fonts in place of Exo 2, from the GFx movies that hold them. They are turned into TrueType
-        /// here, in memory, with only the letters of the pause screen: call it after UseGameTexts. Both show or neither, and
-        /// Exo 2 stays with a movie that isn't one we know (logged). The first good call counts. Game thread, under a guard: the
-        /// bytes are read in this call, and not after it.
-        void UseGameFonts(GameFontSource light, GameFontSource bold);
+        /// here, in memory, with only <paramref name="letters"/> (TextRules::ScreenLetters of the words picked). Both show or
+        /// neither, and Exo 2 stays with a movie that isn't one we know (logged), with fonts that can't draw "F7" and the
+        /// English built-in text, or with fonts that draw fewer of the words in the launch language than Exo 2 does. Called
+        /// once the words are read, after UseTexts when that is called. The first good call counts. Game thread, under a
+        /// guard: the bytes are read in this call, and not after it.
+        void UseGameFonts(GameFontSource light, GameFontSource bold, std::span<char32_t const> letters);
 
         /// Game thread, each frame and at once when photo mode starts: the world pause screen shows (the HUD drawing), with
         /// photo mode's key where it opens; or it goes at once, with no fade (photo mode, the console).

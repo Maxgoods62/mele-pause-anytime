@@ -129,7 +129,7 @@ Sizes are at 1080 lines, and the title is 1.5 times the wheel's, with its spacin
 | Blur tint | 1.06, 0.97, 0.88 (warm) |
 | Light font | `Myriad Pro+DFGGothicP-W5` |
 | Bold font | `Biomass+DFGSoGei-W7` |
-| Words | Resume 157151, photo mode 392221 |
+| Words | Ours 74300001 to 74300007 ([translating.md](../translating.md)); the game's: resume 157151, photo mode 392221 |
 | String table | `ASFXGame.GetSimpleString` |
 | Gamepad A, Y | `GUI_SF_Xbox_ControllerIcons.Xbox_ControllerIcons_IA`, `_I1` |
 | Button art | 128 texels, disc at (61, 55.5), 93 across |
@@ -138,8 +138,9 @@ Sizes are at 1080 lines, and the title is 1.5 times the wheel's, with its spacin
 - The light font is in `GUI_SF_Fonts.AeroLightFont_glyphs` and the bold one in `GUI_SF_Fonts.BioMassFont_glyphs`, in
   `Startup_<lang>.pcc`. Both are the same in all eight languages. The movies `AeroLightFont` and `BioMassFont` hold no
   outlines.
-- The title is Pause Anytime's own word. String 170645 is not in LE2's table, and "Pause" (174771) stays English in
-  Russian, Polish and Japanese.
+- The title has no string of the game's: 170645 is not in LE2's table, and "Pause" (174771) stays English in Russian,
+  Polish and Japanese. So the title is a translation mod's word (74300001) or Pause Anytime's own. The Space key keeps
+  Pause Anytime's word too: the game's key name (174820) is "Spacebar".
 - The sounds `InGameGuiEnter` and `InGameGuiExit` are the ones `ShowBrowserWheel` and `HideBrowserWheel` play,
   through `BioSFManager.PlaySound`. The first starts with a Wwise Pause All and the second with a Resume All. So every
   end of the pause posts `InGameGuiExit` once. If it does not play, as after a load, it is tried again on the next

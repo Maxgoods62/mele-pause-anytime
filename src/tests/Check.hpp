@@ -21,8 +21,9 @@ namespace PauseAnytime::Tests
         std::printf("FAILED %.*s line %u: %s\n", static_cast<int>(file.size()), file.data(), static_cast<unsigned>(where.line()), what);
     }
 
-    /// KeyRulesTest.cpp, MovieRulesTest.cpp and OverlayRulesTest.cpp.
+    /// KeyRulesTest.cpp, MovieRulesTest.cpp, OverlayRulesTest.cpp and TextRulesTest.cpp.
     void RunKeyRules();
     void RunMovieRules();
     void RunOverlayRules();
+    void RunTextRules();
 }

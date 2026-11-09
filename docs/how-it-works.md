@@ -25,7 +25,8 @@ Each game has its own ASI, `LE<n>PauseAnytime.asi`, loaded by [LEBinkProxy](http
 | `src/Overlay.cpp`, `Blur.hpp`, `Blur.cpp` | The pause screen and its blur, in the game's presents, one thread at a time |
 | `src/GameFont.hpp`, `GameFont.cpp` | A game font from a GFx movie to TrueType in memory; plain C++ |
 | `src/KeyRules.hpp`, `MovieRules.hpp`, `OverlayRules.hpp` | The rules the threads race for (whose key press it is, a movie's pause and its Wwise event, the overlay's gate and swap chain), as plain functions with no game or Windows type |
-| `src/tests/` | `PauseAnytimeTests`, the checks of those rules, run by each build ([testing.md](testing.md#the-automated-checks)) |
+| `src/TextRules.hpp` | The pause screen's words: their string ids, the built-in text of each language, the order a word is looked up in, the banner's line, the letters the fonts are cut to |
+| `src/tests/` | `PauseAnytimeTests`, the checks of those rules and of `TextRules.hpp`, run by each build ([testing.md](testing.md#the-automated-checks)) |
 | `src/game/Game.hpp`, `LE<n>.hpp` | Per game: modes, key events, RVAs, string ids, look, sounds, movie lists. `Game.hpp` picks one |
 | `src/game/KismetMovie.hpp` | LE2, LE3: reads a Kismet movie action |
 | `src/fonts/` | Exo 2 Regular and SemiBold, `OFL.txt` |
@@ -369,18 +370,40 @@ piece of pipeline state it changes.
 
 ### Words, fonts and buttons
 
-The title is always Pause Anytime's own word. The labels come from the game's string table (`GetSimpleString`, up to
-3 frames), and each is used only if its font has every letter. Pause Anytime's own words follow the launcher's
-language switch (`-OVERRIDELANGUAGE=` in LE1 and LE2, `-language=` in LE3), in seven languages. Japanese gets English,
-since Exo 2 has no kana.
+Each word has a string id, 74300001 to 74300007 ([translating.md](translating.md#the-string-ids)), so a translation
+mod can replace it. At the first HUD that has a game object, the main menu's, `Pause.cpp` asks `GetSimpleString` for
+each id. A live call at the main menu of each game found the DLC mods' talk files loaded, and an empty string for an
+id that no talk file defines. That call came some seconds after the menu's first frame, so step 1 of
+[S10](testing.md#s10-the-words) checks the read itself. For each word `TextRules::Resolve` takes the first text that
+is not empty: our id, then the game's own string where the word has one (`Game::GameWords`: Resume and Photo mode),
+then Pause Anytime's built-in text in the launcher's language (`-OVERRIDELANGUAGE=` in LE1 and LE2, `-language=` in
+LE3). The built-in text covers English, French, German, Italian, Spanish, Polish, Russian and Japanese. The pattern of
+the banner's keys must hold `%1` and `%2` once each, or it is skipped.
+
+The words are read once a session. A try counts only when the world has a game object, and it is tried again only
+while the call itself does not run, 3 times at most. Then, or after a fault, the built-in text stays for the session.
+The log line `texts: ...` names each word's text and its source: `ours <id>`, `game <id>` or `built-in <language>`.
+The banner uses these words. The overlay gets them through `Overlay::UseTexts`, and draws the built-in text of the
+language until then. At the first pause, `Pause.cpp` asks for the ids once more. If one answers then with a text the
+read did not take, a talk file loaded after the read: a warning names the id, and the words stay as read for the
+session. The read's state is one enum, `TextRead` (Waiting, Done, Checked, Off).
+
+On the pause screen, each word is drawn in the first of three texts that its font has every letter of: the word
+picked, the language's built-in text, and the English one. A fallback is logged once per word (`overlay: ... has
+letters the ... font lacks`). The game's fonts draw every language of the game, so in practice only Exo 2 falls back:
+it has no Japanese letters. The game's fonts replace Exo 2 when they draw `F7` and the English text, and at least as
+many of the words in the game's language as Exo 2 does.
 
 The text is set in the game's two GUI fonts, a light one and a bold one. `GameFont.cpp` reads each from a GFx movie
 (its `DefineFont3` tag) and writes a TrueType file in memory, never on disk, with only the letters the screen needs. A
 mod can replace the movie, so every read is checked and every size capped. The movie may be Scaleform's GFX or a plain
-uncompressed SWF (`FWS`), as Myriad Pro Begone saves LE1's. Compressed movies are refused. ImGui has no kerning, so
+uncompressed SWF (`FWS`), as Myriad Pro Begone saves LE1's. Compressed movies are refused. The fonts are read after the
+words, and cut to their letters, the letters of the language's and English built-in text, and "F7". The game thread
+passes those letters, so the overlay reads nothing across threads. ImGui has no kerning, so
 each line is set letter by letter with the font's kerning pairs. Each line's capitals are centred using the height of
 the font's own H, so a font mod that redraws the capitals stays centred. The look's fixed height is used only if the
-font has no H from 0.5 to 1 EM. Both fonts must load and draw the words, or Exo 2 stays for all of the text.
+font has no H from 0.5 to 1 EM. Both fonts must load and draw the built-in text of the language and of English, or Exo 2
+stays for all of the text.
 
 The A and Y prompts use the view that the renderer holds of the game's own textures. The game thread follows
 `UTexture.Resource` to it (`Game::TextureView`). The render thread takes it only if its method table and the device
@@ -408,9 +431,12 @@ copy no longer fits, and nothing more is presented.
 - Without the blur (a format it does not handle, a shader that fails), the backdrop is black at 60 %.
 - Without the overlay (a hook that fails, no `d3dcompiler_47.dll` in System32, 10 frames with no view on the back
   buffer, a fault), before it has started on the game's swap chain, or while a new swap chain waits to be taken,
-  `Pause.cpp` draws an English banner on the HUD's Canvas: `PAUSE`, then `Esc: resume` and, where photo mode opens,
-  `F7: photo mode`. It names Start and Y instead when Start paused or a gamepad is in use. It shows under our world
-  pause outside photo mode, never over a movie.
+  `Pause.cpp` draws a banner on the HUD's Canvas: the title, then the keys with their words, each made from the pattern
+  74300007, such as `Esc: Resume` and, where photo mode opens, `F7: Photo Mode`. It names Start and Y instead when
+  Start paused or a gamepad is in use. It shows under our world pause outside photo mode, never over a movie. Its font,
+  the engine's `MediumFont`, has 256 characters (Latin-1) in all three games, Russian and Japanese included. So a word
+  with any other letter is shown there in Pause Anytime's own text of the language, or in English when that one has
+  other letters too (`TextRules::BannerWords`), logged once per word.
 
 ## Crash guards
 
@@ -428,7 +454,7 @@ Pause Anytime. A fault below a present the game makes goes on up to the game.
 | The resume after that fault | Logs it; if the world stays paused, the console's `pause` resumes it |
 | The photo camera | Leaves photo mode |
 | The Kismet movie latch | Latches or clears nothing for that call |
-| Reading the game's words, icons or fonts | Stops trying, keeps its own words, discs or Exo 2 |
+| Reading the words, the game's icons or fonts | Stops trying, keeps the built-in words, discs or Exo 2 |
 | The pause screen | Off for the session; the banner takes over |
 | The banner | Off for the session |
 
@@ -461,3 +487,5 @@ pause.
   that script also skips a skippable cutscene. Not tested.
 - HDR: the text and band use the same 8-bit colours on every back buffer format, and nothing reads the swap chain's
   colour space.
+- The banner's font: its 256 characters are taken to be U+0000 to U+00FF, since no remap was seen in it. Letters such
+  as `É` and `ó` on the banner are not checked in the game yet.
