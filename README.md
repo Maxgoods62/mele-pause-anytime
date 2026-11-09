@@ -43,8 +43,9 @@ the folder where Mass Effect Legendary Edition is installed (it holds a folder n
 number: 1, 2 or 3.
 
 1. Check that the game has an ASI loader: `<LE folder>\Game\ME<n>\Binaries\Win64` must hold `bink2w64_original.dll`
-   and an `ASI` folder. If they are missing, install any mod once with ME3Tweaks Mod Manager. It adds the loader,
-   [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy).
+   and an `ASI` folder. If they are missing, open ME3Tweaks Mod Manager, choose Mod Management > ASI Mod Manager,
+   select the game and click Install Loader. Each game has its own loader,
+   [LEBinkProxy](https://github.com/ME3Tweaks/LEBinkProxy), so do this for each game you play.
 2. Install the latest [Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe).
 3. Download `PauseAnytime-v<N>.zip` from the
    [Nexus Mods page](https://www.nexusmods.com/masseffectlegendaryedition/mods/3539) or from
