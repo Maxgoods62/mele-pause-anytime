@@ -7,8 +7,8 @@ games. The shared design is in [how-it-works.md](../how-it-works.md), and test r
 
 ## Keys
 
-The world pause starts in game mode 5 (Conversation) or 6 (Cinematic), when nothing else holds the world paused
-(`WorldInfo.Pauser` is None).
+The world pause starts in game mode 5 (Conversation) or 6 (Cinematic), or in mode 7 (GUI) over the Bypass or the
+Hack while its timer runs, when nothing else holds the world paused (`WorldInfo.Pauser` is None).
 
 | Where | Esc or Start | Space or A | Y or F7 |
 |---|---|---|---|
@@ -17,6 +17,9 @@ The world pause starts in game mode 5 (Conversation) or 6 (Cinematic), when noth
 | Photo mode opened from the pause | Leaves it, still paused | The game's (Space takes the picture) | Leaves it, still paused |
 | Movie Pause Anytime can pause | Toggles the movie pause | Resumes a paused movie | The game's |
 | Any other movie | The game's | Space skips a skippable movie | The game's |
+| Bypass or Hack, timer running | Pauses the world | The game's | The game's |
+| Under the world pause over a minigame | Resumes | Resumes | The game's (no photo mode) |
+| Bypass or Hack, before it starts or at its end | The game's (Esc cancels before the start) | The game's | The game's |
 | Gameplay, menus, galaxy map, open console | The game's | The game's | The game's |
 
 - In Cinematic mode, Esc, Space and the pad's X run `SkipCinematic`, so Esc skips a skippable cutscene in the game
@@ -24,6 +27,14 @@ The world pause starts in game mode 5 (Conversation) or 6 (Cinematic), when noth
 - The [skip guard](../how-it-works.md#skip-guard) drops the `GuiKey` events of the always-on binds: Escape sends
   `BUTTON_B`, 13 (released 34), and Start sends `BUTTON_START`, 21 (released 42). Since `GuiKey` is matched by number,
   a pad B press in the guard window is dropped too.
+- The minigames are panels of the GUI manager in mode 7: the Bypass, tagged `SkillGameBypass`
+  (`MassEffectGuiManager.ShowSkillGameBypass`), and the Hack, `SkillGameDecryption` (`ShowSkillGameDecryption`).
+  Their movie's `_root.MiniGame.nGameState` is 0 to 5: 1 before the start, 2 while the timer runs, 3 and 4 at the
+  end. The clock is `_root.MiniGame.mcTimer1.nGlobalTime`, fed by the handler's `Update` from the GUI tick, which the
+  world pause stops. Without mods, Esc during the Bypass sends `BUTTON_B` and interrupts it (the game is lost); with
+  Pause Anytime it pauses. The on-screen Exit button and pad B still quit. On the board the skip guard also drops A's
+  `GuiKey` events, `BUTTON_A` 12 (released 33), and Space's `SFXGameModeGUI.DecryptSelect`, which picks a code in the
+  Hack, while that key resumed.
 - While Pause Anytime's photo session runs, photo mode's menu bind, `SFXGameModePhoto.ShowMenu`, is always dropped.
 - The Steam overlay sets `WorldInfo.Pauser`. If it opens over the world pause, the next frame posts `InGameGuiExit`
   while the world is still held, so the voice line survives

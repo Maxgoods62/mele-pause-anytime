@@ -18,8 +18,13 @@ An ASI loader starts `.asi` files with the game. Pause Anytime needs
 Each game has its own loader and its own `ASI` folder.
 
 Open `<LE folder>\Game\ME<n>\Binaries\Win64`. If it holds a file named `bink2w64_original.dll` and a folder named
-`ASI`, the loader is there. If they are missing, install any mod once with ME3Tweaks Mod Manager. It installs the
-loader with the mod.
+`ASI`, the loader is there. If they are missing, install it with ME3Tweaks Mod Manager:
+
+1. Choose Mod Management > ASI Mod Manager.
+2. Select the game, for example Mass Effect 2 LE.
+3. Click Install Loader.
+
+Do this for each game you play: having the loader in one game does not add it to the others.
 
 ### The Visual C++ runtime
 

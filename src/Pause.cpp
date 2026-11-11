@@ -1,6 +1,7 @@
 #include "PauseAnytime/Pause.hpp"
 #include "PauseAnytime/Engine.hpp"
 #include "PauseAnytime/KeyRules.hpp"
+#include "PauseAnytime/Minigame.hpp"
 #include "PauseAnytime/Photo.hpp"
 #include "PauseAnytime/game/Game.hpp"
 #include "PauseAnytime/SharedVersion.h"
@@ -65,13 +66,29 @@ namespace PauseAnytime
         using KeyRules::Hold;
         using KeyRules::KeyState;
 
+        /// What our world pause holds: nothing, a conversation or an in-engine cutscene, or a minigame's board while its
+        /// clock runs (Minigame.hpp). Changed by SetPauseKind only.
+        enum class PauseKind : unsigned char { Off, Scene, Minigame };
+
+        char const* KindName(PauseKind kind)
+        {
+            switch (kind)
+            {
+            case PauseKind::Scene: return "scene";
+            case PauseKind::Minigame: return "minigame";
+            default: return "off";
+            }
+        }
+
         struct State
         {
-            /// Our world pause: the WorldInfo we paused (checked again before each use: a map change or a load replaces it)
-            /// and the controller that paused it, which resumes it.
-            bool WorldPaused = false;
+            /// Our world pause, its kind (PauseKind), the WorldInfo we paused (checked again before each use: a map change
+            /// or a load replaces it) and the controller that paused it, which resumes it.
+            PauseKind Kind = PauseKind::Off;
             Kept<AWorldInfo> World;
             Kept<ABioPlayerController> Controller;
+            /// A minigame pause's panel (a UBioSFPanel): the pause ends with it.
+            Kept<UObject> MinigamePanel;
             unsigned char PausedMode = NoMode;
             ULONGLONG PausedAt = 0;
             /// Start paused it: the banner names Start, also before PlayerInput has seen the pad (our press never reaches it).
@@ -129,8 +146,14 @@ namespace PauseAnytime
             unsigned GameIconTries = 0;
             /// Frames on which ReadGameFonts tried (MaxGameFontTries once it is done).
             unsigned GameFontTries = 0;
+
+            /// Our world pause holds, of either kind.
+            bool Paused() const { return Kind != PauseKind::Off; }
         };
         State G;
+
+        /// The one change of State::Kind.
+        void SetPauseKind(PauseKind kind) { G.Kind = kind; }
 
         std::atomic<DWORD> GameThreadId{ 0 };
         std::atomic<ULONGLONG> GameThreadTick{ 0 };
@@ -224,9 +247,10 @@ namespace PauseAnytime
         /// Our world pause's state ends. The audio hold is not part of it: it ends when the resume's sound plays.
         void EndWorldPause()
         {
-            G.WorldPaused = false;
+            SetPauseKind(PauseKind::Off);
             G.World.Set(nullptr);
             G.Controller.Set(nullptr);
+            G.MinigamePanel.Set(nullptr);
             G.PausedMode = NoMode;
         }
 
@@ -266,7 +290,9 @@ namespace PauseAnytime
             }
         }
 
-        bool PauseWorld(ABioPlayerController* pc, unsigned char mode)
+        /// Pauses the world for a conversation or a cutscene, or, with <paramref name="minigame"/> (its panel), for a minigame
+        /// whose clock runs.
+        bool PauseWorld(ABioPlayerController* pc, unsigned char mode, Minigame::Board const* minigame = nullptr)
         {
             auto const world = pc->WorldInfo;
             if (world == nullptr || world->Pauser != nullptr) return false;
@@ -276,13 +302,15 @@ namespace PauseAnytime
                 LEASI_WARN("world pause refused: Pause ran and WorldInfo.Pauser is still None (GameInfo.AllowPausing?), thread {}", GetCurrentThreadId());
                 return false;
             }
-            G.WorldPaused = true;
+            SetPauseKind(minigame != nullptr ? PauseKind::Minigame : PauseKind::Scene);
             G.World.Set(world);
             G.Controller.Set(pc);
+            G.MinigamePanel.Set(minigame != nullptr ? minigame->Panel : nullptr);
             G.PausedMode = mode;
             G.PausedAt = GetTickCount64();
-            LEASI_INFO("world paused in mode {} ({}): Pauser {} ({}), {}, thread {}", mode, ModeName(mode), PathOf(world->Pauser),
-                       static_cast<void const*>(world->Pauser), PathOf(world), GetCurrentThreadId());
+            LEASI_INFO("world paused in mode {} ({}){}: Pauser {} ({}), {}, thread {}", mode, ModeName(mode),
+                       minigame != nullptr ? std::format(" over minigame {} ({})", Minigame::Describe(*minigame), PathOf(minigame->Panel)) : std::string{},
+                       PathOf(world->Pauser), static_cast<void const*>(world->Pauser), PathOf(world), GetCurrentThreadId());
             // A hold whose end is still being tried stays held: this pause's end gives it back too.
             if (PlayPauseSound(pc, PauseSound) && PauseSoundHoldsAudio) G.AudioHeld = true;
             G.AudioTries = 0;
@@ -295,7 +323,8 @@ namespace PauseAnytime
         /// sound holds the game's audio. When that sound does not play, the hold stays for the next Validate (ReleaseAudio).
         void ResumeWorld(char const* why, bool byKey = false)
         {
-            if (!G.WorldPaused) return;
+            if (!G.Paused()) return;
+            auto const kind = G.Kind;
             auto const mode = G.PausedMode;
             auto const since = G.PausedAt;
             auto const world = G.World.Live();
@@ -328,25 +357,41 @@ namespace PauseAnytime
                 LEASI_WARN("world resume ({}) after {:.1f} s: still paused by {} ({}): another pause holds the world (Steam overlay?)", why,
                            HeldFor(since), PathOf(pauser), static_cast<void const*>(pauser));
             else
-                LEASI_INFO("world resumed ({}) after {:.1f} s, paused in mode {} ({}), thread {}", why, HeldFor(since), mode, ModeName(mode),
-                           GetCurrentThreadId());
+                LEASI_INFO("world resumed ({}) after {:.1f} s, paused in mode {} ({}) over a {}, thread {}", why, HeldFor(since), mode, ModeName(mode),
+                           KindName(kind), GetCurrentThreadId());
             if ((PauseSoundHoldsAudio ? audioHeld : byKey && pauser == nullptr) && !PlayPauseSound(controller, ResumeSound)) G.AudioHeld = audioHeld;
         }
 
         // ! World pause: checks
         // ========================================
 
+        /// What ends our world pause besides its world and its Pauser, read under it: a scene pause ends when the mode left
+        /// Conversation and Cinematic, a minigame pause when the mode left GUI or its panel closed. Under the pause neither
+        /// can happen by itself (no GUI tick, no Kismet, no input), so this is the net under a load or a mod, not a path a
+        /// test reaches. NoMode, no mode manager to read, is not a mode change. Null: nothing ends it.
+        char const* PauseLeft(ABioPlayerController* pc)
+        {
+            auto const mode = ModeOf(pc);
+            if (G.Kind == PauseKind::Minigame)
+            {
+                if (mode != ModeGui && mode != NoMode) return "mode changed";
+                if (!Minigame::StillOpen(G.MinigamePanel.Live())) return "minigame closed";
+                return nullptr;
+            }
+            return mode != ModeConversation && mode != ModeCinematic && mode != NoMode ? "mode changed" : nullptr;
+        }
+
         /// Every frame and every key of ours: our world pause ends when someone else ended it (Pauser None: the game, a load,
-        /// the Steam overlay closing clears every CanUnpause that agrees), when its WorldInfo is gone, or when the mode left
-        /// Conversation and Cinematic under it (Photo is ours while our photo session runs). Our photo session ends first,
-        /// with the world or the mode it stands on. The movie pause isn't checked here: Bink.cpp ends it (close, Esc, its
-        /// movie gone silent), and SkipMovie and the HUD drawing again do. An open Steam overlay will end the pause when it
-        /// closes, with no key of ours: the audio goes back first, while the world is held. Returns true when it resumed our
-        /// world pause itself (the mode changed): a press that met that pause is ours all the same.
+        /// the Steam overlay closing clears every CanUnpause that agrees), when its WorldInfo is gone, or when what it held
+        /// left under it (PauseLeft; Photo is ours while our photo session runs). Our photo session ends first, with the world
+        /// or the mode it stands on. The movie pause isn't checked here: Bink.cpp ends it (close, Esc, its movie gone silent),
+        /// and SkipMovie and the HUD drawing again do. An open Steam overlay will end the pause when it closes, with no key of
+        /// ours: the audio goes back first, while the world is held. Returns true when it resumed our world pause itself:
+        /// a press that met that pause is ours all the same.
         bool Validate(ABioPlayerController* pc, char const* where)
         {
-            PhotoMode::Check(G.WorldPaused, G.World.Object);
-            if (G.WorldPaused)
+            PhotoMode::Check(G.Paused(), G.World.Object);
+            if (G.Paused())
             {
                 if (G.World.Live() == nullptr)
                 {
@@ -376,12 +421,12 @@ namespace PauseAnytime
                     }
                     if (!PhotoMode::On() && pc != nullptr && pc->WorldInfo == G.World.Object)
                     {
-                        // NoMode: no mode manager to read, which is not a mode change.
-                        auto const mode = ModeOf(pc);
-                        if (mode != ModeConversation && mode != ModeCinematic && mode != NoMode)
+                        if (auto const left = PauseLeft(pc))
                         {
-                            LEASI_WARN("mode is {} ({}) under our world pause ({}): resuming", mode, ModeName(mode), where);
-                            ResumeWorld("mode changed");
+                            auto const mode = ModeOf(pc);
+                            LEASI_WARN("{} under our world pause over a {} ({}): mode is {} ({}), resuming", left, KindName(G.Kind), where, mode,
+                                       ModeName(mode));
+                            ResumeWorld(left);
                             LEASI_FLUSH();
                             return true;
                         }
@@ -439,8 +484,8 @@ namespace PauseAnytime
         }
 
         /// A fresh press of Esc or Start, outside the open console: it leaves our photo mode, else it is the fullscreen movie's,
-        /// else it resumes our world pause, else pauses the world in a conversation or a cutscene. Returns what it did, or null
-        /// for a press left to the game.
+        /// else it resumes our world pause, else pauses the world in a conversation or a cutscene, or on a minigame's board
+        /// while its clock runs. Returns what it did, or null for a press left to the game.
         char const* Press(UConsole* console, UFunction* function, Key key)
         {
             auto const pc = LocalController(console);
@@ -453,6 +498,9 @@ namespace PauseAnytime
             auto const pauser = world != nullptr ? world->Pauser : nullptr;
             auto const movies = Bink::OpenMovies();
             auto const movie = MovieMode(pc);
+            // Read only in the GUI mode, where a minigame shows; outside its playing state (the screen before the game, where
+            // Esc cancels it, and its result) the press stays the game's.
+            auto const board = mode == ModeGui && !G.Paused() ? Minigame::Find(pc) : Minigame::Board{};
 
             char const* action = nullptr;
             // Photo mode before the movie: a session runs under our world pause, with no fullscreen movie, and a stall in it
@@ -467,7 +515,7 @@ namespace PauseAnytime
                 action = "taken: photo mode had ended before this press";
             // Validate resumed the world on this press: the game must not act on it too (open its menu, skip).
             else if (resumed)
-                action = "taken: the world resumed, the mode had changed";
+                action = "taken: the world resumed, what it held had left";
             else if (Bink::OwnsKeys())
             {
                 // Esc isn't toggled here: the movie's thread saw this press too and acts on it, so one press is one toggle.
@@ -478,7 +526,7 @@ namespace PauseAnytime
                 if (key == Key::Esc) action = "taken for the fullscreen movie, its thread toggles the movie pause";
                 else action = Bink::Toggle("Start pressed") ? "toggled the movie pause" : "taken for the fullscreen movie, nothing to toggle";
             }
-            else if (G.WorldPaused)
+            else if (G.Paused())
             {
                 ResumeWorld(KeyName(key), true);
                 action = "resumed the world";
@@ -491,10 +539,22 @@ namespace PauseAnytime
                     action = "paused the world";
                 }
             }
+            else if (board.Playing && world != nullptr && pauser == nullptr)
+            {
+                if (PauseWorld(pc, mode, &board))
+                {
+                    G.PausedByStart = key == Key::Start;
+                    action = "paused the world over the minigame";
+                }
+                // Taken all the same: there the game's Esc is the LE2 Bypass's interrupt, which loses the game, and the
+                // player asked for a pause (PauseWorld logged the refusal).
+                else
+                    action = "taken: the world pause was refused over the minigame";
+            }
 
-            LEASI_INFO("{} pressed: mode {} ({}), movie mode {}, modes on {}, Pauser {} ({}), {} open movie(s), {}: {} (function {}, thread {})",
-                       KeyName(key), mode, ModeName(mode), MovieModeText(movie), ActiveModesText(pc), PathOf(pauser), static_cast<void const*>(pauser), movies, PathOf(pc),
-                       action != nullptr ? action : "vanilla", PathOf(function), GetCurrentThreadId());
+            LEASI_INFO("{} pressed: mode {} ({}), movie mode {}, modes on {}, Pauser {} ({}), {} open movie(s), minigame {}, {}: {} (function {}, thread {})",
+                       KeyName(key), mode, ModeName(mode), MovieModeText(movie), ActiveModesText(pc), PathOf(pauser), static_cast<void const*>(pauser), movies,
+                       Minigame::Describe(board), PathOf(pc), action != nullptr ? action : "vanilla", PathOf(function), GetCurrentThreadId());
             LEASI_FLUSH();
             return action;
         }
@@ -626,7 +686,9 @@ namespace PauseAnytime
                 action = "taken: photo mode had ended before this press";
             else if (Bink::OwnsKeys())
                 action = nullptr;
-            else if (G.WorldPaused && pc != nullptr && pc == G.Controller.Live() && (mode == ModeConversation || mode == ModeCinematic))
+            // Never over a minigame: photo mode lifts the pause around the GUI tick, which would run the minigame's clock (in
+            // LE2 the handler's Update feeds it) and its board.
+            else if (G.Kind == PauseKind::Scene && pc != nullptr && pc == G.Controller.Live() && (mode == ModeConversation || mode == ModeCinematic))
             {
                 if (G.FrameFaults >= MaxFrameFaults)
                 {
@@ -648,7 +710,7 @@ namespace PauseAnytime
                     }
                 }
             }
-            LEASI_INFO("{} pressed: mode {} ({}), world paused by us {}, {}: {} (function {}, thread {})", KeyName(key), mode, ModeName(mode), G.WorldPaused,
+            LEASI_INFO("{} pressed: mode {} ({}), world paused by us {}, {}: {} (function {}, thread {})", KeyName(key), mode, ModeName(mode), G.Paused(),
                        PathOf(pc), action != nullptr ? action : "vanilla", PathOf(function), GetCurrentThreadId());
             LEASI_FLUSH();
             return action;
@@ -715,13 +777,13 @@ namespace PauseAnytime
             }
             else if (movie == KeyRules::MoviePress::Resumed)
                 action = "taken: the movie's thread resumed the movie on it";
-            else if (pressed && G.WorldPaused && !PhotoMode::On())
+            else if (pressed && G.Paused() && !PhotoMode::On())
             {
                 auto const pc = LocalController(console);
                 // Validate resumed the world on this press: the game must not act on it too.
                 if (Validate(pc, KeyName(key)))
-                    action = "taken: the world resumed, the mode had changed";
-                else if (G.WorldPaused)
+                    action = "taken: the world resumed, what it held had left";
+                else if (G.Paused())
                 {
                     ResumeWorld(KeyName(key), true);
                     action = "resumed the world";
@@ -764,22 +826,49 @@ namespace PauseAnytime
             return false;
         }
 
-        /// Which of our keys is down (or was a moment ago), or null: whether or not Console.InputKey's TRUE kept it from
-        /// PlayerInput. A press of Esc the movie's thread acted on counts too, seen here or not: Bink.cpp keeps its tick fresh
-        /// while it is down.
-        char const* KeyGuard(ULONGLONG now)
+        /// Which of our keys are down (or were a moment ago), as KeyRules::Guards: 0 for none, whether or not Console.InputKey's
+        /// TRUE kept them from PlayerInput. A press of Esc the movie's thread acted on counts too, seen here or not: Bink.cpp
+        /// keeps its tick fresh while it is down.
+        KeyRules::Guards KeyGuard(ULONGLONG now)
         {
-            if (TakenLately(Bink::EscSeenDown(), now)) return "Esc";
-            if (TakenLately(Bink::SpaceSeenDown(), now)) return "Space";
-            if (KeyRules::Guarding(G.Esc, now)) return "Esc";
-            if (KeyRules::Guarding(G.Start, now)) return "Start";
-            if (KeyRules::Guarding(G.Space, now)) return "Space";
-            if (KeyRules::Guarding(G.A, now)) return "A";
-            return nullptr;
+            using KeyRules::Guard;
+            using KeyRules::Bit;
+            KeyRules::Guards guards = 0;
+            if (TakenLately(Bink::EscSeenDown(), now) || KeyRules::Guarding(G.Esc, now)) guards |= Bit(Guard::Esc);
+            if (TakenLately(Bink::SpaceSeenDown(), now) || KeyRules::Guarding(G.Space, now)) guards |= Bit(Guard::Space);
+            if (KeyRules::Guarding(G.Start, now)) guards |= Bit(Guard::Start);
+            if (KeyRules::Guarding(G.A, now)) guards |= Bit(Guard::A);
+            return guards;
         }
 
-        /// SkipMovie (PC_MovieSkip: Escape and SpaceBar), SkipCinematic (PC_CineSkip) and the static binds' GuiKey
-        /// Escape/Start, on an SFXGameMode. Returns true to drop the call.
+        /// The GuiKey events the skip guard knows (game/LE<n>.hpp).
+        constexpr KeyRules::GuiEvents GameGuiEvents{ GuiStart, GuiEscape, GuiStartRelease, GuiEscapeRelease, GuiA, GuiARelease, GuiSpace, GuiSpaceRelease };
+
+        struct BoardCheck
+        {
+            bool Open = false;
+        };
+
+        void BoardCheckEntry(void* context)
+        {
+            auto const pc = LocalController(nullptr);
+            static_cast<BoardCheck*>(context)->Open = ModeOf(pc) == ModeGui && Minigame::Open(pc);
+        }
+
+        /// A minigame's board is open: the GUI mode, with a minigame panel on the GUI manager. Read only when a resume key's
+        /// own event is on its way to a game mode, under the crash guard: the skip guard runs straight from the ProcessEvent
+        /// hook. A fault reads as no board, and the event goes to the game.
+        bool OnMinigameBoard()
+        {
+            BoardCheck check;
+            if (Guarded(BoardCheckEntry, &check)) return check.Open;
+            LEASI_ERROR("access violation while looking for a minigame's board: the key's event passed");
+            return false;
+        }
+
+        /// SkipMovie (PC_MovieSkip: Escape and SpaceBar), SkipCinematic (PC_CineSkip), the static binds' GuiKey Escape/Start,
+        /// and on a minigame's board the GuiKey of the resume key itself (KeyRules::DropGuiKey), on an SFXGameMode. Returns
+        /// true to drop the call.
         bool DropSkip(UObject* mode, UFunction* function, void* parms, bool guiKey)
         {
             // The movie pause before the guard's ticks: the movie's thread stores Esc's tick before it changes the pause, so
@@ -788,19 +877,50 @@ namespace PauseAnytime
             auto const ours = KeyGuard(GetTickCount64());
             if (guiKey)
             {
-                auto const event = parms != nullptr ? *static_cast<unsigned char const*>(parms) : 0xFF;
-                if (event != GuiStart && event != GuiEscape && event != GuiStartRelease && event != GuiEscapeRelease) return false;
-                if (ours == nullptr) return false;
-                LEASI_INFO("GuiKey {} on {} dropped: our {}", event, PathOf(mode), ours);
+                if (parms == nullptr || ours == 0) return false;
+                auto const event = *static_cast<unsigned char const*>(parms);
+                // The board only for an event that it alone would drop: the Escape and Start events go anywhere.
+                auto const anywhere = KeyRules::DropGuiKey(event, ours, false, GameGuiEvents);
+                auto const onBoard = !anywhere && KeyRules::DropGuiKey(event, ours, true, GameGuiEvents) && OnMinigameBoard();
+                if (!anywhere && !onBoard) return false;
+                LEASI_INFO("GuiKey {} on {} dropped: our {}{}", event, PathOf(mode), KeyRules::GuardsText(ours), onBoard ? ", on a minigame's board" : "");
                 return true;
             }
 
             auto const name = function->Name.Instanced();
-            LEASI_INFO("{} on {}: {}{}", ToUtf8(std::wstring_view(name.Chars(), name.Length())), PathOf(mode),
-                       ours != nullptr ? "dropped, our " : "passed", ours != nullptr ? ours : "");
+            auto const dropped = ours != 0;
+            LEASI_INFO("{} on {}: {}{}", ToUtf8(std::wstring_view(name.Chars(), name.Length())), PathOf(mode), dropped ? "dropped, our " : "passed",
+                       dropped ? KeyRules::GuardsText(ours) : std::string{});
             static SFXName const SkipMovie{ L"SkipMovie", 0 };
-            if (ours == nullptr && function->Name == SkipMovie && wanted) Bink::RequestResume("SkipMovie");
-            return ours != nullptr;
+            if (!dropped && function->Name == SkipMovie && wanted) Bink::RequestResume("SkipMovie");
+            return dropped;
+        }
+
+        /// One of game/LE<n>.hpp's MinigameSpaceExecs: what the space bar's bind runs on a minigame's board (LE2's
+        /// DecryptSelect, which picks a code in the Hack).
+        bool IsSpaceExec(SFXName const& name)
+        {
+            static std::vector<SFXName> const names = []
+            {
+                std::vector<SFXName> list;
+                for (auto const exec : MinigameSpaceExecs) list.push_back(SFXName{ exec, 0 });
+                return list;
+            }();
+            for (auto const& n : names)
+            {
+                if (n == name) return true;
+            }
+            return false;
+        }
+
+        /// Such an exec on a game mode, while the press of Space that resumed a minigame is down or was a moment ago: dropped
+        /// as DropSkip drops Space's GuiKey (KeyRules::DropSpaceExec). Returns true to drop the call.
+        bool DropSpaceExec(UObject* mode, UFunction* function)
+        {
+            auto const ours = KeyGuard(GetTickCount64());
+            if (!KeyRules::DropSpaceExec(true, ours, KeyRules::Has(ours, KeyRules::Guard::Space) && OnMinigameBoard())) return false;
+            LEASI_INFO("{} on {} dropped: our Space, on a minigame's board", NameText(function->Name), PathOf(mode));
+            return true;
         }
 
         // ! Kismet movie actions
@@ -958,8 +1078,9 @@ namespace PauseAnytime
             auto const scale = height / 1080.0f;
             auto const input = hud->PlayerOwner != nullptr ? hud->PlayerOwner->PlayerInput : nullptr;
             auto const gamepad = G.PausedByStart || (input != nullptr && input->bUsingGamepad != 0);
-            // Photo mode's key only where it opens: its hooks are in, and the per-frame checks that watch it are on.
-            auto const photo = PhotoMode::Answers() && G.FrameFaults < MaxFrameFaults;
+            // Photo mode's key only where it opens: its hooks are in, the per-frame checks that watch it are on, and the pause
+            // holds a scene (never a minigame: PressPhoto).
+            auto const photo = G.Kind == PauseKind::Scene && PhotoMode::Answers() && G.FrameFaults < MaxFrameFaults;
             auto const words = BannerWords(gamepad, photo);
             auto const title = ToWide(words[TextRules::IndexOf(TextRules::Word::Title)]);
             auto const keys = ToWide(TextRules::BannerKeys(words, gamepad, photo));
@@ -999,10 +1120,11 @@ namespace PauseAnytime
             auto const photoOn = PhotoMode::On();
             if (photoOn) G.PhotoHideFrames = PhotoHideGrace;
             else if (G.PhotoHideFrames > 0) G.PhotoHideFrames--;
-            auto const hidden = G.WorldPaused && (photoOn || G.PhotoHideFrames > 0 || ConsoleIsOpen());
+            auto const hidden = G.Paused() && (photoOn || G.PhotoHideFrames > 0 || ConsoleIsOpen());
             auto const mode = ModeOf(pc);
-            auto const photo = PhotoMode::Answers() && pc != nullptr && pc == G.Controller.Live() && (mode == ModeConversation || mode == ModeCinematic);
-            Overlay::Publish(G.WorldPaused && !hidden, G.WorldPaused && !hidden && photo, hidden);
+            auto const photo = G.Kind == PauseKind::Scene && PhotoMode::Answers() && pc != nullptr && pc == G.Controller.Live() &&
+                               (mode == ModeConversation || mode == ModeCinematic);
+            Overlay::Publish(G.Paused() && !hidden, G.Paused() && !hidden && photo, hidden);
         }
 
         /// The one change of State::TextRead.
@@ -1263,7 +1385,7 @@ namespace PauseAnytime
                 LEASI_ERROR("access violation while reading the game's gamepad icons: the pause screen draws its own");
             }
             // At the first pause after the read: a talk file that loaded after it is logged (CheckTexts).
-            if (G.TextRead == TextRules::TextRead::Done && G.WorldPaused && !Guarded(CheckTextsEntry, pc))
+            if (G.TextRead == TextRules::TextRead::Done && G.Paused() && !Guarded(CheckTextsEntry, pc))
             {
                 SetTextRead(TextRules::TextRead::Checked);
                 LEASI_ERROR("access violation while asking the string table again: the words stay as read");
@@ -1335,7 +1457,7 @@ namespace PauseAnytime
         void PublishBareEntry(void*)
         {
             auto const photoOn = PhotoMode::On();
-            Overlay::Publish(G.WorldPaused && !photoOn && G.World.Live() != nullptr && G.World.Object->Pauser != nullptr, false, photoOn);
+            Overlay::Publish(G.Paused() && !photoOn && G.World.Live() != nullptr && G.World.Object->Pauser != nullptr, false, photoOn);
         }
 
         /// After an access violation in the per-frame checks: our state may be what faulted, so it ends here, photo mode
@@ -1344,7 +1466,7 @@ namespace PauseAnytime
         void DropState()
         {
             PhotoMode::Drop("fault", false);
-            if (G.WorldPaused && !Guarded(ResumeWorldEntry, nullptr))
+            if (G.Paused() && !Guarded(ResumeWorldEntry, nullptr))
                 LEASI_ERROR("access violation while resuming the world: if the game stays paused, the console's \"pause\" resumes it");
             EndWorldPause();
             if (Bink::PauseWanted()) Bink::RequestResume("fault");
@@ -1423,12 +1545,12 @@ namespace PauseAnytime
                 if (Parms != nullptr && Context->IsA(UConsole::StaticClass()))
                 {
                     KeyCall call{ static_cast<UConsole*>(Context), Function, static_cast<UConsole_execInputKey_Parms*>(Parms), false, nullptr };
-                    auto const wasPaused = G.WorldPaused;
+                    auto const wasPaused = G.Paused();
                     if (!Guarded(TakeKeyEntry, &call))
                     {
                         // A fault after the press paused or resumed the world: that press acted, so it stays ours with its
                         // repeats and its release (and the skip guard), or the game would act on it too.
-                        call.Taken = G.WorldPaused != wasPaused;
+                        call.Taken = G.Paused() != wasPaused;
                         LEASI_ERROR("access violation while reading a key: {}{}", call.Taken ? "taken, its press paused or resumed the world" : "passed to the game",
                                     PhotoMode::On() ? ", photo mode left" : "");
                         if (call.Taken)
@@ -1444,6 +1566,11 @@ namespace PauseAnytime
             else if (name == SkipMovie || name == SkipCinematic || name == GuiKey)
             {
                 if (Context->IsA(USFXGameModeBase::StaticClass()) && DropSkip(Context, Function, Parms, name == GuiKey)) return;
+            }
+            else if (!MinigameSpaceExecs.empty() && IsSpaceExec(name))
+            {
+                // LE2's SFXGameModeGUI.DecryptSelect: the Hack's space bar, which picks the code under the cursor.
+                if (Context->IsA(USFXGameModeBase::StaticClass()) && DropSpaceExec(Context, Function)) return;
             }
             else if (name == PhotoMenu)
             {
@@ -1486,7 +1613,7 @@ namespace PauseAnytime
                 // while that world still exists and is paused, without photo mode's key.
                 if (G.FrameFaults >= MaxFrameFaults && !Guarded(PublishBareEntry, nullptr)) Overlay::Publish(false, false, false);
                 // The Canvas banner: only where the pause screen can't draw (its hooks or its start failed).
-                if (!Overlay::Drawing() && G.WorldPaused && !PhotoMode::On() && !G.BannerOff && !Guarded(DrawBannerEntry, Context))
+                if (!Overlay::Drawing() && G.Paused() && !PhotoMode::On() && !G.BannerOff && !Guarded(DrawBannerEntry, Context))
                 {
                     LEASI_ERROR("access violation while drawing the banner: banner off");
                     G.BannerOff = true;

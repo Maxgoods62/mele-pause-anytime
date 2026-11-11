@@ -6,12 +6,17 @@
 #define PAUSEANYTIME_PHOTO_GUI_SOUNDS 0
 /// Photo mode's panel is a ScaleForm panel of the GUI manager (PhotoGuiSF.cpp), not a GFx movie (PhotoGuiGFx.cpp).
 #define PAUSEANYTIME_PHOTO_GFX 0
+/// The Bypass and Hack minigames are ScaleForm panels of the GUI manager that the world pause holds (Minigame.cpp).
+#define PAUSEANYTIME_MINIGAMES 1
 
 namespace PauseAnytime::Game
 {
     // SFXGameModeManager.EGameModes (SFXGame_classes.hpp:4054-4071). Same numbers as LE1 for these four; other names.
     inline constexpr unsigned char ModeConversation = 5;
     inline constexpr unsigned char ModeCinematic = 6;
+    /// The GUI mode, which the minigames show in: MassEffectGuiManager.ShowSkillGameBypass and ShowSkillGameDecryption
+    /// enable it, and leave the world running.
+    inline constexpr unsigned char ModeGui = 7;
     inline constexpr unsigned char ModeMovie = 8;
     inline constexpr unsigned char ModePhoto = 11;
     inline constexpr char const* ModeNames[] = { "Default", "PowerWheel", "WeaponWheel", "Command", "Vehicle", "Conversation",
@@ -25,8 +30,28 @@ namespace PauseAnytime::Game
     inline constexpr unsigned char GuiStartRelease = 42;
     inline constexpr unsigned char GuiEscapeRelease = 34;
 
+    /// The GuiKey events of a resume key's own press on a minigame's board, pressed and released: the gamepad's A (in the
+    /// Bypass it picks the node under the cursor, and a second node that does not match loses the game). The space bar
+    /// sends no GuiKey in LE2 (0xFF: none); its bind runs MinigameSpaceExecs instead.
+    inline constexpr unsigned char GuiA = 12;
+    inline constexpr unsigned char GuiARelease = 33;
+    inline constexpr unsigned char GuiSpace = 0xFF;
+    inline constexpr unsigned char GuiSpaceRelease = 0xFF;
+
     /// SFXGameModePhoto's Esc and Start bind, which opens the pause menu (SFXGame_classes.hpp:27326).
     inline constexpr wchar_t const* PhotoMenuFunction = L"ShowMenu";
+
+    /// The minigames' panels: the HandlerLibrary rows SkillGameBypass (BioSkillGame_Bypass_PCHandler, movie
+    /// GUI_SF_MiniGameBypass.MiniGameBypass, the circuit) and SkillGameDecryption (BioSkillGame_Decryption_PCHandler, movie
+    /// GUI_SF_MiniGameDecryption.MiniGameDecryption, the Hack). Both movies' MinigameBase keeps nGameState: INIT 0, START 1
+    /// (the screen before the game, where Esc cancels), PLAYING 2 (the clock runs, on the time the handler's Update gives it,
+    /// which the GUI tick calls only while the world runs), FINISHING 3, FINISHED 4, EXITING 5.
+    inline constexpr std::array<wchar_t const*, 2> MinigamePanels{ L"SkillGameBypass", L"SkillGameDecryption" };
+    inline constexpr wchar_t const* MinigameStatePath = L"_root.MiniGame.nGameState";
+    inline constexpr int MinigamePlaying = 2;
+    /// Exec functions a resume key's own press runs on a minigame's board, besides GuiKey: the space bar's bind in the GUI
+    /// mode, SFXGameModeGUI.DecryptSelect (PC_DecryptSelect), which picks a code in the Hack.
+    inline constexpr std::array<wchar_t const*, 1> MinigameSpaceExecs{ L"DecryptSelect" };
 
     /// The controller's game modes (BioPlayerController.GameModeManager2, SFXGame_classes.hpp:5535).
     inline USFXGameModeManager* ModeManagerOf(ABioPlayerController* pc)

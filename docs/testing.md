@@ -12,8 +12,9 @@ Close the game, then build and install one game's file:
 ```
 
 [BUILDING.md](../BUILDING.md) explains the build and its checks. `--install` needs the ASI loader in that game:
-`bink2w64_original.dll` and an `ASI` folder in `Game\ME<n>\Binaries\Win64`. ME3Tweaks Mod Manager installs the loader
-with any mod. After the install, that `ASI` folder holds `LE<n>PauseAnytime.asi`.
+`bink2w64_original.dll` and an `ASI` folder in `Game\ME<n>\Binaries\Win64`. ME3Tweaks Mod Manager installs it: Mod
+Management > ASI Mod Manager, select the game, Install Loader. After the install, that `ASI` folder holds
+`LE<n>PauseAnytime.asi`.
 
 For the release gate, test the zip instead, and copy its files as [install.md](install.md) says.
 
@@ -170,6 +171,8 @@ that Pause Anytime uses (`WorldInfo.Pauser`).
 
 1. In gameplay, press Esc. The pause menu opens, and Esc closes it. Do the same with Start.
 2. On the galaxy map and in a menu, Esc and Start do what they do in the game without mods.
+3. LE1 and LE2: the same in every other mode-7 screen (squad, inventory, codex, store, LE2 research) and in LE1's
+   Quasar (mode 10). The log's press line says `minigame none` and `vanilla`.
 
 ### S5, resume keys and the console
 
@@ -272,6 +275,24 @@ when you are done.
 7. Exo 2, with a test build that skips the game's fonts: Japanese words show in English, with one `has letters the
    Exo 2 font lacks` line per word.
 
+### S11, minigames
+
+LE1's ring game and LE2's Bypass and Hack, with keyboard and with a gamepad. A real container in each game once; the
+rest can use a dev setup (see "Tested so far").
+
+1. On the screen before the game starts, Esc cancels as in the game without mods, and Start does what it does there.
+   The log's press line names the panel and its state (`minigame SkillGame state 0`, LE2 `... state 1`) and says
+   `vanilla`.
+2. Start the game. While the timer runs, Esc pauses: the pause screen shows over the blurred board with Resume only,
+   no photo mode key. The log has `world paused in mode 7 (GUI) over minigame ...`. The timer does not move for 30 s.
+3. Under the pause, clicks, arrows, pad B, F7 and Y do nothing, during the pause or after it.
+4. Resume with Esc, Start, Space and A, one per run. The timer goes on from where it stopped, with no jump, and the
+   board does not act on the key: LE1's ring does not turn, the LE2 Bypass does not pick the node under the cursor,
+   and the LE2 Hack still shows 3 attempts. Pause with Start and resume with A while Start is still down.
+5. At the end (LE1's end animation, LE2's result screen) the keys are the game's.
+6. Open the Steam overlay during a minigame pause, then close it: the pause ends, the timer runs again.
+7. Listen: LE1's minigame music and LE2's sounds stop under the pause and come back after it.
+
 ## What the log should show
 
 Each line starts with its time and level, then `(LE<n>PauseAnytime)`. Below, "..." stands for the parts that change.
@@ -312,12 +333,14 @@ In this order:
 ### Each press
 
 - One `Esc pressed: mode ...` or `Start pressed: mode ...` line for each press that reaches `Console.InputKey`, with
-  what it did. "vanilla" means the key was left to the game.
+  what it did. "vanilla" means the key was left to the game. In LE1 and LE2 it names the minigame panel and its state
+  (`minigame SkillGameBypass state 2`), or `minigame none`.
 - A Start press in the open console logs nothing. An Esc press there logs the console line of S5.
 
 ### Each pause
 
-- `world paused in mode ...`, then `GUI sound InGameGuiEnter: played`;
+- `world paused in mode ...`, then `GUI sound InGameGuiEnter: played`. Over a minigame the line goes on `over
+  minigame <tag> state <n> (<panel>)`, and the resume line ends `over a minigame`;
 - `overlay shown: world pause` (or `movie pause`), with `gamepad` or `keyboard` prompts and, where photo mode opens,
   `photo mode offered`. Later `overlay hidden`, or `overlay hidden at once (photo mode or the console)`;
 - at the first pause only: `texts: asked again at the first pause: no new answer`, and `overlay: the game's fonts:
@@ -376,6 +399,34 @@ logged.
 
 Results per game, oldest first. Some test builds carried the next version's code under the old number, such as "v9's
 code, numbered 8". The v8 results name the per-game zips of that time. A release now has one zip.
+
+### Minigames
+
+This build pauses LE1's ring game and LE2's Bypass and Hack while their timer runs. Its automated checks pass. Run on
+2026-11-11 with keyboard and mouse only, in dev setups: LE1 dev slot 99 (Noveria, ICE00) with
+`BIOA_ICE20_09_DSG` streamed in and its `GrizzlyRover` `BioSeqAct_SkillGame_0` started from a live call; LE2 on the
+Normandy with `ShowSkillGameBypass` and `ShowSkillGameDecryption` called live. No real container was used.
+
+- S11 step 1 passed in LE1 (Esc cancelled, `state 0 ... vanilla`) and, as the logged decision only, in the LE2 Bypass
+  (`state 1 ... vanilla`, from a console call).
+- Step 2 passed in all three: LE1's `TimeLeft` held at 6.2 and 13.9 s through pauses of 25 and 28 s; the Bypass and
+  Hack clocks held at 1491 and 1488 ms through pauses of 27 and 9 s. The pause screen showed Resume only, in each
+  game's look.
+- Step 3 in part: a click on the board, the arrows and F7 did nothing in LE1; a click and F7 in the Bypass. F7 logged
+  `vanilla`, no photo mode.
+- Step 4 with Space (LE1, Bypass, Hack) and Esc (LE1): each clock went on with no jump; LE1's `_root.nDesiredRing`
+  stayed 0, and the Hack still showed 3 attempts. No `GuiKey` or `DecryptSelect` reached a game mode: the console's
+  TRUE kept the taken Space from the binds.
+- Step 5 not caught: LE1's end animation lasted under 1.3 s and the Bypass panel closed within 10 s of the end, before
+  a key could land. The log showed the next Esc in mode 0 (Default), `vanilla`.
+- S4 step 3 in part: Esc in LE1's Mission Computer logged `minigame none`, `vanilla`.
+- The safety net: with a board's state set to playing, a pause, then the panel removed live, the next frame logged
+  `minigame closed under our world pause over a minigame (frame) ... resuming`.
+- The board drop, driven by live calls in LE1: Space down resumed, then `GuiKey 25` sent to `SFXGameModeGUI` logged
+  `GuiKey 25 on ... dropped: our Space, on a minigame's board`. `GuiKey 12` (A) sent while only Space guarded, and
+  `GuiKey 25` sent 1.5 s after Space's release, passed.
+- Not run: the gamepad (Start, A, B, Y), the Steam overlay, sound by ear, real containers, LE1's mouse arrow after a
+  mouse move under the pause. LE3 builds and was not started (its ASI loader was missing that day).
 
 ### Translatable words
 
