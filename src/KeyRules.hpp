@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <initializer_list>
+#include <string>
+#include <utility>
 
 // The key decisions that two threads make about one press, as plain functions of what each thread read. The movie's
 // thread reads Esc and Space in its BinkWait polls (Bink.cpp). The game thread gets the same press later, in the engine's
@@ -83,6 +86,71 @@ namespace PauseAnytime::KeyRules
     {
         if (k.Held == Hold::Ours) return now - k.PressedAt < GuardMs;
         return k.ReleasedAt != 0 && now - k.ReleasedAt < ReleaseGraceMs;
+    }
+
+    /// A key whose press arms the skip guard (Pause.cpp's KeyGuard): a key of ours that is down or was released a moment
+    /// ago, or an Esc or Space press the movie's thread acted on. Each is one bit of Guards.
+    enum class Guard : unsigned char { Esc = 1, Start = 2, Space = 4, A = 8 };
+
+    /// The keys that arm the guard now, as bits of Guard: 0 when none does. Several can: Start still down, or just
+    /// released, when A resumes.
+    using Guards = unsigned char;
+
+    constexpr Guards Bit(Guard guard) { return static_cast<Guards>(guard); }
+
+    constexpr bool Has(Guards guards, Guard guard) { return (guards & Bit(guard)) != 0; }
+
+    /// For the logs: "Esc", "Start+A", or "none".
+    inline std::string GuardsText(Guards guards)
+    {
+        std::string text;
+        for (auto const [guard, name] : { std::pair{ Guard::Esc, "Esc" }, std::pair{ Guard::Start, "Start" }, std::pair{ Guard::Space, "Space" },
+                                          std::pair{ Guard::A, "A" } })
+        {
+            if (!Has(guards, guard)) continue;
+            if (!text.empty()) text += '+';
+            text += name;
+        }
+        return text.empty() ? "none" : text;
+    }
+
+    /// A GuiKey event a game does not have.
+    inline constexpr unsigned char NoGuiEvent = 0xFF;
+
+    /// The GuiKey events the skip guard knows, per game (game/LE<n>.hpp): the always-on Escape and Start binds', and the
+    /// events a resume key's own press sends to a minigame's board (NoGuiEvent where the game sends none).
+    struct GuiEvents
+    {
+        unsigned char Start = NoGuiEvent;
+        unsigned char Escape = NoGuiEvent;
+        unsigned char StartRelease = NoGuiEvent;
+        unsigned char EscapeRelease = NoGuiEvent;
+        unsigned char A = NoGuiEvent;
+        unsigned char ARelease = NoGuiEvent;
+        unsigned char Space = NoGuiEvent;
+        unsigned char SpaceRelease = NoGuiEvent;
+    };
+
+    /// Pause.cpp's DropSkip, for a GuiKey <paramref name="event"/> on a game mode while <paramref name="guards"/> hold. Any
+    /// press of ours drops the Escape and Start binds' events, as before. A minigame's board (<paramref name="inMinigame"/>:
+    /// the GUI mode with a minigame panel open) also loses the events of A and Space while that key's own press arms the
+    /// guard: should the press that resumed get past Console.InputKey's TRUE, it would pick a node or a code, or move a
+    /// ring, the moment the world runs again. Another key's guard keeps them: an A after an Esc resume is the player's
+    /// move. Anywhere else those events stay the game's: an A in a conversation picks a reply.
+    constexpr bool DropGuiKey(unsigned char event, Guards guards, bool inMinigame, GuiEvents const& e)
+    {
+        if (guards == 0 || event == NoGuiEvent) return false;
+        if (event == e.Start || event == e.Escape || event == e.StartRelease || event == e.EscapeRelease) return true;
+        if (!inMinigame) return false;
+        if (Has(guards, Guard::A) && (event == e.A || event == e.ARelease)) return true;
+        return Has(guards, Guard::Space) && (event == e.Space || event == e.SpaceRelease);
+    }
+
+    /// Pause.cpp's DropSkip for an exec function the space bar's bind runs on a minigame's board (game/LE<n>.hpp's
+    /// MinigameSpaceExecs, <paramref name="spaceExec"/>): dropped as DropGuiKey drops Space's GuiKey.
+    constexpr bool DropSpaceExec(bool spaceExec, Guards guards, bool inMinigame)
+    {
+        return spaceExec && Has(guards, Guard::Space) && inMinigame;
     }
 
     /// Start's press, ours or the game's, is over with its release lost: no event of it for StartStaleMs, counted from the

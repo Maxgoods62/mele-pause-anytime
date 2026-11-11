@@ -37,6 +37,6 @@ namespace PauseAnytime::Game
     #error "Pause Anytime: no game/LE<n>.hpp for this SDK target"
 #endif
 
-#if !defined(PAUSEANYTIME_PHOTO_GUI_SOUNDS) || !defined(PAUSEANYTIME_PHOTO_GFX)
-    #error "Pause Anytime: game/LE<n>.hpp must define PAUSEANYTIME_PHOTO_GUI_SOUNDS and PAUSEANYTIME_PHOTO_GFX"
+#if !defined(PAUSEANYTIME_PHOTO_GUI_SOUNDS) || !defined(PAUSEANYTIME_PHOTO_GFX) || !defined(PAUSEANYTIME_MINIGAMES)
+    #error "Pause Anytime: game/LE<n>.hpp must define PAUSEANYTIME_PHOTO_GUI_SOUNDS, PAUSEANYTIME_PHOTO_GFX and PAUSEANYTIME_MINIGAMES"
 #endif

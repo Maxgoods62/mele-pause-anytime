@@ -390,7 +390,7 @@ namespace
         }
     }
 
-    void Guard()
+    void GuardWindow()
     {
         KeyState k;
         Check(!Guarding(k, T), "a key never pressed guards nothing");
@@ -406,6 +406,78 @@ namespace
         KeyState v;
         SetHold(v, Hold::Vanilla, T);
         Check(v.PressedAt == 0 && !Guarding(v, T + 1), "a press left to the game is not stamped and guards nothing");
+    }
+
+    // ========================================
+    // The minigames' keys (DropGuiKey, DropSpaceExec): LE1's and LE2's GuiKey events, as game/LE<n>.hpp names them
+    // ========================================
+
+    constexpr GuiEvents LE1Events{ 21, 24, 43, 46, 12, 34, 25, 47 };
+    constexpr GuiEvents LE2Events{ 21, 13, 42, 34, 12, 33, NoGuiEvent, NoGuiEvent };
+
+    constexpr Guards EscG = Bit(Guard::Esc), StartG = Bit(Guard::Start), SpaceG = Bit(Guard::Space), AG = Bit(Guard::A);
+
+    void GuiKeyOutsideMinigames()
+    {
+        for (auto const& e : { LE1Events, LE2Events })
+        {
+            for (auto const ev : { e.Start, e.Escape, e.StartRelease, e.EscapeRelease })
+            {
+                Check(!DropGuiKey(ev, 0, false, e), "no press of ours: the Escape and Start events are the game's");
+                Check(!DropGuiKey(ev, 0, true, e), "nor on a minigame's board");
+                for (Guards g = 1; g < 16; ++g)
+                {
+                    Check(DropGuiKey(ev, g, false, e), "any press of ours drops the Escape and Start events");
+                    Check(DropGuiKey(ev, g, true, e), "on a minigame's board too");
+                }
+            }
+            for (auto const ev : { e.A, e.ARelease })
+            {
+                Check(!DropGuiKey(ev, AG, false, e), "an A of ours in a conversation keeps A's event: it picks the next reply");
+                Check(!DropGuiKey(ev, AG | StartG, false, e), "with Start's guard too");
+            }
+        }
+        Check(!DropGuiKey(LE1Events.Space, SpaceG, false, LE1Events), "LE1: Space's event outside a minigame stays the game's");
+    }
+
+    void GuiKeyOnBoard()
+    {
+        for (auto const& e : { LE1Events, LE2Events })
+        {
+            Check(DropGuiKey(e.A, AG, true, e) && DropGuiKey(e.ARelease, AG, true, e),
+                  "the A that resumed a minigame: its press and release never reach the board");
+            Check(DropGuiKey(e.A, StartG | AG, true, e) && DropGuiKey(e.ARelease, StartG | AG, true, e),
+                  "A resuming while the Start that paused is still down or just released: A's events are dropped all the same");
+            Check(DropGuiKey(e.A, EscG | SpaceG | AG, true, e), "whatever other keys of ours still arm the guard");
+            Check(!DropGuiKey(e.A, EscG, true, e) && !DropGuiKey(e.A, StartG, true, e) && !DropGuiKey(e.A, SpaceG, true, e) &&
+                      !DropGuiKey(e.A, EscG | StartG | SpaceG, true, e),
+                  "an A while only other keys of ours guard is the player's next move");
+            Check(!DropGuiKey(e.A, 0, true, e), "an A with nothing of ours is the game's");
+            Check(!DropGuiKey(NoGuiEvent, AG | SpaceG, true, e), "no event is never dropped");
+            Check(!DropGuiKey(5, EscG | StartG | SpaceG | AG, true, e), "another event on the board is the game's");
+        }
+        Check(DropGuiKey(LE1Events.Space, SpaceG, true, LE1Events) && DropGuiKey(LE1Events.SpaceRelease, SpaceG, true, LE1Events),
+              "LE1: the Space that resumed the ring game never turns a ring");
+        Check(DropGuiKey(LE1Events.Space, EscG | SpaceG, true, LE1Events), "LE1: Space resuming within the Esc's grace: dropped all the same");
+        Check(!DropGuiKey(LE1Events.Space, AG, true, LE1Events), "LE1: Space while only our A guards is the player's");
+        Check(!DropGuiKey(LE2Events.A, SpaceG, true, LE2Events), "LE2: the guard of Space keeps A's event, though LE2's Space sends none");
+    }
+
+    void SpaceExec()
+    {
+        Check(DropSpaceExec(true, SpaceG, true), "LE2: the Space that resumed the Hack never picks a code");
+        Check(DropSpaceExec(true, EscG | SpaceG, true), "nor when it came within the grace of the Esc that paused");
+        Check(!DropSpaceExec(true, SpaceG, false), "DecryptSelect away from a minigame's board runs");
+        Check(!DropSpaceExec(true, AG, true) && !DropSpaceExec(true, EscG, true) && !DropSpaceExec(true, EscG | StartG | AG, true) &&
+                  !DropSpaceExec(true, 0, true),
+              "a Space with no Space of ours is the player's pick");
+        Check(!DropSpaceExec(false, SpaceG, true), "another exec is never dropped");
+    }
+
+    void GuardNames()
+    {
+        Check(GuardsText(0) == "none" && GuardsText(EscG) == "Esc" && GuardsText(AG) == "A", "one guard has its log name");
+        Check(GuardsText(StartG | AG) == "Start+A" && GuardsText(EscG | StartG | SpaceG | AG) == "Esc+Start+Space+A", "several are joined in a fixed order");
     }
 }
 
@@ -426,5 +498,9 @@ void PauseAnytime::Tests::RunKeyRules()
     TakenStaysFresh();
     TakenLatelyCases();
     StartGoesStale();
-    Guard();
+    GuardWindow();
+    GuiKeyOutsideMinigames();
+    GuiKeyOnBoard();
+    SpaceExec();
+    GuardNames();
 }

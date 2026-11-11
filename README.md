@@ -1,7 +1,8 @@
 # Pause Anytime
 
 Pause Anytime lets you pause Mass Effect Legendary Edition where the game does not: during conversations, in-engine
-cutscenes and some fullscreen movies. It works in LE1, LE2 and LE3. Press Esc, or Start on a gamepad, to pause. Press
+cutscenes, some fullscreen movies, and the hacking minigames of LE1 and LE2 while their timer runs. It works in LE1,
+LE2 and LE3. Press Esc, or Start on a gamepad, to pause. Press
 it again to resume at the same word.
 
 The picture, the voice, the music and the lips stop together and go on together. While the game is paused, the
@@ -17,12 +18,13 @@ to build and I test the results in the game.
 
 | Keyboard | Gamepad | What it does |
 |---|---|---|
-| Esc | Start | Pauses a conversation, a cutscene or a movie that can pause. Press it again to resume. |
+| Esc | Start | Pauses a conversation, a cutscene, a movie that can pause, or a minigame while its timer runs. Press it again to resume. |
 | Space | A | Resumes. It never pauses. |
 | F7 | Y | In a paused conversation or cutscene, opens photo mode. Press it again to leave. |
 | Space | X | In LE2 and LE3, with nothing paused: skips a cutscene or a movie that the game lets you skip. |
 
-In LE2 and LE3, Esc pauses a cutscene that it skips in the game without mods. Skip it with Space or X instead. The
+In LE2 and LE3, Esc pauses a cutscene that it skips in the game without mods. Skip it with Space or X instead. In
+the LE2 Bypass, Esc pauses instead of interrupting the game; the Exit button still quits. The
 keys in each game: [docs/using.md](docs/using.md#keys).
 
 ## Games
