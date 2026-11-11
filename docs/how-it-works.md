@@ -16,6 +16,7 @@ Each game has its own ASI, `LE<n>PauseAnytime.asi`, loaded by [LEBinkProxy](http
 | `src/CMakeLists.txt` | One target per game, Dear ImGui, the delay-loaded `d3dcompiler_47.dll`, the test program `PauseAnytimeTests` |
 | `src/Api.hpp` | What the parts ask of each other; no game class |
 | `src/Pause.hpp`, `Pause.cpp` | Game thread: the `ProcessEvent` hook, keys, world pause, skip guard, movie latch, what the pause screen shows, fallback banner |
+| `src/Minigame.hpp`, `Minigame.cpp` | LE1, LE2: finds a minigame's panel and reads its movie's game state |
 | `src/Engine.hpp`, `Engine.cpp` | Calls into the game (`CallGame`), object checks (`Alive`, `Kept`), the fault guard |
 | `src/Photo.hpp`, `Photo.cpp` | Photo mode under the world pause |
 | `src/PhotoGui.hpp`, `PhotoGuiSF.cpp`, `PhotoGuiGFx.cpp` | Photo mode's GUI side: ScaleForm (LE1, LE2) or GFx (LE3), picked by `PAUSEANYTIME_PHOTO_GFX` |
@@ -31,8 +32,9 @@ Each game has its own ASI, `LE<n>PauseAnytime.asi`, loaded by [LEBinkProxy](http
 | `src/game/KismetMovie.hpp` | LE2, LE3: reads a Kismet movie action |
 | `src/fonts/` | Exo 2 Regular and SemiBold, `OFL.txt` |
 
-Each `LE<n>.hpp` defines the same names in `PauseAnytime::Game`, plus two switches: `PAUSEANYTIME_PHOTO_GUI_SOUNDS`
-(photo mode's GUI sounds need hooks) and `PAUSEANYTIME_PHOTO_GFX` (its panel is a GFx movie).
+Each `LE<n>.hpp` defines the same names in `PauseAnytime::Game`, plus three switches: `PAUSEANYTIME_PHOTO_GUI_SOUNDS`
+(photo mode's GUI sounds need hooks), `PAUSEANYTIME_PHOTO_GFX` (its panel is a GFx movie) and `PAUSEANYTIME_MINIGAMES`
+(the game has minigames: LE1 and LE2).
 
 ## Startup
 
@@ -69,7 +71,8 @@ Then:
 
 - LE2, LE3: `Activated` and `Deactivated` go to the Kismet movie latch, before the original.
 - Before the original: `InputKey` on a `Console` (the keys), `SkipMovie`, `SkipCinematic` and `GuiKey` on an
-  `SFXGameModeBase` (the skip guard), and photo mode's menu bind while our photo session runs (dropped). A key taken or
+  `SFXGameModeBase` (the skip guard), in LE2 `DecryptSelect` on one (the skip guard, on a minigame's board), and photo
+  mode's menu bind while our photo session runs (dropped). A key taken or
   a call dropped skips the original.
 - After it: `PlayerTick` on our photo session's controller (the photo camera), and `BioHUD.PostRender`.
 
@@ -98,11 +101,15 @@ A press of Esc or Start runs `Validate`, then the first of these that applies:
 
 1. Our photo session ran when the press came: the press ends it and does nothing more, so the world stays paused. If
    `Validate` ended the session first (the world pause ended, or the game left photo mode), the press is only taken.
-2. `Validate` resumed our world pause because the mode changed: the press is taken, so the game does not act on it too.
+2. `Validate` resumed our world pause because what it held left (the mode changed, or the minigame closed): the press
+   is taken, so the game does not act on it too.
 3. A fullscreen movie owns the pause keys (`Bink::OwnsKeys`). Esc is taken without a toggle, since the movie's thread
    saw the same press. Start toggles the movie pause through `Bink::Toggle`.
 4. Our world pause holds: resume.
 5. The mode is Conversation or Cinematic and `Pauser` is None: pause.
+6. In LE1 and LE2, the mode is GUI, a minigame's board is open with its clock running, and `Pauser` is None: pause
+   ([Minigames](#minigames)). If the pause is refused, the press is still taken: in the LE2 Bypass the game's Esc
+   would interrupt the game and lose it.
 
 Photo mode comes before the movie: a session runs under our world pause, with no fullscreen movie, and a stall in it
 can make the HUD look silent. Otherwise the key is the game's. During a fullscreen movie, every Esc event that reaches
@@ -115,7 +122,8 @@ read once a frame.
 
 Space and A only resume. Under the movie pause any of their events resumes. Under the world pause only a press does,
 and not in photo mode, where Space takes the picture. As with Esc, a press on which `Validate` resumed the world is
-taken. Y and F7 open photo mode under our world pause, for the controller that paused, in Conversation or Cinematic.
+taken. Y and F7 open photo mode under our world pause of a conversation or a cutscene, for the controller that
+paused, in Conversation or Cinematic. They never do over a minigame.
 They never do during a fullscreen movie, or once the per-frame checks are off ([Crash guards](#crash-guards)). In our
 photo mode they leave it, before any movie check. Any event of Escape, F7 or SpaceBar switches the prompts to the
 keyboard, and any event of Start, Y or A to the gamepad.
@@ -124,14 +132,21 @@ keyboard, and any event of Start, Y or A to the gamepad.
 
 The guard is armed while a press of Esc, Start, Space or A that Pause Anytime took is down (2 s at most), and for
 250 ms after its release. It drops `SkipMovie`, `SkipCinematic`, and the `GuiKey` calls with the Escape and Start
-events of the always-on binds (ids in `LE<n>.hpp`). An Esc or Space press that only the movie's thread saw arms it
+events of the always-on binds (ids in `LE<n>.hpp`). On a minigame's board it also drops the events of the key that
+resumed: A's `GuiKey` events in LE1 and LE2, Space's in LE1, and in LE2 the `DecryptSelect` exec that Space runs in the
+Hack (`KeyRules::DropGuiKey`, `KeyRules::DropSpaceExec`). That holds while the key that paused still arms the guard
+too (Start down when A resumes), so the guard keeps every armed key, not just one. Whether a board is open is read
+only for those events, under the fault guard; a fault lets the event through. Elsewhere those stay the game's, so an A
+in a conversation right after an A resume still picks a reply, and on a board an A after an Esc resume is the player's
+move. An Esc or Space press that only the movie's thread saw arms it
 too. That press also counts when the game thread read no input since before it: a stall of over 250 ms that is still
 on, or ended less than 250 ms ago. The key's queued events then reach the game thread late, and they are still that
 press. Y and F7 do not arm it.
 
 The guard exists for two reasons. The `OnRelease` half of a bind may run after the console saw the release. And it is
-not settled whether the console's TRUE return keeps a key from PlayerInput's binds. `GuiKey` is matched by event
-number, so while the guard is armed, any key that sends those events is dropped.
+not settled for every key whether the console's TRUE return keeps a key from PlayerInput's binds. In the 2026-11-11
+minigame tests, a taken Space reached neither the LE1 ring game nor LE2's `DecryptSelect`. `GuiKey` is matched by
+event number, so while the guard is armed, any key that sends those events is dropped.
 
 ## World pause and resume
 
@@ -150,7 +165,25 @@ command then resumes it.
 map change or a load), or when `Pauser` became None without us. That happens through the game, a load, the console's
 `pause`, or the Steam overlay closing (`ClearPause` drops every `CanUnpause` that agrees). If the mode left
 Conversation and Cinematic outside our photo session, `Validate` resumes the world. No mode at all (no mode manager to
-read) is not a change.
+read) is not a change. A pause over a minigame ends instead when the mode leaves GUI or its panel closes
+(`PauseLeft`).
+
+### Minigames
+
+LE1 has one bypass minigame, the ring game (tag `SkillGame`). LE2 has two, the Bypass (`SkillGameBypass`) and the
+Hack (`SkillGameDecryption`). LE3 has none. Each is a panel of the GUI manager, shown in the GUI mode (7), the mode of
+the squad screen, the store and the other menus. LE1's Quasar is mode 10 and stays the game's.
+
+A press of Esc or Start in the GUI mode looks the panels up by tag (`GetPanelByTag`, as the game does) and reads the
+movie's game state with the panel's `GetVariableInt`: LE1 `_root.nGameState` (0 start, 1 playing, 2 end), LE2
+`_root.MiniGame.nGameState` (0 to 5, 2 playing). Only the playing state pauses. On the screen before the game, Esc
+keeps its job (it cancels), and on the end screen the key is the game's too. A path the movie lacks reads 0, so a
+minigame movie that a mod replaced stays the game's.
+
+The clock that can lose the game runs on the world's time: the world pause holds it, the board stays drawn, and it goes
+on with the time it had (LE1's movie advances by `WorldInfo.TimeSeconds`, LE2's handler `Update` runs from the GUI
+tick, which `Pauser` stops). The pause also drops the board's input. Photo mode stays off over a minigame: it lifts the
+pause around the GUI tick, which would run the clock. The pause screen offers only Resume there.
 
 ### The audio hold and the Steam overlay
 
@@ -454,6 +487,7 @@ Pause Anytime. A fault below a present the game makes goes on up to the game.
 | The resume after that fault | Logs it; if the world stays paused, the console's `pause` resumes it |
 | The photo camera | Leaves photo mode |
 | The Kismet movie latch | Latches or clears nothing for that call |
+| Looking for a minigame's board (skip guard) | Lets that key event through to the game |
 | Reading the words, the game's icons or fonts | Stops trying, keeps the built-in words, discs or Exo 2 |
 | The pause screen | Off for the session; the banner takes over |
 | The banner | Off for the session |
@@ -473,11 +507,15 @@ pause.
 - `SFXGameModeMovie` shares `ModePriority_Menus` with GUI and Galaxy, so `CurrentMode` may stay Galaxy during the galaxy
   map's travel movie. The movie code does not use the mode.
 - Under the world pause, the engine drops input, stops the GUI tick, and ticks only a controller with `bAlwaysTick`.
+- LE1 and LE2's minigames show in the GUI mode, keep their game state in their movie, and run their clock on the
+  world's time, so the world pause holds it (seen 2026-11-11 in the LE1 ring game and the LE2 Bypass and Hack).
 
 ## Open questions
 
 - Does a TRUE return from `Console.InputKey` keep a key from PlayerInput's binds? A log line
-  `SkipCinematic on ...: dropped, our Esc` would show that the bind still fired.
+  `SkipCinematic on ...: dropped, our Esc` would show that the bind still fired. In the 2026-11-11 minigame tests, a
+  keyboard Space that resumed reached neither the LE1 ring game nor LE2's `DecryptSelect`; pad A is not tested.
+- Minigame sound under the pause: LE1's minigame music and LE2's one-shots are not checked by ear yet.
 - Another build of the exe: the core hook and GEngine have no byte check, so the effect of a game update is not known.
 - Other ASIs and overlays (ReShade, the Steam overlay): which hook sees a key first, or draws on top, depends on the
   loader's order and is not tested.

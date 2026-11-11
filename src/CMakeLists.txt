@@ -33,6 +33,8 @@ asi_target (PauseAnytime
     "GameFont.cpp"
     "GameFont.hpp"
     "KeyRules.hpp"
+    "Minigame.cpp"
+    "Minigame.hpp"
     "PauseAnytime.rc"
     "MovieInput.cpp"
     "MovieRules.hpp"

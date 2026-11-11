@@ -6,6 +6,8 @@
 #define PAUSEANYTIME_PHOTO_GUI_SOUNDS 0
 /// Photo mode's panel is a GFx movie of SFXGUIInteraction (PhotoGuiGFx.cpp).
 #define PAUSEANYTIME_PHOTO_GFX 1
+/// LE3 has no bypass minigame: Minigame::Find finds nothing, and the minigame names below are empty.
+#define PAUSEANYTIME_MINIGAMES 0
 
 namespace PauseAnytime::Game
 {
@@ -27,6 +29,18 @@ namespace PauseAnytime::Game
     inline constexpr unsigned char GuiEscape = 16;
     inline constexpr unsigned char GuiStartRelease = 45;
     inline constexpr unsigned char GuiEscapeRelease = 37;
+
+    /// No minigame (PAUSEANYTIME_MINIGAMES 0): no mode, board or key of one. ModeGui is LE3's GUI mode, which no pause of
+    /// ours meets, since Minigame::Find finds nothing.
+    inline constexpr unsigned char ModeGui = 9;
+    inline constexpr unsigned char GuiA = 0xFF;
+    inline constexpr unsigned char GuiARelease = 0xFF;
+    inline constexpr unsigned char GuiSpace = 0xFF;
+    inline constexpr unsigned char GuiSpaceRelease = 0xFF;
+    inline constexpr std::array<wchar_t const*, 0> MinigamePanels{};
+    inline constexpr wchar_t const* MinigameStatePath = L"";
+    inline constexpr int MinigamePlaying = -1;
+    inline constexpr std::array<wchar_t const*, 0> MinigameSpaceExecs{};
 
     /// SFXGameModePhoto's Esc and Start bind, which opens the pause menu.
     inline constexpr wchar_t const* PhotoMenuFunction = L"ShowMenu";

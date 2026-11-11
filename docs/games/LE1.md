@@ -7,8 +7,8 @@ games. The shared design is in [how-it-works.md](../how-it-works.md), and test r
 
 ## Keys
 
-The world pause starts in game mode 5 (Conversation) or 6 (Cinematic), when nothing else holds the world paused
-(`WorldInfo.Pauser` is None).
+The world pause starts in game mode 5 (Conversation) or 6 (Cinematic), or in mode 7 (GUI) over the ring minigame
+while its timer runs, when nothing else holds the world paused (`WorldInfo.Pauser` is None).
 
 | Where | Esc or Start | Space or A | Y or F7 |
 |---|---|---|---|
@@ -16,12 +16,21 @@ The world pause starts in game mode 5 (Conversation) or 6 (Cinematic), when noth
 | Under the world pause | Resumes | Resumes | Opens photo mode |
 | Photo mode opened from the pause | Leaves it, still paused | The game's (Space takes the picture) | Leaves it, still paused |
 | Fullscreen movie | Toggles the movie pause | Resumes a paused movie | The game's |
+| Ring minigame, timer running | Pauses the world | The game's | The game's |
+| Under the world pause over the minigame | Resumes | Resumes | The game's (no photo mode) |
+| Ring minigame, before it starts or at its end | The game's (Esc cancels before the start) | The game's | The game's |
 | Gameplay, menus, galaxy map, open console | The game's | The game's | The game's |
 
 - Without mods, Esc and Start do nothing in an LE1 conversation. In a cutscene, Esc plays an error sound, since the
   game has its cutscene skip turned off, and Start does nothing.
 - The [skip guard](../how-it-works.md#skip-guard) drops the `GuiKey` events of the always-on binds: Escape sends
   `KEY_ESCAPE`, 24 (released 46), and Start sends `BUTTON_START`, 21 (released 43).
+- The ring minigame (`MassEffectGuiManager.ShowSkillGame`, Kismet `BioSeqAct_SkillGame`) is the GUI manager's panel
+  tagged `SkillGame`, in mode 7. `ShowSkillGame` also sets `WorldInfo.bPlayersOnly`. Its movie's `_root.nGameState` is
+  0 before the start, 1 while the timer runs and 2 for the end animation, which lasts under 1.3 s. The timer is
+  `_root.mcTimer.TimeLeft`, counted down from `WorldInfo.TimeSeconds`, so the world pause holds it. On the board the
+  skip guard also drops A's `GuiKey` events, `BUTTON_A` 12 (released 34), and Space's, 25 (released 47), while that key
+  resumed. Without mods, Esc does nothing while the timer runs. LE1's Quasar machines are mode 10 and stay the game's.
 - While Pause Anytime's photo session runs, photo mode's menu bind, `SFXGameModePhoto.ShowMenuGui`, is always
   dropped.
 - The Steam overlay sets `WorldInfo.Pauser`. If it opens over the world pause, a key's resume logs "still paused by

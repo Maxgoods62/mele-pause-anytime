@@ -6,12 +6,18 @@
 #define PAUSEANYTIME_PHOTO_GUI_SOUNDS 1
 /// Photo mode's panel is a ScaleForm panel of the GUI manager (PhotoGuiSF.cpp), not a GFx movie (PhotoGuiGFx.cpp).
 #define PAUSEANYTIME_PHOTO_GFX 0
+/// The bypass minigame is a ScaleForm panel of the GUI manager that the world pause holds (Minigame.cpp).
+#define PAUSEANYTIME_MINIGAMES 1
 
 namespace PauseAnytime::Game
 {
     // SFXGameModeManager.EGameModes (SFXGame_classes.hpp).
     inline constexpr unsigned char ModeConversation = 5;
     inline constexpr unsigned char ModeCinematic = 6;
+    /// The GUI mode, which the bypass minigame shows in: MassEffectGuiManager.ShowSkillGame enables it (and sets
+    /// bPlayersOnly). Mode 10, Minigame, is the Kismet DesignerUI games' (BioSeqAct_MiniGame, the casino's Quasar), which
+    /// stay vanilla.
+    inline constexpr unsigned char ModeGui = 7;
     inline constexpr unsigned char ModeMovie = 8;
     inline constexpr unsigned char ModePhoto = 11;
     inline constexpr char const* ModeNames[] = { "Default", "Vehicle", "PowerWheel", "WeaponWheel", "Command", "Conversation",
@@ -24,8 +30,25 @@ namespace PauseAnytime::Game
     inline constexpr unsigned char GuiStartRelease = 43;
     inline constexpr unsigned char GuiEscapeRelease = 46;
 
+    /// The GuiKey events of a resume key's own press on a minigame's board, pressed and released: the gamepad's A (pulls
+    /// the rings in) and the space bar. KeyRules::DropGuiKey drops them after a resume of ours over a minigame.
+    inline constexpr unsigned char GuiA = 12;
+    inline constexpr unsigned char GuiARelease = 34;
+    inline constexpr unsigned char GuiSpace = 25;
+    inline constexpr unsigned char GuiSpaceRelease = 47;
+
     /// SFXGameModePhoto's Esc and Start bind, which opens the pause menu.
     inline constexpr wchar_t const* PhotoMenuFunction = L"ShowMenuGui";
+
+    /// The bypass minigame's panel: the HandlerLibrary row SkillGame (BioSkillGame_PCHandler, movie
+    /// GUI_SF_SkillGame.PCMiniGame, the rings "decryption" game for mouse and gamepad). Its movie's nGameState is
+    /// GAME_START 0 (the intro, where Esc cancels), GAME_PLAYING 1 (its 15 s counter runs, setInterval on the movie's own
+    /// clock, which the GFx engine advances by WorldInfo.TimeSeconds) and GAME_END 2 (the end animation).
+    inline constexpr std::array<wchar_t const*, 1> MinigamePanels{ L"SkillGame" };
+    inline constexpr wchar_t const* MinigameStatePath = L"_root.nGameState";
+    inline constexpr int MinigamePlaying = 1;
+    /// Exec functions a resume key's own press runs on a minigame's board, besides GuiKey: none in LE1.
+    inline constexpr std::array<wchar_t const*, 0> MinigameSpaceExecs{};
 
     /// The controller's game modes (BioPlayerController.GameModeManager).
     inline USFXGameModeManager* ModeManagerOf(ABioPlayerController* pc)

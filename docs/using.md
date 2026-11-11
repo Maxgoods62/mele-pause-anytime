@@ -1,7 +1,7 @@
 # Using Pause Anytime
 
 Pause Anytime lets you pause Mass Effect Legendary Edition during conversations, in-engine cutscenes (the ones the
-game draws live) and some fullscreen movies. Picture, voice, music and lip sync stop together, and they go on in sync
+game draws live), some fullscreen movies, and the hacking minigames of LE1 and LE2 while their timer runs. Picture, voice, music and lip sync stop together, and they go on in sync
 from the same word. It works in LE1, LE2 and LE3, and it has no settings. To install it, see [install.md](install.md).
 
 ## Keys
@@ -20,6 +20,9 @@ In the table, "No change" means that the key does what it does in the game witho
 | Photo mode, opened from a pause | Back to the pause | No change | Back to the pause |
 | A movie that pauses | Pauses | See [Movies](#movies) | No change |
 | A paused movie | Resumes | Resumes | No change |
+| LE1 or LE2 minigame, while its timer runs | Pauses | No change | No change |
+| Paused minigame | Resumes | Resumes | No change |
+| Minigame, before it starts or after it ends | No change | No change | No change |
 | Other movies, loading screens | See [Movies](#movies) | See [Movies](#movies) | No change |
 | Console open | No change | No change | No change |
 
@@ -36,6 +39,21 @@ press that pauses or resumes a cutscene does not also skip it. In photo mode, Sp
 is open, Esc closes it.
 
 If you open the Steam overlay during a pause, closing the overlay ends the pause, and the scene goes on.
+
+## Minigames
+
+The bypass minigames of LE1 (the rings) and LE2 (Bypass and Hack) have a timer. While it runs, Esc or Start pauses
+the game. The board stays on screen under the pause screen, the timer stops, and clicks and keys do nothing to the
+board. Esc, Start, Space or A resumes, and the timer goes on with the time it had. The key that resumes does not also
+play a move.
+
+- Before the game starts, Esc keeps its usual job: it cancels the minigame. After the game ends, the keys are the
+  game's too.
+- In LE2 without mods, Esc during the Bypass interrupts it, and you lose. With Pause Anytime it pauses. To quit, use
+  the Exit button on the screen, or B on a gamepad.
+- Photo mode does not open over a minigame: it would run the timer.
+- If you open the Steam overlay during a minigame pause, closing the overlay ends the pause, and the timer runs again.
+- LE1's Quasar machines are not minigames of this kind, and Esc there works as in the game.
 
 ## Movies
 
