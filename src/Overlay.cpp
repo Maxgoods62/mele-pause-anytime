@@ -1826,69 +1826,103 @@ namespace PauseAnytime::Overlay
         }
     }
 
+    namespace
+    {
+        struct SwapChainMethods
+        {
+            void* Present = nullptr;
+            void* Present1 = nullptr;
+            void* Resize = nullptr;
+            void* Resize1 = nullptr;
+            HRESULT Result = E_FAIL;
+        };
+
+        // Reads the swap chain methods from a throwaway device and swap chain on window, then destroys the window.
+        SwapChainMethods ProbeWindow(HWND window)
+        {
+            SwapChainMethods got;
+            if (window == nullptr)
+            {
+                got.Result = HRESULT_FROM_WIN32(GetLastError());
+                return got;
+            }
+            DXGI_SWAP_CHAIN_DESC desc{};
+            desc.BufferCount = 1;
+            desc.BufferDesc.Width = 16;
+            desc.BufferDesc.Height = 16;
+            desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+            desc.OutputWindow = window;
+            desc.SampleDesc.Count = 1;
+            desc.Windowed = TRUE;
+            desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+            IDXGISwapChain* chain = nullptr;
+            ID3D11Device* device = nullptr;
+            ID3D11DeviceContext* context = nullptr;
+            auto hr = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &desc, &chain, &device, nullptr, &context);
+            if (FAILED(hr)) hr = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &desc, &chain, &device, nullptr, &context);
+            got.Result = hr;
+            if (SUCCEEDED(hr) && chain != nullptr)
+            {
+                // IDXGISwapChain: Present is 8, ResizeBuffers 13; IDXGISwapChain1 adds Present1 at 22; IDXGISwapChain3 adds
+                // ResizeBuffers1 at 39.
+                auto const table = *reinterpret_cast<void***>(chain);
+                got.Present = table[8];
+                got.Resize = table[13];
+                IDXGISwapChain1* chain1 = nullptr;
+                if (SUCCEEDED(chain->QueryInterface(__uuidof(IDXGISwapChain1), reinterpret_cast<void**>(&chain1))) && chain1 != nullptr)
+                {
+                    got.Present1 = (*reinterpret_cast<void***>(chain1))[22];
+                    chain1->Release();
+                }
+                IDXGISwapChain3* chain3 = nullptr;
+                if (SUCCEEDED(chain->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&chain3))) && chain3 != nullptr)
+                {
+                    got.Resize1 = (*reinterpret_cast<void***>(chain3))[39];
+                    chain3->Release();
+                }
+            }
+            if (context != nullptr) context->Release();
+            if (chain != nullptr) chain->Release();
+            if (device != nullptr) device->Release();
+            DestroyWindow(window);
+            return got;
+        }
+    }
+
     void Install(::LESDK::Initializer& Init, OverlayLook look)
     {
         Look.store(look, std::memory_order_relaxed);
         // Before the hooks: IsGameWindow judges the first present by it.
         MainThread.store(FindMainThread(), std::memory_order_relaxed);
-        // The swap chain methods' addresses, from a throwaway device on a hidden window: every swap chain shares them.
+        // The swap chain methods' addresses, from a throwaway device on a window of our own: every swap chain shares them.
+        // The window is message-only. LE1 gives Bink its movie sound window at boot, the first window of the process Bink
+        // finds, and Bink keeps it for the session. A hidden top-level window alive then, or the "Default IME" window
+        // Windows makes for its thread, would be the one, and once destroyed every Bink movie plays without sound until the
+        // game quits. Bink's search does not see a message-only window, and Windows gives it no IME window.
         WNDCLASSEXW windowClass{};
         windowClass.cbSize = sizeof windowClass;
         windowClass.lpfnWndProc = DefWindowProcW;
         windowClass.hInstance = GetModuleHandleW(nullptr);
         windowClass.lpszClassName = L"PauseAnytimeProbe";
         RegisterClassExW(&windowClass);
-        auto const window = CreateWindowExW(0, windowClass.lpszClassName, L"", WS_OVERLAPPEDWINDOW, 0, 0, 16, 16, nullptr, nullptr, windowClass.hInstance, nullptr);
-
-        DXGI_SWAP_CHAIN_DESC desc{};
-        desc.BufferCount = 1;
-        desc.BufferDesc.Width = 16;
-        desc.BufferDesc.Height = 16;
-        desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        desc.OutputWindow = window;
-        desc.SampleDesc.Count = 1;
-        desc.Windowed = TRUE;
-        desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-        void* present = nullptr;
-        void* present1 = nullptr;
-        void* resize = nullptr;
-        void* resize1 = nullptr;
-        IDXGISwapChain* chain = nullptr;
-        ID3D11Device* device = nullptr;
-        ID3D11DeviceContext* context = nullptr;
-        auto hr = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &desc, &chain, &device, nullptr, &context);
-        if (FAILED(hr)) hr = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &desc, &chain, &device, nullptr, &context);
-        if (SUCCEEDED(hr) && chain != nullptr)
+        auto methods = ProbeWindow(CreateWindowExW(0, windowClass.lpszClassName, L"", 0, 0, 0, 16, 16, HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr));
+        if (methods.Present == nullptr || methods.Resize == nullptr)
         {
-            // IDXGISwapChain: Present is 8, ResizeBuffers 13; IDXGISwapChain1 adds Present1 at 22; IDXGISwapChain3 adds
-            // ResizeBuffers1 at 39.
-            auto const table = *reinterpret_cast<void***>(chain);
-            present = table[8];
-            resize = table[13];
-            IDXGISwapChain1* chain1 = nullptr;
-            if (SUCCEEDED(chain->QueryInterface(__uuidof(IDXGISwapChain1), reinterpret_cast<void**>(&chain1))) && chain1 != nullptr)
-            {
-                present1 = (*reinterpret_cast<void***>(chain1))[22];
-                chain1->Release();
-            }
-            IDXGISwapChain3* chain3 = nullptr;
-            if (SUCCEEDED(chain->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&chain3))) && chain3 != nullptr)
-            {
-                resize1 = (*reinterpret_cast<void***>(chain3))[39];
-                chain3->Release();
-            }
+            // Better the risk to movie sound above than no pause screen.
+            LEASI_WARN("overlay: no swap chain on a message-only window (0x{:08X}): trying a hidden window", static_cast<unsigned>(methods.Result));
+            methods = ProbeWindow(CreateWindowExW(0, windowClass.lpszClassName, L"", WS_OVERLAPPEDWINDOW, 0, 0, 16, 16, nullptr, nullptr, windowClass.hInstance, nullptr));
         }
-        if (context != nullptr) context->Release();
-        if (chain != nullptr) chain->Release();
-        if (device != nullptr) device->Release();
-        if (window != nullptr) DestroyWindow(window);
         UnregisterClassW(windowClass.lpszClassName, windowClass.hInstance);
+        auto const present = methods.Present;
+        auto const present1 = methods.Present1;
+        auto const resize = methods.Resize;
+        auto const resize1 = methods.Resize1;
 
         if (present == nullptr || resize == nullptr)
         {
-            LEASI_ERROR("overlay: no D3D11 device to read the swap chain methods from (0x{:08X}): the Canvas banner instead", static_cast<unsigned>(hr));
+            LEASI_ERROR("overlay: no D3D11 device to read the swap chain methods from (0x{:08X}): the Canvas banner instead", static_cast<unsigned>(methods.Result));
             return;
         }
         // ResizeBuffers first: Present may run (and take the back buffer) as soon as its hook is live.

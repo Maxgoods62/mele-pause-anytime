@@ -4,6 +4,18 @@ The version is set in `src/SharedVersion.h`, one for every game. v1.0 is the fir
 it, v2 to v17, were test builds that were never published, and the dates on v2 to v5 are the days they were committed.
 The first line of each entry names the games it covers. Every version needs an ASI loader.
 
+## Unreleased
+
+Games: LE1, LE2, LE3
+
+- In LE1, the loading screens and the mass relay and FTL travel movies could play with no sound for a whole session.
+  At start, Pause Anytime made a small hidden window for a fraction of a second. If the game set up its movie sound at
+  that moment, the movie player took that window as its own and kept it after it was gone, and every movie after that
+  was silent until the game quit. It depended on timing, so it could happen on some starts and not on others. Pause
+  Anytime now makes a kind of window the movie player never takes.
+- If Windows refuses that kind of window, Pause Anytime uses the old one, and the log says "no swap chain on a
+  message-only window".
+
 ## v1.1 (2026-11-09)
 
 Games: LE1, LE2, LE3

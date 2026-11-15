@@ -332,8 +332,10 @@ Cinematic, and never over a movie.
 
 ### Drawing
 
-`Overlay::Install` reads the swap chain's methods from a throwaway device on a hidden window, and hooks `ResizeBuffers`,
-`ResizeBuffers1` (where DXGI has it), `Present` and `Present1`. It starts on the first D3D11 swap chain that presents to
+`Overlay::Install` reads the swap chain's methods from a throwaway device on a message-only window, and hooks
+`ResizeBuffers`, `ResizeBuffers1` (where DXGI has it), `Present` and `Present1`. It uses a hidden window only if Windows
+gives no swap chain on the message-only one. A hidden window must not exist when LE1 sets up its movie sound at start:
+Bink would keep it as its sound window, and once it is gone every Bink movie of the session plays without sound. It starts on the first D3D11 swap chain that presents to
 the game's window: a window of the game's process made by its main thread (the thread made first), or by the game thread
 once `Pause.cpp` knows it. A window that another ASI or a tool makes on a thread of its own is left alone. If that rule
 refuses every swap chain for 5 s once the game thread is known, the next one that presents to the foreground window is
