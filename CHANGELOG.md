@@ -4,7 +4,7 @@ The version is set in `src/SharedVersion.h`, one for every game. v1.0 is the fir
 it, v2 to v17, were test builds that were never published, and the dates on v2 to v5 are the days they were committed.
 The first line of each entry names the games it covers. Every version needs an ASI loader.
 
-## Unreleased
+## v1.2 (2026-11-20)
 
 Games: LE1, LE2, LE3
 
