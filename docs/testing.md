@@ -400,6 +400,42 @@ logged.
 Results per game, oldest first. Some test builds carried the next version's code under the old number, such as "v9's
 code, numbered 8". The v8 results name the per-game zips of that time. A release now has one zip.
 
+### Main after the minigames
+
+Main's build of 2026-11-20 (`7c02c79`: the minigames and the message-only probe window), built on the PC. Its
+automated checks pass.
+
+The user played a real Bypass in LE2 (`BioP_SunTlA`) with a gamepad that day. Start before the start logged `vanilla`.
+Start while the timer ran paused the world, and the timer held. A resumed, twice. A pad B pressed just after a resume
+was dropped (`GuiKey 13` and `34`) and the Bypass went on. Start on the result screen (states 3 and 4) logged
+`vanilla`.
+
+The same day, a run driven from outside the game in all three games, with the game window never focused. Keys went
+through `Console.InputKey`, with the keyboard's and the gamepad's key names. Where the game's own answer mattered, real
+key messages were posted to the game's window. LE1 ran from dev slot 99, LE2 and LE3 from their latest save, all three
+on the Normandy.
+
+- S1 in each game (LE1 a Hackett transmission, LE2 Kelly, LE3 Traynor): Esc paused and Esc resumed; Start paused and A
+  resumed while Start was still down; Esc paused and Space resumed. The world clock (`WorldInfo.TimeSeconds`) stood
+  still under each pause and ran again after it. The pause screen had each game's look, with keyboard or gamepad
+  prompts.
+- S2 in each game, in the game's cinematic mode (set by its own Kismet action) with a crew Matinee playing: the Matinee
+  stood still under Esc and Start, and went on from the same frame after Esc, A and Space. In LE2 and LE3 a real Esc
+  paused and a real Space resumed with no `SkipCinematic`, and a real Space with nothing paused logged `SkipCinematic
+  ... passed`.
+- S11 in LE1, the Grizzly rover's ring game in `BIOA_ICE20_09_DSG`. Step 1 with Start, and with a real Esc, which
+  cancelled the game. The timer held at 3.39 s and at 13.6 s. F7 and Y logged `vanilla`, and the screen showed Resume
+  only. Space, and A with Start still down, resumed with the ring and the distance unchanged. Pad B under the pause did
+  nothing.
+- S11 in LE2, the Bypass and the Hack opened with `ShowSkillGameBypass` and `ShowSkillGameDecryption` and started
+  through their movie. Step 1 with Start, and with a real Esc, which cancelled the Bypass. The Bypass clock held at 490
+  ms and 2620 ms. The Hack clock held at 420 ms (a real Esc, resumed by a real Space) and 490 ms (Start, resumed by
+  A), and the Hack still had 3 attempts after each resume.
+- All three logs held only `info` lines.
+
+Not run that day: S3, S6, S9, S10, sound by ear, and step 5 in LE1 (its end animation is too short to catch). Apart
+from the user's Bypass, the gamepad's keys were sent through the console, not pressed on a pad.
+
 ### Minigames
 
 This build pauses LE1's ring game and LE2's Bypass and Hack while their timer runs. Its automated checks pass. Run on
