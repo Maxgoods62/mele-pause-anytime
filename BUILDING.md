@@ -92,7 +92,8 @@ release, are on the toolkit's [releasing page](https://github.com/Maxgoods62/mel
 ([Settings](#settings)). Then they check every game picked, before anything in the game folder changes:
 
 - `--install` only: the ASI loader is there, as `bink2w64_original.dll` and an `ASI` folder in
-  `Game\ME<n>\Binaries\Win64`. `build.sh` never writes the loader. ME3Tweaks Mod Manager installs it with any mod.
+  `Game\ME<n>\Binaries\Win64`. `build.sh` never writes the loader. ME3Tweaks Mod Manager installs it: Mod
+  Management > ASI Mod Manager, select the game, Install Loader.
 - Both: the game is closed. `tasklist.exe` must answer and must not list `MassEffect<n>.exe`.
 
 One failed check stops the whole run, and no game is built or changed. `--install` checks again after the build,
@@ -225,7 +226,7 @@ the same errors, and its own start with `package.sh:`. Below, `<n>` is 1, 2 or 3
 | `no GAMES line in src/CMakeLists.txt, so no games for 'all'` | Put back the `GAMES` line of `asi_target`. |
 | `Legendary Edition not found in the registry` | Set `MELE_LE_DIR`. This also shows when `reg.exe` does not run. |
 | `no Game folder in '...'` | Set `MELE_LE_DIR` to the folder that holds `Game`. |
-| `no ASI loader in Game\ME<n>` or `no ASI folder in Game\ME<n>\Binaries\Win64` | Install any mod in that game with ME3Tweaks Mod Manager. It adds the loader. |
+| `no ASI loader in Game\ME<n>` or `no ASI folder in Game\ME<n>\Binaries\Win64` | In ME3Tweaks Mod Manager, choose Mod Management > ASI Mod Manager, select that game and click Install Loader. |
 | `MassEffect<n>.exe is running: close the game first` | Close the game. If it is closed, check that `tasklist.exe` runs: a failed one counts as running. |
 | `... (built, not installed)` | The game started during the build. The files are in `MELE_STAGE`: close the game and run again. |
 | `no vswhere.exe` | Install the Visual Studio 18 Build Tools with C++, or set `MELE_VS`. This also shows when `powershell.exe` does not run. |

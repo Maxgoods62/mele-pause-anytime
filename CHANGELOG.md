@@ -8,6 +8,14 @@ The first line of each entry names the games it covers. Every version needs an A
 
 Games: LE1, LE2, LE3
 
+- Esc and Start now pause the hacking minigames of LE1 (the rings) and LE2 (Bypass and Hack) while their timer runs.
+  The board stays on screen under the pause screen, the timer stops, and it goes on with the time it had when you
+  resume with Esc, Start, Space or A. The key that resumes does not also play a move. Before the game starts, Esc
+  still cancels it, and after it ends the keys are the game's.
+- In the LE2 Bypass, Esc used to interrupt the game, which loses it. It now pauses. The Exit button and B on a gamepad
+  still quit.
+- Photo mode does not open over a minigame, and the pause screen shows only Resume there.
+- The log's press line names the minigame panel and its state, and a pause over a minigame says so.
 - In LE1, the loading screens and the mass relay and FTL travel movies could play with no sound for a whole session.
   At start, Pause Anytime made a small hidden window for a fraction of a second. If the game set up its movie sound at
   that moment, the movie player took that window as its own and kept it after it was gone, and every movie after that

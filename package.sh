@@ -146,9 +146,10 @@ Every key in each game: https://github.com/Maxgoods62/mele-pause-anytime/blob/ma
 Requirements
 
 - Mass Effect Legendary Edition. Each file works only in its own game (see Install below).
-- An ASI loader: LEBinkProxy (https://github.com/ME3Tweaks/LEBinkProxy). ME3Tweaks Mod Manager
-  installs it with any mod. The loader is there when <LE folder>\Game\ME<n>\Binaries\Win64
-  holds bink2w64_original.dll and an ASI folder.
+- An ASI loader in each game: LEBinkProxy (https://github.com/ME3Tweaks/LEBinkProxy). The loader
+  is there when <LE folder>\Game\ME<n>\Binaries\Win64 holds bink2w64_original.dll and an ASI
+  folder. If not, in ME3Tweaks Mod Manager choose Mod Management > ASI Mod Manager, select the
+  game and click Install Loader.
 - The latest Microsoft Visual C++ x64 Redistributable:
   https://aka.ms/vc14/vc_redist.x64.exe
 
