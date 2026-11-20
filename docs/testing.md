@@ -400,6 +400,56 @@ logged.
 Results per game, oldest first. Some test builds carried the next version's code under the old number, such as "v9's
 code, numbered 8". The v8 results name the per-game zips of that time. A release now has one zip.
 
+### v1.2 gate
+
+The zip of `1e94936` ("Version 1.2") from the latest page, its hash checked against `SHA256SUMS`, installed in all
+three games on 2026-11-20. The full sheet ran in every game, driven as in the run below: keys through
+`Console.InputKey`, real key messages posted to the game's window where the game's own answer mattered, and real Esc,
+Space and Shift+Tab presses with the game in front for S3 and S9. Every check passed.
+
+- S1, S5 and S8 (LE1 Hackett, LE2 Kelly, LE3 Traynor): the world clock held under each pause and ran after it. Esc
+  paused and Start resumed, and the other way round. With the console opened under a pause, the pause screen hid, Esc
+  closed the console (`the console is open, vanilla`), and the pause held. Each game's look, with the game's fonts and
+  gamepad icons `used`.
+- S2: the Matinee held under Esc and Start, and went on after each resume. Photo mode opened in the cutscene. In LE3
+  a real Esc paused, a real Space resumed with no skip, and a Space with nothing paused logged `SkipCinematic ...
+  passed`.
+- S3, each movie fired from the galaxy map's Kismet: LE1 the flyby (`UCW_Loading_Flyby`), LE2 and LE3 the relay jump
+  (`GLO_01_Relay`). A pause held 16 s or more on one frame (LE3: 18 s at frame 33), and five pauses in one movie kept
+  picture and sound together. In LE1 a Start tap paused on its release. Real Esc presses paused and resumed, and a real
+  Space resumed. Under the pause, X (LE2, LE3) and Enter (LE2) skipped nothing. With nothing paused, Space skipped
+  none of the three movies, and each played to its end.
+- S4: Esc and Start logged `vanilla` on the galaxy map (LE1, LE3), in the pause menu (all three), in LE1's equipment,
+  squad, journal and map screens, and on the LE2 and LE3 deck map. LE3's menus are mode 9.
+- S6: Start then Y, and Esc then F7, in a conversation, and photo mode in a cutscene, in each game. The "photo mode
+  on" line gave 0 uu and 0 deg. LE3 with the reply wheel up: the panel showed its tabs and options, the wheel stayed
+  hidden, and the subtitle stayed, as [games/LE3.md](games/LE3.md) says. In LE3, Y and F7 with nothing paused logged
+  `vanilla`.
+- S7: the logs held only `info` lines, apart from LE3's `still paused by` warning that S9 step 5 asks for. LE1's start
+  used the message-only window, with no fallback line.
+- S9 with real Shift+Tab presses, LE2 and LE3: steps 1 to 4 passed. Step 5 in LE3, with Esc sent through the console
+  while the overlay was open: `still paused by ... (Steam overlay?)` and no second `InGameGuiExit`. In LE2 a real Esc
+  went to the overlay, not to the game.
+- S10 in LE1, steps 1 to 5, with a French test mod for 74300001 to 74300007: `ours` at the main menu, the markers on
+  the pause screen, `asked again at the first pause: no new answer`. English gave `game` and `built-in English`. With
+  the test mod replaced by an empty stub, French gave `game` and `built-in French`. Japanese gave "ポーズ" and
+  "スペース", with no missing-letter line. LE2 and LE3 in French: `built-in French`, with the game's "Reprendre" and
+  "Mode photo".
+- S11: the LE1 ring game's timer held at 13.6 s (Start) and 10.5 s (Esc). The LE2 Bypass clock held at 697 ms (Esc,
+  14 s, F7 and Y `vanilla`) and 4210 ms (Start, through pad B). The Hack clock held at 650 ms (a real Esc, resumed by a
+  real Space) and 2850 ms (Start, resumed by A), and it kept its 3 attempts.
+
+Notes from that run:
+
+- LE2, photo mode in a cinematic mode with no director's camera (only the game's toggle, no Matinee camera): the exit
+  line names the photo camera (`SFXCameraMode_PhotoFree_1`), and the view stays on it until the cinematic mode ends.
+  LE1 and LE3 went back to the game's camera. The photo code has not changed since v1.1. Not seen in a real cutscene.
+- LE1 closed before the main menu on the first start, an access violation at address 0, as on some starts since
+  2026-11-07 with earlier builds. The next start worked.
+- Not run: sound by ear, the LE2 Citadel movie, LE3's loading screens and movies inside a scene, a PlayStation pad's
+  Options, the sticks, S10 steps 6 and 7 (they need test builds), and S11 steps 5 to 7. The gamepad's keys went
+  through the console, not through a pad.
+
 ### Main after the minigames
 
 Main's build of 2026-11-20 (`7c02c79`: the minigames and the message-only probe window), built on the PC. Its
